@@ -1,12 +1,11 @@
 # norgolith
 
-The monolithic Norg static site generator built with Zig. Leverage the power of [tree-sitter]
+The monolithic Norg static site generator built with Rust. Leverage the power of [tree-sitter]
 validation and [norg-pandoc] conversion to create stunning static sites from your Norg content.
 
 ## Build requirements
 
-- `pandoc`
-- Zig `0.12.0` (latest stable release)
+- Rust `>= 1.77` (latest stable release)
 
 ## Usage
 
