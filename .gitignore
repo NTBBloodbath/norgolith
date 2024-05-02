@@ -1,2 +1,2 @@
-# Zig magic stuff
-zig-*
+# Added by cargo
+/target
