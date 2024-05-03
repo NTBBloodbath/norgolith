@@ -2,6 +2,14 @@
 name = "norgolith"
 version = "0.1.0"
 edition = "2021"
+authors = ["NTBBloodbath <bloodbathalchemist@protonmail.com"]
+license = "GPL-3.0"
+readme = "README.md"
+description = "The monolithic Norg static site generator"
+repository = "https://github.com/NTBBloodbath/norgolith"
+keywords = ["static", "site", "generator", "blog", "norg"]
+
+include = ["src/**/*", "LICENSE", "README.md"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
