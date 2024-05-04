@@ -1,8 +1,16 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use crate::cmd;
+use crate::net;
+
 #[derive(Parser)]
-#[command(author = "NTBBloodbath", version, disable_version_flag = true, about = "The monolithic Norg static site generator")]
+#[command(
+    author = "NTBBloodbath",
+    version,
+    disable_version_flag = true,
+    about = "The monolithic Norg static site generator"
+)]
 struct Cli {
     /// Print version
     #[arg(short = 'v', long, action = clap::builder::ArgAction::Version)]
@@ -28,25 +36,39 @@ enum Commands {
     Build,
 }
 
-pub fn start() -> Result<()> {
+pub async fn start() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
         Commands::Init { name } => {
             if name.is_none() {
                 eprintln!("Missing name for the site");
+                std::process::exit(1);
             } else {
                 println!("Creating {name:?} site ...");
             }
-        },
+        }
         Commands::Serve { port } => {
-            // NOTE: TBD
-            println!("Serving site ...");
-            println!("Web server is available at http://localhost:{:?}/", port);
-        },
+            // If not using the default port and the requested port is busy
+            if *port != 3030 && !net::is_port_available(*port) {
+                eprintln!("The requested port ({:?}) is not available", port);
+                std::process::exit(1);
+            }
+
+            // If the default Norgolith port is busy
+            if !net::is_port_available(*port) {
+                eprintln!(
+                    "Failed to open listener, perhaps the port {:?} is busy?",
+                    port
+                );
+                std::process::exit(1);
+            }
+
+            cmd::serve(*port).await?;
+        }
         _ => {
             println!("TBD");
-        },
+        }
     }
 
     Ok(())
