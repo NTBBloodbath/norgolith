@@ -22,3 +22,4 @@ tera = "1.19.1"
 tokio = { version = "1.37.0", features = ["fs", "time", "rt-multi-thread", "macros"] }
 tree-sitter = "0.22.5"
 tree-sitter-norg = "0.1.1"
+tree-sitter-norg-meta = { git = "https://github.com/nvim-neorg/tree-sitter-norg-meta" }

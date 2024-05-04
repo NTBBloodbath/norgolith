@@ -716,6 +716,7 @@ dependencies = [
  "tokio",
  "tree-sitter 0.22.5",
  "tree-sitter-norg",
+ "tree-sitter-norg-meta",
 ]
 
 [[package]]
@@ -1286,6 +1287,15 @@ name = "tree-sitter-norg"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e8e8fa9b3208120cf3ab3704cc62d1684522049f78be3e8131bffe55bd58824"
+dependencies = [
+ "cc",
+ "tree-sitter 0.20.10",
+]
+
+[[package]]
+name = "tree-sitter-norg-meta"
+version = "0.1.0"
+source = "git+https://github.com/nvim-neorg/tree-sitter-norg-meta#6f0510cc516a3af3396a682fbd6655486c2c9d2d"
 dependencies = [
  "cc",
  "tree-sitter 0.20.10",
