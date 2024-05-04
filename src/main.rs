@@ -6,9 +6,9 @@ use anyhow::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    match cli::start().await {
-        Err(e) => eprintln!("Something went wrong while parsing command-line: {:?}", e),
-        _ => (),
+    if let Err(e) = cli::start().await {
+        eprintln!("Something went wrong while parsing command-line: {:?}", e);
+        std::process::exit(1);
     }
 
     Ok(())

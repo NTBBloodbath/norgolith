@@ -41,24 +41,24 @@ pub async fn start() -> Result<()> {
 
     match &cli.command {
         Commands::Init { name } => {
-            if name.is_none() {
+            if let Some(value) = name {
+                cmd::init(value).await?;
+            } else {
                 eprintln!("Missing name for the site");
                 std::process::exit(1);
-            } else {
-                println!("Creating {name:?} site ...");
             }
         }
         Commands::Serve { port } => {
             // If not using the default port and the requested port is busy
             if *port != 3030 && !net::is_port_available(*port) {
-                eprintln!("The requested port ({:?}) is not available", port);
+                eprintln!("The requested port ({}) is not available", port);
                 std::process::exit(1);
             }
 
             // If the default Norgolith port is busy
             if !net::is_port_available(*port) {
                 eprintln!(
-                    "Failed to open listener, perhaps the port {:?} is busy?",
+                    "Failed to open listener, perhaps the port {} is busy?",
                     port
                 );
                 std::process::exit(1);
