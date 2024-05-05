@@ -1,19 +1,34 @@
 use anyhow::Result;
-use chrono;
 use tokio::fs;
-use whoami;
+
+/// Create basic site configuration TOML
+async fn create_config(root: &str) -> Result<()> {
+    let site_config = format!(
+        r#"rootUrl = '{}'
+language = '{}'
+title = '{}'"#,
+        "http://localhost:3030",
+        "en-us",
+        root.to_owned()
+    );
+    // TBD: add Windows separator support
+    fs::write(root.to_owned() + "/site.toml", site_config).await?;
+
+    Ok(())
+}
 
 /// Create a basic hello world norg document
-async fn create_hello_norg(root: &String) -> Result<()> {
+async fn create_index_norg(root: &str) -> Result<()> {
     let creation_date = chrono::offset::Local::now();
     let norg_metadata = format!(
         r#"@document.meta
-title: hello
+title: hello norgolith
 description: This is my first post made with Norgolith :D
 authors: {}
 categories: []
-created: {}
-updated: {}
+created: {:?}
+updated: {:?}
+draft: true
 version: 1.1.1
 @end
 
@@ -25,7 +40,7 @@ version: 1.1.1
         creation_date
     );
     // TBD: add Windows separator support
-    fs::write(root.clone() + "/content/hello.norg", norg_metadata).await?;
+    fs::write(root.to_owned() + "/content/index.norg", norg_metadata).await?;
 
     Ok(())
 }
@@ -38,7 +53,7 @@ pub async fn init(name: &String) -> Result<()> {
         std::process::exit(1);
     } else {
         // Create the site directories and all their parent directories if required
-        let directories = vec!["content", "templates", "theme"];
+        let directories = vec!["content", "templates", "assets", "theme"];
         for dir in directories {
             // TBD: add Windows separator support
             fs::create_dir_all(name.clone() + "/" + dir).await?;
@@ -46,7 +61,8 @@ pub async fn init(name: &String) -> Result<()> {
 
         // Create initial files
         // TBD: Basic HTML templates and start work with Tera
-        create_hello_norg(name).await?;
+        create_config(name).await?;
+        create_index_norg(name).await?;
 
         // Get the canonical (absolute) path to the new site root
         let path = fs::canonicalize(name).await?;
