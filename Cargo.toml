@@ -23,3 +23,9 @@ tokio = { version = "1.37.0", features = ["fs", "time", "rt-multi-thread", "macr
 tree-sitter = "0.22.5"
 tree-sitter-norg = "0.1.1"
 tree-sitter-norg-meta = { git = "https://github.com/nvim-neorg/tree-sitter-norg-meta" }
+
+[profile.optimized]                 # Size optimizations that will hurt build speed
+inherits = "release"                # Which profile we inherit
+opt-level = "z"                     # Optimize for size
+codegen-units = 1                   # Build speed -> Executable size
+strip = true                        # Remove debug symbols
