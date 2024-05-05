@@ -7,7 +7,7 @@ async fn create_config(root: &str) -> Result<()> {
         r#"rootUrl = '{}'
 language = '{}'
 title = '{}'"#,
-        "http://localhost:3030",
+        "http://localhost:3030", // this is the default port
         "en-us",
         root.to_owned()
     );
