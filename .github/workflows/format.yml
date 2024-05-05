@@ -21,10 +21,10 @@ jobs:
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: autoformat code"
+          commit_message: "chore: autoformat with cargo"
           branch: ${{ github.ref }}
       - name: Push formatted files
         uses: ad-m/github-push-action@master
         with:
-          github_token: ${{ secrets.CI_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ github.ref }}
