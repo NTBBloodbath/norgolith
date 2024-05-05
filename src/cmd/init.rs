@@ -12,7 +12,7 @@ title = '{}'"#,
         root.to_owned()
     );
     // TBD: add Windows separator support
-    fs::write(root.to_owned() + "/site.toml", site_config).await?;
+    fs::write(root.to_owned() + "/norgolith.toml", site_config).await?;
 
     Ok(())
 }
