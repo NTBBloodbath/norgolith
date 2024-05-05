@@ -15,6 +15,7 @@ include = ["src/**/*", "LICENSE", "README.md"]
 
 [dependencies]
 anyhow = "1.0.82"
+chrono = "0.4.38"
 clap = { version = "4.5.4", features = ["deprecated", "derive", "env", "wrap_help"] }
 comfy-table = "7.1.1"
 hyper = { version = "=0.14.28", features = ["runtime", "server", "http1", "http2"] }
@@ -23,6 +24,7 @@ tokio = { version = "1.37.0", features = ["fs", "time", "rt-multi-thread", "macr
 tree-sitter = "0.22.5"
 tree-sitter-norg = "0.1.1"
 tree-sitter-norg-meta = { git = "https://github.com/nvim-neorg/tree-sitter-norg-meta" }
+whoami = "1.5.1"
 
 [profile.optimized]                 # Size optimizations that will hurt build speed
 inherits = "release"                # Which profile we inherit
