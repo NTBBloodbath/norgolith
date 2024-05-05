@@ -22,17 +22,17 @@ struct Cli {
 
 #[derive(Subcommand, Clone)]
 enum Commands {
-    /// Initialize a new Norgolith site
+    /// Initialize a new Norgolith site (WIP)
     Init {
         /// Site name
         name: Option<String>,
     },
-    /// Build a site for development
+    /// Build a site for development (WIP)
     Serve {
         #[arg(short = 'p', long, default_value_t = 3030)]
         port: u16,
     },
-    /// Build a site for production
+    /// Build a site for production (WIP)
     Build,
 }
 
