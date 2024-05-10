@@ -46,6 +46,17 @@ version: 1.1.1
     Ok(())
 }
 
+async fn create_directories(path: &str) -> Result<()> {
+    // Create the site directories and all their parent directories if required
+    let directories = vec!["content", "templates", "assets", "theme"];
+    for dir in directories {
+        // TBD: add Windows separator support
+        fs::create_dir_all(path.to_owned() + "/" + dir).await?;
+    }
+
+    Ok(())
+}
+
 pub async fn init(name: &String) -> Result<()> {
     let path_exists = fs::try_exists(name).await?;
 
@@ -53,12 +64,8 @@ pub async fn init(name: &String) -> Result<()> {
         eprintln!("The target directory {} already exists.", name);
         std::process::exit(1);
     } else {
-        // Create the site directories and all their parent directories if required
-        let directories = vec!["content", "templates", "assets", "theme"];
-        for dir in directories {
-            // TBD: add Windows separator support
-            fs::create_dir_all(name.clone() + "/" + dir).await?;
-        }
+        // Create site directories
+        create_directories(name).await?;
 
         // Create initial files
         // TBD: Basic HTML templates and start work with Tera
