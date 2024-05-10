@@ -19,15 +19,15 @@ title = '{}'"#,
 
 /// Create a basic hello world norg document
 async fn create_index_norg(root: &str) -> Result<()> {
-    let creation_date = chrono::offset::Local::now();
+    let creation_date = chrono::offset::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
     let norg_metadata = format!(
         r#"@document.meta
 title: hello norgolith
 description: This is my first post made with Norgolith :D
 authors: {}
 categories: []
-created: {:?}
-updated: {:?}
+created: {}
+updated: {}
 draft: true
 version: 1.1.1
 @end
