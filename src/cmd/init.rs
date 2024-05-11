@@ -1,4 +1,7 @@
 use anyhow::{anyhow, Result};
+use comfy_table::modifiers::UTF8_SOLID_INNER_BORDERS;
+use comfy_table::presets::UTF8_FULL;
+use comfy_table::{Cell, ContentArrangement, Table};
 use tokio::fs;
 
 /// Create basic site configuration TOML
@@ -78,12 +81,35 @@ pub async fn init(name: &String) -> Result<()> {
 
         // Get the canonical (absolute) path to the new site root
         let path = fs::canonicalize(name).await?;
+
+        // Create structure table
+        let mut structure_table = Table::new();
+        structure_table
+            .load_preset(UTF8_FULL)
+            .apply_modifier(UTF8_SOLID_INNER_BORDERS)
+            .set_content_arrangement(ContentArrangement::Dynamic)
+            .set_width(60)
+            .set_header(vec!["Directory", "Description"])
+            .add_row(vec![
+                Cell::new("content"),
+                Cell::new("Norg site content files"),
+            ])
+            .add_row(vec![Cell::new("templates"), Cell::new("HTML templates")])
+            .add_row(vec![
+                Cell::new("assets"),
+                Cell::new("Site assets (JS, CSS, favicon, etc)"),
+            ])
+            .add_row(vec![Cell::new("theme"), Cell::new("Site theme files")]);
+
         let init_message = format!(
             r#"Congratulations, your new Norgolith site was created in {}
 
-Please make sure to read the documentation at {}.
-            "#,
+Your new site structure:
+{}
+
+Please make sure to read the documentation at {}."#,
             path.display(),
+            structure_table,
             "https://foobar.wip/"
         );
         println!("{}", init_message);
