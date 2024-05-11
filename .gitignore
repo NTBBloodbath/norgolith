@@ -1,2 +1,5 @@
 # Added by cargo
 /target
+
+# Testing junk
+/foo
