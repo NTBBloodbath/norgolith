@@ -61,7 +61,12 @@ pub async fn init(name: &String) -> Result<()> {
     let path_exists = fs::try_exists(name).await?;
 
     if path_exists {
-        return Err(anyhow!("The target directory {} already exists.", name));
+        // Get the canonical (absolute) path to the existing site root
+        let path = fs::canonicalize(name).await?;
+        return Err(
+            anyhow!("The target directory {} already exists.", path.display())
+                .context("could not initialize the new Norgolith site"),
+        );
     } else {
         // Create site directories
         create_directories(name).await?;
@@ -74,8 +79,7 @@ pub async fn init(name: &String) -> Result<()> {
         // Get the canonical (absolute) path to the new site root
         let path = fs::canonicalize(name).await?;
         let init_message = format!(
-            r#"
-Congratulations, your new Norgolith site was created in {}
+            r#"Congratulations, your new Norgolith site was created in {}
 
 Please make sure to read the documentation at {}.
             "#,

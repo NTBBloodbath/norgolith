@@ -44,13 +44,15 @@ pub async fn start() -> Result<()> {
             if let Some(value) = name {
                 cmd::init(value).await?;
             } else {
-                return Err(anyhow!("Missing name for the site"));
+                return Err(anyhow!("Missing name for the site")
+                    .context("could not initialize the new Norgolith site"));
             }
         }
         Commands::Serve { port } => {
             // If not using the default port and the requested port is busy
             if *port != 3030 && !net::is_port_available(*port) {
-                return Err(anyhow!("The requested port ({}) is not available", port));
+                return Err(anyhow!("The requested port ({}) is not available", port)
+                    .context("could not initialize the development server"));
             }
 
             // If the default Norgolith port is busy
@@ -58,7 +60,8 @@ pub async fn start() -> Result<()> {
                 return Err(anyhow!(
                     "Failed to open listener, perhaps the port {} is busy?",
                     port
-                ));
+                )
+                .context("could not initialize the development server"));
             }
 
             cmd::serve(*port).await?;

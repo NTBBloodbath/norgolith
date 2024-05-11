@@ -51,7 +51,8 @@ pub async fn serve(port: u16) -> Result<()> {
             .await
             .map_err(|err| anyhow!("Server error: {}", err))?;
     } else {
-        return Err(anyhow!("Not in a norgolith site directory"));
+        return Err(anyhow!("Not in a Norgolith site directory")
+            .context("could not initialize the development server"));
     }
 
     Ok(())
