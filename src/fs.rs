@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use tokio::fs::{read_dir, metadata};
+use tokio::fs::{metadata, read_dir};
 
 /// Find a given file in the current working directory and its parent directories recursively
 pub async fn find_file_in_previous_dirs(filename: &str) -> Result<Option<PathBuf>> {

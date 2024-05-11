@@ -1,6 +1,6 @@
-mod fs;
 mod cli;
 mod cmd;
+mod fs;
 mod net;
 
 use anyhow::Result;
