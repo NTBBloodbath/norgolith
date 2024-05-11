@@ -3,8 +3,9 @@ use std::convert::Infallible;
 use anyhow::{anyhow, Result};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
-use tokio::fs;
 // use tokio::process::Command;
+
+use crate::fs;
 
 async fn handle_request(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
     Ok(Response::new(Body::from("Hello, Norgolith!")))
@@ -31,13 +32,10 @@ async fn handle_request(_req: Request<Body>) -> Result<Response<Body>, Infallibl
 // }
 
 pub async fn serve(port: u16) -> Result<()> {
-    // TODO(ntbbloodbath): better look recursively from parent directories for the norgolith configuration file
-    let path_exists = fs::metadata("norgolith.toml").await.is_ok();
+    // Try to find a 'norgolith.toml' file in the current working directory and its parents
+    let found_site_root = fs::find_file_in_previous_dirs("norgolith.toml").await?;
 
-    if path_exists {
-        eprintln!("Not in a norgolith site directory");
-        std::process::exit(1);
-    } else {
+    if let Some(_root) = found_site_root {
         // Create the server binding
         let make_svc =
             make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle_request)) });
@@ -52,6 +50,9 @@ pub async fn serve(port: u16) -> Result<()> {
         server
             .await
             .map_err(|err| anyhow!("Server error: {}", err))?;
+    } else {
+        return Err(anyhow!("Not in a norgolith site directory"));
     }
+
     Ok(())
 }
