@@ -23,4 +23,4 @@ jobs:
       - name: Install rust toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update
       - name: Lint
-        run: cargo clippy
+        run: cargo clippy -- --deny warnings
