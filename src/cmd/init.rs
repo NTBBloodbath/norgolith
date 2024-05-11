@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use tokio::fs;
 
 /// Create basic site configuration TOML
@@ -61,8 +61,7 @@ pub async fn init(name: &String) -> Result<()> {
     let path_exists = fs::try_exists(name).await?;
 
     if path_exists {
-        eprintln!("The target directory {} already exists.", name);
-        std::process::exit(1);
+        return Err(anyhow!("The target directory {} already exists.", name));
     } else {
         // Create site directories
         create_directories(name).await?;
