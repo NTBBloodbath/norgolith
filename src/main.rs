@@ -1,3 +1,4 @@
+mod fs;
 mod cli;
 mod cmd;
 mod net;
