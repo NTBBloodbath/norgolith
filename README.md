@@ -49,7 +49,7 @@ Run `cargo install --path .` to compile and install the project in `~/.cargo/bin
 
 ## License
 
-This project is licensed under [GPLv3](./LICENSE).
+This project is licensed under [GPLv2](./LICENSE).
 
 
 [tree-sitter]: https://tree-sitter.github.io/tree-sitter/
