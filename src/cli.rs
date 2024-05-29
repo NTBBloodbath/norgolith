@@ -84,8 +84,10 @@ async fn check_and_serve(port: u16) -> Result<()> {
             format!("requested port ({})", port)
         };
 
-        return Err(anyhow!("Failed to open listener, perhaps the {} is busy?", port_msg)
-            .context("could not initialize the development server"));
+        return Err(
+            anyhow!("Failed to open listener, perhaps the {} is busy?", port_msg)
+                .context("could not initialize the development server"),
+        );
     }
 
     cmd::serve(port).await?;
