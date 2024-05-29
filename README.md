@@ -12,13 +12,12 @@ validation and [norg-pandoc] conversion to create stunning static sites from you
 ## Features / Why use Norgolith?
 
 Norgolith caters to both developers and content creators seeking a powerful and user-friendly
-solution for crafting statis websites from Norg content. Here's what makes Norgolith stand out (some
-of these features are not yet implemented!):
+solution for crafting statis websites from Norg content. Here's what makes Norgolith stand out:
 
 ### For content creators seeking an easy-to-use conversion tool
 
 - **Effortless Norg workflow**: write your content in Norg and let Norgolith handle the technical
-  complexities. Effortlessly convert your Norg documents to clean and validated HTML.
+  complexities. Seamlessly convert your Norg documents to clean and validated HTML.
 - **Focus on content, not code**: leave the website maintenance and complexities to Norgolith. You
   can safely concentrate on creating compelling content for your audience without worrying about
   weird bugs or unexpected invalid syntax from reaching your production site.
@@ -34,7 +33,7 @@ of these features are not yet implemented!):
   This allows you to easily understand the inner workings of Norgolith, contribute to its
   development and extend its functionality through plugins.
 - **Active community engagement**: Norgolith fosters discussions, encourages bug reporting,
-  welcomes feature requests and contributions. Help us shape the future of Norgolith!
+  welcomes feature requests and code contributions. Help us shape the future of Norgolith!
 
 ## Requirements
 
