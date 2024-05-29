@@ -9,12 +9,12 @@ validation and [norg-pandoc] conversion to create stunning static sites from you
 
 </div>
 
-## Features / Why use Norgolith?
+## 🌟 Features / Why use Norgolith?
 
 Norgolith caters to both developers and content creators seeking a powerful and user-friendly
 solution for crafting statis websites from Norg content. Here's what makes Norgolith stand out:
 
-### For content creators seeking an easy-to-use conversion tool
+### ✍️ For content creators seeking an easy-to-use conversion tool
 
 - **Effortless Norg workflow**: write your content in Norg and let Norgolith handle the technical
   complexities. Seamlessly convert your Norg documents to clean and validated HTML.
@@ -24,7 +24,7 @@ solution for crafting statis websites from Norg content. Here's what makes Norgo
 - **Live preview**: See your Norg content rendered as HTML in real-time as you edit it, allowing for
   a smooth writing experience and easy iteration on your website's design.
 
-### For developers who value validation and control
+### ⚙️ For developers who value validation and control
 
 - **Robust syntax validation**: leverage the power of tree-sitter to catch errors in your Norg
   documents before conversion. This ensures clean, well-structured HTML output and avoids surprises
@@ -35,14 +35,14 @@ solution for crafting statis websites from Norg content. Here's what makes Norgo
 - **Active community engagement**: Norgolith fosters discussions, encourages bug reporting,
   welcomes feature requests and code contributions. Help us shape the future of Norgolith!
 
-## Requirements
+## 📝 Requirements
 
 | Component |         Requirement          |
 |-----------|------------------------------|
 | Build     | C/C++ compiler, Rust >= 1.77 |
 | Runtime   | pandoc                       |
 
-## Usage
+## 📚 Usage
 
 Compile the project using the `optimized` Cargo profile (recommended).
 
@@ -64,17 +64,17 @@ Options:
   -h, --help     Print help
 ```
 
-## Install
+## ⚡ Install
 
 Run `cargo install --profile optimized --path .` to compile and install Norgolith in your `~/.cargo/bin` directory.
 
-## Community
+## 🚀 Community
 
 Join the Neorg community and get help or discuss about the project:
 
 - [Discord server](https://discord.gg/T6EgTAX7ht)
 
-## License
+## 📖 License
 
 This project is licensed under the GNU General Public License v2 (GPLv2).
 You can find the license details in the [LICENSE](./LICENSE) file.
