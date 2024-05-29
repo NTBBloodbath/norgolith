@@ -36,40 +36,58 @@ enum Commands {
     Build,
 }
 
+/// Asynchronously parse the command-line arguments and executes the corresponding subcommand
+///
+/// # Returns
+///   A `Result<()>` indicating success or error. On error, the context message will provide information on why the subcommand failed.
 pub async fn start() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Init { name } => {
-            if let Some(value) = name {
-                cmd::init(value).await?;
-            } else {
-                return Err(anyhow!("Missing name for the site")
-                    .context("could not initialize the new Norgolith site"));
-            }
-        }
-        Commands::Serve { port } => {
-            // If not using the default port and the requested port is busy
-            if *port != 3030 && !net::is_port_available(*port) {
-                return Err(anyhow!("The requested port ({}) is not available", port)
-                    .context("could not initialize the development server"));
-            }
-
-            // If the default Norgolith port is busy
-            if !net::is_port_available(*port) {
-                return Err(anyhow!(
-                    "Failed to open listener, perhaps the port {} is busy?",
-                    port
-                )
-                .context("could not initialize the development server"));
-            }
-
-            cmd::serve(*port).await?;
-        }
-        _ => {
-            println!("TBD");
-        }
+        Commands::Init { name } => init_site(name.as_ref()).await?,
+        Commands::Serve { port } => check_and_serve(*port).await?,
+        _ => eprintln!("Unsupported command"),
     }
 
+    Ok(())
+}
+
+/// Initializes a new Norgolith site.
+///
+/// # Arguments:
+///   * name: An optional name for the site. If `None` is provided, an error will be returned.
+///
+/// # Returns
+///   A `Result<()>` indicating success or error. On error, the context message will provide information on why the site could not be initialized.
+async fn init_site(name: Option<&String>) -> Result<()> {
+    if let Some(name) = name {
+        cmd::init(name).await?;
+    } else {
+        return Err(anyhow!("Missing name for the site")
+            .context("could not initialize the new Norgolith site"));
+    }
+    Ok(())
+}
+
+/// Checks port availability and starts the development server.
+///
+/// # Arguments:
+///   * port: The port number to use for the server.
+///
+/// # Returns:
+///   A `Result<()>` indicating success or error. On error, the context message will provide information on why the development server could not be initialized.
+async fn check_and_serve(port: u16) -> Result<()> {
+    if !net::is_port_available(port) {
+        let port_msg = if port == 3030 {
+            "default Norgolith port (3030)".to_string()
+        } else {
+            format!("requested port ({})", port)
+        };
+
+        return Err(anyhow!("Failed to open listener, perhaps the {} is busy?", port_msg)
+            .context("could not initialize the development server"));
+    }
+
+    cmd::serve(port).await?;
     Ok(())
 }
