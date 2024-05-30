@@ -12,7 +12,7 @@ validation and [norg-pandoc] conversion to create stunning static sites from you
 ## 🌟 Features / Why use Norgolith?
 
 Norgolith caters to both developers and content creators seeking a powerful and user-friendly
-solution for crafting statis websites from Norg content. Here's what makes Norgolith stand out:
+solution for crafting static websites from Norg content. Here's what makes Norgolith stand out:
 
 ### ✍️ For content creators seeking an easy-to-use conversion tool
 
@@ -73,6 +73,19 @@ Run `cargo install --profile optimized --path .` to compile and install Norgolit
 Join the Neorg community and get help or discuss about the project:
 
 - [Discord server](https://discord.gg/T6EgTAX7ht)
+
+## 💌 Supporting Norgolith
+
+Developing and maintaining open-source projects takes time and effort. If you find Norgolith
+valuable and would like to support its continued development, here are some ways you can help:
+
+- **Star this repository on GitHub**: this helps raise awareness and shows the project is actively
+  maintained.
+- **Contribute code or documentation**: we welcome contributions from the community.
+- **Spread the word**: let others know about Norgolith if you think they might benefit from it.
+- **Financial Support (Optional)**: if you'd like to offer financial support, you can consider using
+  my Ko-fi page (linked in the repository). Any amount is greatly appreciated and helps me invest
+  further time in Norgolith's development.
 
 ## 📖 License
 
