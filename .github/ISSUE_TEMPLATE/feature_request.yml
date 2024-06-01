@@ -8,7 +8,7 @@ body:
     attributes:
       label: Issues
       options:
-        - label: I have checked [existing issues](https://github.com/NTBBloodbath/norgolith/issues?q=is%3Aissue) and there no existing ones with the same request.
+        - label: I have checked [existing issues](https://github.com/NTBBloodbath/norgolith/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement) and there no existing ones with the same request.
           required: true
 
   - type: textarea
