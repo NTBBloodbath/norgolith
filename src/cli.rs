@@ -99,7 +99,6 @@ async fn check_and_serve(port: u16) -> Result<()> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,7 +115,11 @@ mod tests {
     async fn test_init_site_without_name() {
         let result = init_site(None).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().root_cause().to_string().contains("Missing name for the site"));
+        assert!(result
+            .unwrap_err()
+            .root_cause()
+            .to_string()
+            .contains("Missing name for the site"));
     }
 
     #[cfg_attr(test, automock)]
@@ -128,7 +131,11 @@ mod tests {
     #[tokio::test]
     async fn test_check_and_serve_available_port() {
         let mut mock_net = MockNetTrait::new();
-        mock_net.expect_is_port_available().with(eq(8080)).times(1).returning(|_| true);
+        mock_net
+            .expect_is_port_available()
+            .with(eq(8080))
+            .times(1)
+            .returning(|_| true);
         assert!(mock_net.is_port_available(8080));
     }
 
@@ -139,6 +146,10 @@ mod tests {
 
         let result = check_and_serve(port).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().root_cause().to_string().contains("Failed to open listener"));
+        assert!(result
+            .unwrap_err()
+            .root_cause()
+            .to_string()
+            .contains("Failed to open listener"));
     }
 }
