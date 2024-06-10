@@ -4,6 +4,11 @@ use clap::{Parser, Subcommand};
 use crate::cmd;
 use crate::net;
 
+#[cfg(test)]
+use mockall::{automock, predicate::*};
+#[cfg(test)]
+use tokio::net::TcpListener;
+
 #[derive(Parser)]
 #[command(
     author = "NTBBloodbath",
@@ -92,4 +97,48 @@ async fn check_and_serve(port: u16) -> Result<()> {
 
     cmd::serve(port).await?;
     Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // init_site tests
+    #[tokio::test]
+    async fn test_init_site_with_name() {
+        let test_name = String::from("my-site");
+        let result = init_site(Some(&test_name)).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_init_site_without_name() {
+        let result = init_site(None).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().root_cause().to_string().contains("Missing name for the site"));
+    }
+
+    #[cfg_attr(test, automock)]
+    trait NetTrait {
+        fn is_port_available(&self, port: u16) -> bool;
+    }
+
+    // check_and_serve tests
+    #[tokio::test]
+    async fn test_check_and_serve_available_port() {
+        let mut mock_net = MockNetTrait::new();
+        mock_net.expect_is_port_available().with(eq(8080)).times(1).returning(|_| true);
+        assert!(mock_net.is_port_available(8080));
+    }
+
+    #[tokio::test]
+    async fn test_check_and_serve_unavailable_port() {
+        let temp_listener = TcpListener::bind("localhost:3030").await.unwrap();
+        let port = temp_listener.local_addr().unwrap().port();
+
+        let result = check_and_serve(port).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().root_cause().to_string().contains("Failed to open listener"));
+    }
 }
