@@ -4,3 +4,21 @@ use std::net::TcpListener;
 pub fn is_port_available(port: u16) -> bool {
     TcpListener::bind(("127.0.0.1", port)).is_ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_is_port_available_unused_port() {
+        assert!(is_port_available(3030));
+    }
+
+    #[tokio::test]
+    async fn test_is_port_available_used_port() {
+        let listener = TcpListener::bind("localhost:8080").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        assert!(!is_port_available(port));
+    }
+}
