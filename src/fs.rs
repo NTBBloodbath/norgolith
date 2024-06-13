@@ -4,7 +4,7 @@ use anyhow::Result;
 use tokio::fs::{metadata, read_dir};
 
 #[cfg(test)]
-use tokio::fs::{create_dir, remove_dir, remove_file, canonicalize, File};
+use tokio::fs::{canonicalize, create_dir, remove_dir, remove_file, File};
 
 /// Find a given file in the current working directory and its parent directories recursively
 pub async fn find_file_in_previous_dirs(filename: &str) -> Result<Option<PathBuf>> {
@@ -32,7 +32,6 @@ pub async fn find_file_in_previous_dirs(filename: &str) -> Result<Option<PathBuf
     Ok(None)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -47,7 +46,10 @@ mod tests {
         // Look for the temporal test file
         let result = find_file_in_previous_dirs(test_file).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some(canonicalize(test_file_path.clone()).await?));
+        assert_eq!(
+            result.unwrap(),
+            Some(canonicalize(test_file_path.clone()).await?)
+        );
 
         // Cleanup test file
         remove_file(test_file_path).await?;
