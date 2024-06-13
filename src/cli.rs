@@ -7,7 +7,9 @@ use crate::net;
 #[cfg(test)]
 use mockall::{automock, predicate::*};
 #[cfg(test)]
-use tokio::net::TcpListener;
+use tokio::{fs::remove_dir_all, net::TcpListener};
+#[cfg(test)]
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(
@@ -109,6 +111,9 @@ mod tests {
         let test_name = String::from("my-site");
         let result = init_site(Some(&test_name)).await;
         assert!(result.is_ok());
+
+        // Cleanup
+        remove_dir_all(PathBuf::from(test_name)).await.unwrap();
     }
 
     #[tokio::test]
