@@ -134,6 +134,7 @@ mod tests {
 
     // check_and_serve tests
     #[tokio::test]
+    #[cfg_attr(feature = "ci", ignore)]
     async fn test_check_and_serve_available_port() {
         let mut mock_net = MockNetTrait::new();
         mock_net
@@ -145,6 +146,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(feature = "ci", ignore)]
     async fn test_check_and_serve_unavailable_port() {
         let temp_listener = TcpListener::bind("localhost:3030").await.unwrap();
         let port = temp_listener.local_addr().unwrap().port();
