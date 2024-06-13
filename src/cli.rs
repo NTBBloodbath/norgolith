@@ -7,9 +7,9 @@ use crate::net;
 #[cfg(test)]
 use mockall::{automock, predicate::*};
 #[cfg(test)]
-use tokio::{fs::remove_dir_all, net::TcpListener};
-#[cfg(test)]
 use std::path::PathBuf;
+#[cfg(test)]
+use tokio::{fs::remove_dir_all, net::TcpListener};
 
 #[derive(Parser)]
 #[command(
