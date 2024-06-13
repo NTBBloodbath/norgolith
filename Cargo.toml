@@ -27,11 +27,14 @@ tree-sitter-norg = "0.1.1"
 tree-sitter-norg-meta = { git = "https://github.com/nvim-neorg/tree-sitter-norg-meta" }
 whoami = "1.5.1"
 
-[profile.optimized]                 # Size optimizations that will hurt build speed
-inherits = "release"                # Which profile we inherit
-opt-level = "z"                     # Optimize for size
-codegen-units = 1                   # Build speed -> Executable size
-strip = true                        # Remove debug symbols
+[profile.optimized]   # Size optimizations that will hurt build speed
+inherits = "release"  # Which profile we inherit
+opt-level = "z"       # Optimize for size
+codegen-units = 1     # Build speed -> Executable size
+strip = true          # Remove debug symbols
 
 [dev-dependencies]
 mockall = "0.12.1"
+
+[features]
+ci = []               # Used to ignore certain tests on GitHub CIs
