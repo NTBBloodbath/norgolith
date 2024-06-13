@@ -3,7 +3,7 @@ mod cmd;
 mod fs;
 mod net;
 
-use anyhow::Result;
+use eyre::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {

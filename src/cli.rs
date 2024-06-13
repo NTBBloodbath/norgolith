@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use eyre::{bail, Result};
 use clap::{Parser, Subcommand};
 
 use crate::cmd;
@@ -53,7 +53,7 @@ pub async fn start() -> Result<()> {
     match &cli.command {
         Commands::Init { name } => init_site(name.as_ref()).await?,
         Commands::Serve { port } => check_and_serve(*port).await?,
-        _ => eprintln!("Unsupported command"),
+        _ => bail!("Unsupported command"),
     }
 
     Ok(())
@@ -70,8 +70,7 @@ async fn init_site(name: Option<&String>) -> Result<()> {
     if let Some(name) = name {
         cmd::init(name).await?;
     } else {
-        return Err(anyhow!("Missing name for the site")
-            .context("could not initialize the new Norgolith site"));
+        bail!("Missing name for the site: could not initialize the new Norgolith site");
     }
     Ok(())
 }
@@ -91,10 +90,7 @@ async fn check_and_serve(port: u16) -> Result<()> {
             format!("requested port ({})", port)
         };
 
-        return Err(
-            anyhow!("Failed to open listener, perhaps the {} is busy?", port_msg)
-                .context("could not initialize the development server"),
-        );
+        bail!("Could not initialize the development server: failed to open listener, perhaps the {} is busy?", port_msg);
     }
 
     cmd::serve(port).await?;
@@ -157,6 +153,6 @@ mod tests {
             .unwrap_err()
             .root_cause()
             .to_string()
-            .contains("Failed to open listener"));
+            .contains("failed to open listener"));
     }
 }

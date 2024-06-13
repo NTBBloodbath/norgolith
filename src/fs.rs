@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
+use eyre::Result;
 use tokio::fs::{metadata, read_dir};
 
 #[cfg(test)]

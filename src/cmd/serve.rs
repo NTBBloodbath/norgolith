@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 
-use anyhow::{anyhow, Result};
+use eyre::{bail, Result};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
 // use tokio::process::Command;
@@ -47,12 +47,11 @@ pub async fn serve(port: u16) -> Result<()> {
 
         println!("Serving site ...");
         println!("Web server is available at http://localhost:{:?}/", port);
-        server
-            .await
-            .map_err(|err| anyhow!("Server error: {}", err))?;
+        if let Err(err) = server.await {
+            bail!("Server error: {}", err)
+        }
     } else {
-        return Err(anyhow!("Not in a Norgolith site directory")
-            .context("could not initialize the development server"));
+        bail!("Could not initialize the development server: not in a Norgolith site directory");
     }
 
     Ok(())
