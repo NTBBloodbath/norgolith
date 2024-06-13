@@ -1,7 +1,7 @@
-use eyre::{bail, Result};
 use comfy_table::modifiers::UTF8_SOLID_INNER_BORDERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, ContentArrangement, Table};
+use eyre::{bail, Result};
 use tokio::fs;
 
 /// Create basic site configuration TOML
@@ -66,7 +66,10 @@ pub async fn init(name: &String) -> Result<()> {
     if path_exists {
         // Get the canonical (absolute) path to the existing site root
         let path = fs::canonicalize(name).await?;
-        bail!("Could not initialize the new Norgolith site: the target directory {} already exists.", path.display());
+        bail!(
+            "Could not initialize the new Norgolith site: the target directory {} already exists.",
+            path.display()
+        );
     } else {
         // Create site directories
         create_directories(name).await?;

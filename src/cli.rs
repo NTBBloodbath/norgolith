@@ -1,5 +1,5 @@
-use eyre::{bail, Result};
 use clap::{Parser, Subcommand};
+use eyre::{bail, Result};
 
 use crate::cmd;
 use crate::net;
