@@ -13,8 +13,10 @@ pub async fn find_file_in_previous_dirs(filename: &str) -> Result<Option<PathBuf
     loop {
         // Check if the file exists in the current directory first
         let path = current_dir.join(filename);
-        if metadata(&path).await.is_ok() && metadata(&path).await?.is_file() {
-            return Ok(Some(path));
+        if let Ok(metadata) = metadata(&path).await {
+            if metadata.is_file() {
+                return Ok(Some(path));
+            }
         }
 
         // Move to the parent directory if the file was not found
@@ -24,7 +26,7 @@ pub async fn find_file_in_previous_dirs(filename: &str) -> Result<Option<PathBuf
         }
 
         let mut entries = read_dir(&current_dir).await?;
-        if entries.next_entry().await.is_err() {
+        if entries.next_entry().await?.is_none() {
             break;
         }
     }
