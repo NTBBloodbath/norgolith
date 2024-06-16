@@ -45,7 +45,7 @@ enum Commands {
 
 /// Asynchronously parse the command-line arguments and executes the corresponding subcommand
 ///
-/// # Returns
+/// # Returns:
 ///   A `Result<()>` indicating success or error. On error, the context message will provide information on why the subcommand failed.
 pub async fn start() -> Result<()> {
     let cli = Cli::parse();
@@ -64,7 +64,7 @@ pub async fn start() -> Result<()> {
 /// # Arguments:
 ///   * name: An optional name for the site. If `None` is provided, an error will be returned.
 ///
-/// # Returns
+/// # Returns:
 ///   A `Result<()>` indicating success or error. On error, the context message will provide information on why the site could not be initialized.
 async fn init_site(name: Option<&String>) -> Result<()> {
     if let Some(name) = name {
