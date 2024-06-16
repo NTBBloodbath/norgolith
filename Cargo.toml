@@ -22,9 +22,7 @@ hyper = { version = "=0.14.28", features = ["runtime", "server", "http1", "http2
 tera = "1.19.1"
 tokio = { version = "1.37.0", features = ["fs", "time", "rt-multi-thread", "macros", "process"] }
 toml = "0.8.12"
-tree-sitter = "0.22.5"
-tree-sitter-norg = "0.1.1"
-tree-sitter-norg-meta = { git = "https://github.com/nvim-neorg/tree-sitter-norg-meta" }
+rust-norg = { git = "https://github.com/nvim-neorg/rust-norg", rev = "d4d8051a34839c10ad1110c178c6b85736293225" }
 whoami = "1.5.1"
 
 [profile.optimized]   # Size optimizations that will hurt build speed
