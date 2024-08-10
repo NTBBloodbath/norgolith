@@ -3,3 +3,6 @@
 
 # Testing junk
 /my-site
+
+# direnv
+/.direnv
