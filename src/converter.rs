@@ -41,6 +41,7 @@ trait NorgToHtml {
 }
 
 impl NorgToHtml for NorgAST {
+    // TODO: finish VerbatimRangedTag support, add support for carry over tags, footnotes (they are tricky in HTML), anything else that I'm missing
     fn to_html(&self) -> String {
         match self {
             NorgAST::Paragraph(s) => {
