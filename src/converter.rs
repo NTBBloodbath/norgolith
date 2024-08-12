@@ -137,7 +137,12 @@ impl NorgToHtml for NorgAST {
                         )
                     }
                     // TODO: support other verbatim ranged tags like '@image', '@math'
-                    _ => todo!(),
+                    _ => {
+                        if name[0] != "document" {
+                            //println!("{:?}", self);
+                            todo!()
+                        }
+                    },
                 }
                 verbatim_tag
             }
