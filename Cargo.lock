@@ -1126,11 +1126,12 @@ checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 [[package]]
 name = "rust-norg"
 version = "0.1.0"
-source = "git+https://github.com/nvim-neorg/rust-norg?rev=d4d8051a34839c10ad1110c178c6b85736293225#d4d8051a34839c10ad1110c178c6b85736293225"
+source = "git+https://github.com/benlubas/rust-norg?branch=push-utvptmquwkop#f4bf48e6b6d87438273e84acf1e15aac409556e7"
 dependencies = [
  "chumsky",
  "itertools",
  "serde",
+ "unicode_categories",
 ]
 
 [[package]]
@@ -1567,6 +1568,12 @@ name = "unicode-width"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0336d538f7abc86d282a4189614dfaa90810dfc2c6f6427eaf88e16311dd225d"
+
+[[package]]
+name = "unicode_categories"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39ec24b3121d976906ece63c9daad25b85969647682eee313cb5779fdd69e14e"
 
 [[package]]
 name = "utf8parse"
