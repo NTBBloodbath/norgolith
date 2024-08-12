@@ -143,7 +143,7 @@ impl NorgToHtml for NorgAST {
             }
             _ => {
                 println!("{:?}", self);
-                "".to_string()
+                todo!() // Fail on stuff that we cannot parse yet
             }
         }
     }
