@@ -3,33 +3,75 @@ use std::convert::Infallible;
 use eyre::{bail, Result};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
-// use tokio::process::Command;
+use tera::{Context, Tera};
 
+use crate::converter;
 use crate::fs;
 
-async fn handle_request(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
-    Ok(Response::new(Body::from("Hello, Norgolith!")))
+async fn get_content(name: &str) -> Result<String> {
+    let contents: String = if name == "/" {
+        // '/' is always the index, fast return it
+        tokio::fs::read_to_string(".build/index.html").await?
+    } else {
+        let content_file = format!("{}{}{}", ".build/", &name[1..], ".html");
+        tokio::fs::read_to_string(content_file).await?
+    };
+    Ok(contents)
 }
 
-// NOTE: we are going to replace pandoc with a native rust parser later on :)
-// async fn convert_document() -> Result<()> {
-//     let mut content_stream = fs::read_dir("content").await?;
-//     while let Some(entry) = content_stream.next_entry().await? {
-//         let file_path = entry.path();
-//
-//         if file_path.extension().unwrap_or_default() == "norg" {
-//             println!("Processing norg file: {}", file_path.display());
-//             let pandoc = Command::new("pandoc")
-//                 .arg("--from=../norg-pandoc/init.lua")
-//                 .arg(file_path)
-//                 .arg("--output=content/index.html")
-//                 .output().await.unwrap();
-//             println!("{:?}", pandoc);
-//         }
-//     }
-//
-//     Ok(())
-// }
+async fn handle_request(req: Request<Body>) -> Result<Response<Body>> {
+    // HACK: we are supposed to compile templates only once, but it is nearly impossible to achieve that
+    // because the one-time compilation has to happen during the norgolith compilation process and the
+    // templates are generated during the runtime (and without taking into account user-made ones)
+    let mut templates = match Tera::new("templates/**/*.html") {
+        Ok(t) => t,
+        Err(e) => bail!("Tera parsing error(s): {}", e)
+    };
+
+    // XXX: remove this later, it is useful for me during the development cycle but we will surely want something
+    // less verbose to log the server in the future
+    println!("{:?}", req);
+    let request_path = req.uri().path();
+    if !request_path.contains('.') {
+        let context = Context::new();
+        // HACK: currently we are setting a custom hardcoded template during the runtime called 'current.html'
+        // which extends site's 'base.html' template to be able to embed the norg->html document in the site.
+        // Perhaps there is a better way to achieve this?
+        let path_contents = get_content(request_path).await?;
+        let body = format!(
+            r#"{{% extends "base.html" %}}
+{{% block content %}}
+{}
+{{% endblock content %}}
+"#,
+            path_contents
+        );
+        templates.add_raw_template("current.html", &body)?;
+        Ok(Response::new(Body::from(
+            templates.render("current.html", &context)?,
+        )))
+    } else {
+        Ok(Response::new(Body::from("<h1>Hello, Norgolith</h1>")))
+    }
+}
+
+async fn convert_document() -> Result<()> {
+    let mut content_stream = tokio::fs::read_dir("content").await?;
+    while let Some(entry) = content_stream.next_entry().await? {
+        let file_path = entry.path();
+
+        if file_path.extension().unwrap_or_default() == "norg" {
+            println!("Processing norg file: {}", file_path.display());
+            let norg_document = tokio::fs::read_to_string(file_path.clone()).await?;
+            let html = converter::convert(norg_document);
+            // FIXME: this will produce an unexpected output for nested content like 'content/foo-post/bar.norg'
+            let file = file_path.file_name().unwrap().to_str().unwrap().replace("norg", "html");
+            tokio::fs::write(".build/".to_owned() + &file, html).await?;
+        }
+    }
+
+    Ok(())
+}
 
 pub async fn serve(port: u16) -> Result<()> {
     // Try to find a 'norgolith.toml' file in the current working directory and its parents
@@ -43,7 +85,7 @@ pub async fn serve(port: u16) -> Result<()> {
         let server = Server::bind(&addr).serve(make_svc);
 
         // Convert the norg documents to html
-        // convert_document().await?;
+        convert_document().await?;
 
         println!("Serving site ...");
         println!("Web server is available at http://localhost:{:?}/", port);
