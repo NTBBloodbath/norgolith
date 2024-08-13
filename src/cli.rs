@@ -36,10 +36,23 @@ enum Commands {
     Serve {
         #[arg(short = 'p', long, default_value_t = 3030, help = "Port to be used")]
         port: u16,
+
+        #[arg(short = 'o', long, default_value_t = false, help = "Open the development server in your browser")]
+        open: bool,
     },
     /// Create a new asset in the site (e.g. 'new -k content post1.norg' -> 'content/post1.norg') and open it using your preferred system editor
     New {
-        #[arg(short = 'k', long, default_value = "content", help = "type of asset", value_parser = [PossibleValue::new("content").help("New norg file"), PossibleValue::new("css").help("New CSS stylesheet"), PossibleValue::new("js").help("New JS script")])]
+        #[arg(
+            short = 'k',
+            long,
+            default_value = "content",
+            help = "type of asset",
+            value_parser = [
+                PossibleValue::new("content").help("New norg file"),
+                PossibleValue::new("css").help("New CSS stylesheet"),
+                PossibleValue::new("js").help("New JS script")
+            ]
+        )]
         kind: Option<String>,
 
         /// Asset name, e.g. 'post1.norg' or 'hello.js'
@@ -58,7 +71,7 @@ pub async fn start() -> Result<()> {
 
     match &cli.command {
         Commands::Init { name } => init_site(name.as_ref()).await?,
-        Commands::Serve { port } => check_and_serve(*port).await?,
+        Commands::Serve { port, open } => check_and_serve(*port, *open).await?,
         Commands::New { kind, name } => new_asset(kind.as_ref(), name.as_ref()).await?,
         _ => bail!("Unsupported command"),
     }
@@ -86,10 +99,11 @@ async fn init_site(name: Option<&String>) -> Result<()> {
 ///
 /// # Arguments:
 ///   * port: The port number to use for the server.
+///   * open: Whether to open the development server in the system web browser.
 ///
 /// # Returns:
 ///   A `Result<()>` indicating success or error. On error, the context message will provide information on why the development server could not be initialized.
-async fn check_and_serve(port: u16) -> Result<()> {
+async fn check_and_serve(port: u16, open: bool) -> Result<()> {
     if !net::is_port_available(port) {
         let port_msg = if port == 3030 {
             "default Norgolith port (3030)".to_string()
@@ -100,7 +114,7 @@ async fn check_and_serve(port: u16) -> Result<()> {
         bail!("Could not initialize the development server: failed to open listener, perhaps the {} is busy?", port_msg);
     }
 
-    cmd::serve(port).await?;
+    cmd::serve(port, open).await?;
     Ok(())
 }
 
@@ -206,7 +220,7 @@ mod tests {
         // Enter the test directory
         std::env::set_current_dir(canonicalize(test_site_dir.clone()).await?)?;
 
-        let result = check_and_serve(port).await;
+        let result = check_and_serve(port, false).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()

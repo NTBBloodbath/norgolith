@@ -78,7 +78,7 @@ async fn convert_document() -> Result<()> {
     Ok(())
 }
 
-pub async fn serve(port: u16) -> Result<()> {
+pub async fn serve(port: u16, open: bool) -> Result<()> {
     // Try to find a 'norgolith.toml' file in the current working directory and its parents
     let found_site_root = fs::find_in_previous_dirs("file", "norgolith.toml").await?;
 
@@ -88,12 +88,19 @@ pub async fn serve(port: u16) -> Result<()> {
             make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle_request)) });
         let addr = ([127, 0, 0, 1], port).into();
         let server = Server::bind(&addr).serve(make_svc);
+        let uri = format!("http://localhost:{}/", port);
 
         // Convert the norg documents to html
         convert_document().await?;
 
         println!("Serving site ...");
-        println!("Web server is available at http://localhost:{:?}/", port);
+        println!("Web server is available at {}", uri);
+        if open {
+            match open::that_detached(uri) {
+                Ok(()) => println!("Opening the development server page using your browser ..."),
+                Err(e) => bail!("Could not open the development server page: {}", e)
+            }
+        }
         if let Err(err) = server.await {
             bail!("Server error: {}", err)
         }
