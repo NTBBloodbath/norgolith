@@ -49,9 +49,43 @@ version: 1.1.1
     Ok(())
 }
 
+/// Create basic HTML templates
+async fn create_html_templates(root: &str) -> Result<()> {
+    // TODO: add 'head.html', 'footer.html'
+    // TODO: extract some information like language and title from the site config?
+    let base_template = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{% block head %}}
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css" />
+    <title>{{% block title %}}{{% endblock title %}} - {}</title>
+    {{% endblock head %}}
+</head>
+<body>
+    <div id="content">{{% block content %}}{{% endblock content %}}</div>
+    <div id="footer">
+        {{% block footer %}}
+        &copy; Copyright {} by {}.
+        {{% endblock footer %}}
+    </div>
+</body>
+</html>"#,
+        root.to_owned(),
+        chrono::offset::Local::now().format("%Y"),
+        whoami::username()
+    );
+    // TBD: add Windows separator support
+    fs::write(root.to_owned() + "/templates/base.html", base_template).await?;
+
+    Ok(())
+}
+
 async fn create_directories(path: &str) -> Result<()> {
     // Create the site directories and all their parent directories if required
-    let directories = vec!["content", "templates", "assets", "theme"];
+    let directories = vec!["content", "templates", "assets", "theme", ".build"];
     for dir in directories {
         // TBD: add Windows separator support
         fs::create_dir_all(path.to_owned() + "/" + dir).await?;
@@ -78,6 +112,7 @@ pub async fn init(name: &String) -> Result<()> {
         // TBD: Basic HTML templates and start work with Tera
         create_config(name).await?;
         create_index_norg(name).await?;
+        create_html_templates(name).await?;
 
         // Get the canonical (absolute) path to the new site root
         let path = fs::canonicalize(name).await?;
@@ -99,7 +134,8 @@ pub async fn init(name: &String) -> Result<()> {
                 Cell::new("assets"),
                 Cell::new("Site assets (JS, CSS, favicon, etc)"),
             ])
-            .add_row(vec![Cell::new("theme"), Cell::new("Site theme files")]);
+            .add_row(vec![Cell::new("theme"), Cell::new("Site theme files")])
+            .add_row(vec![Cell::new(".build"), Cell::new("Dev server artifacts")]);
 
         let init_message = format!(
             r#"Congratulations, your new Norgolith site was created in {}
