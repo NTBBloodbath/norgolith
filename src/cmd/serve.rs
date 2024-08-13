@@ -25,7 +25,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>> {
     // templates are generated during the runtime (and without taking into account user-made ones)
     let mut templates = match Tera::new("templates/**/*.html") {
         Ok(t) => t,
-        Err(e) => bail!("Tera parsing error(s): {}", e)
+        Err(e) => bail!("Tera parsing error(s): {}", e),
     };
 
     // XXX: remove this later, it is useful for me during the development cycle but we will surely want something
@@ -65,7 +65,12 @@ async fn convert_document() -> Result<()> {
             let norg_document = tokio::fs::read_to_string(file_path.clone()).await?;
             let html = converter::convert(norg_document);
             // FIXME: this will produce an unexpected output for nested content like 'content/foo-post/bar.norg'
-            let file = file_path.file_name().unwrap().to_str().unwrap().replace("norg", "html");
+            let file = file_path
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .replace("norg", "html");
             tokio::fs::write(".build/".to_owned() + &file, html).await?;
         }
     }
