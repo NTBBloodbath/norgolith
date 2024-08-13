@@ -24,6 +24,7 @@ tokio = { version = "1.37.0", features = ["fs", "time", "rt-multi-thread", "macr
 toml = "0.8.12"
 rust-norg = { git = "https://github.com/benlubas/rust-norg", branch = "push-utvptmquwkop" }
 whoami = "1.5.1"
+open = "5.3.0"
 
 [profile.optimized]   # Size optimizations that will hurt build speed
 inherits = "release"  # Which profile we inherit

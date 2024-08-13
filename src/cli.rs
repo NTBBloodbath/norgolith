@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{builder::PossibleValue, Parser, Subcommand};
 use eyre::{bail, Result};
 
 use crate::cmd;
@@ -27,17 +27,25 @@ struct Cli {
 
 #[derive(Subcommand, Clone)]
 enum Commands {
-    /// Initialize a new Norgolith site (WIP)
+    /// Initialize a new Norgolith site
     Init {
         /// Site name
         name: Option<String>,
     },
-    /// Build a site for development (WIP)
+    /// Build a site for development
     Serve {
-        #[arg(short = 'p', long, default_value_t = 3030)]
+        #[arg(short = 'p', long, default_value_t = 3030, help = "Port to be used")]
         port: u16,
     },
-    /// Build a site for production (WIP)
+    /// Create a new asset in the site (e.g. 'new -k content post1.norg' -> 'content/post1.norg') and open it using your preferred system editor
+    New {
+        #[arg(short = 'k', long, default_value = "content", help = "type of asset", value_parser = [PossibleValue::new("content").help("New norg file"), PossibleValue::new("css").help("New CSS stylesheet"), PossibleValue::new("js").help("New JS script")])]
+        kind: Option<String>,
+
+        /// Asset name, e.g. 'post1.norg' or 'hello.js'
+        name: Option<String>,
+    },
+    /// Build a site for production
     Build,
 }
 
@@ -51,6 +59,7 @@ pub async fn start() -> Result<()> {
     match &cli.command {
         Commands::Init { name } => init_site(name.as_ref()).await?,
         Commands::Serve { port } => check_and_serve(*port).await?,
+        Commands::New { kind, name } => new_asset(kind.as_ref(), name.as_ref()).await?,
         _ => bail!("Unsupported command"),
     }
 
@@ -92,6 +101,47 @@ async fn check_and_serve(port: u16) -> Result<()> {
     }
 
     cmd::serve(port).await?;
+    Ok(())
+}
+
+/// Creates a new asset with the given kind and name.
+///
+/// # Arguments
+///
+/// * `kind`: Optional asset type. Defaults to "content". Valid values are "content", "css", and "js".
+/// * `name`: Required asset name including the extension.
+///
+/// # Errors
+///
+/// Returns an error if the asset name is missing.
+///
+/// # Example
+///
+/// ```rust
+/// use crate::new_asset;
+///
+/// async fn main() -> Result<()> {
+///     new_asset(Some(&String::from("css")), Some(&String::from("style.css"))).await?;
+/// Ok(())
+/// }
+/// ```
+async fn new_asset(kind: Option<&String>, name: Option<&String>) -> Result<()> {
+    let asset_type = kind.unwrap_or(&String::from("content")).to_owned();
+
+    if ![
+        String::from("js"),
+        String::from("css"),
+        String::from("content"),
+    ]
+    .contains(&asset_type)
+    {
+        bail!("Unable to create site asset: unknown asset type provided");
+    }
+
+    match name {
+        Some(name) => cmd::new(&asset_type, name).await?,
+        None => bail!("Unable to create site asset: missing name for the asset"),
+    }
     Ok(())
 }
 
