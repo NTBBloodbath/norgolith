@@ -1,6 +1,8 @@
 // TODO(ntbbloodbath): move this converter to a separate rust library called norg-converter
 
-use rust_norg::{parse_tree, NestableDetachedModifier, NorgAST, NorgASTFlat, ParagraphSegmentToken};
+use rust_norg::{
+    parse_tree, NestableDetachedModifier, NorgAST, NorgASTFlat, ParagraphSegmentToken,
+};
 
 /// Converts a ParagraphSegment into a String
 fn paragraph_to_string(segment: &[ParagraphSegmentToken]) -> String {
@@ -142,7 +144,7 @@ impl NorgToHtml for NorgAST {
                             //println!("{:?}", self);
                             todo!()
                         }
-                    },
+                    }
                 }
                 verbatim_tag
             }
