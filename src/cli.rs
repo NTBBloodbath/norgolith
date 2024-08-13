@@ -37,7 +37,12 @@ enum Commands {
         #[arg(short = 'p', long, default_value_t = 3030, help = "Port to be used")]
         port: u16,
 
-        #[arg(short = 'o', long, default_value_t = false, help = "Open the development server in your browser")]
+        #[arg(
+            short = 'o',
+            long,
+            default_value_t = false,
+            help = "Open the development server in your browser"
+        )]
         open: bool,
     },
     /// Create a new asset in the site (e.g. 'new -k content post1.norg' -> 'content/post1.norg') and open it using your preferred system editor

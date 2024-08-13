@@ -98,7 +98,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         if open {
             match open::that_detached(uri) {
                 Ok(()) => println!("Opening the development server page using your browser ..."),
-                Err(e) => bail!("Could not open the development server page: {}", e)
+                Err(e) => bail!("Could not open the development server page: {}", e),
             }
         }
         if let Err(err) = server.await {
