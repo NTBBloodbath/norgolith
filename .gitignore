@@ -6,3 +6,6 @@
 
 # direnv
 /.direnv
+
+# nix build
+/result
