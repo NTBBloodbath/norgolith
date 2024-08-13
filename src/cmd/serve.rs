@@ -80,7 +80,7 @@ async fn convert_document() -> Result<()> {
 
 pub async fn serve(port: u16) -> Result<()> {
     // Try to find a 'norgolith.toml' file in the current working directory and its parents
-    let found_site_root = fs::find_file_in_previous_dirs("norgolith.toml").await?;
+    let found_site_root = fs::find_in_previous_dirs("file", "norgolith.toml").await?;
 
     if let Some(_root) = found_site_root {
         // Create the server binding

@@ -6,20 +6,20 @@ use tokio::fs::{metadata, read_dir};
 #[cfg(test)]
 use tokio::fs::{canonicalize, create_dir, remove_dir, remove_file, File};
 
-/// Find a given file in the current working directory and its parent directories recursively
-pub async fn find_file_in_previous_dirs(filename: &str) -> Result<Option<PathBuf>> {
+/// Find a given file or directory in the current working directory and its parent directories recursively
+pub async fn find_in_previous_dirs(kind: &str, filename: &str) -> Result<Option<PathBuf>> {
     let mut current_dir = std::env::current_dir()?;
 
     loop {
-        // Check if the file exists in the current directory first
+        // Check if the file|dir exists in the current directory first
         let path = current_dir.join(filename);
         if let Ok(metadata) = metadata(&path).await {
-            if metadata.is_file() {
+            if (metadata.is_file() && kind == "file") || (metadata.is_dir() && kind == "dir") {
                 return Ok(Some(path));
             }
         }
 
-        // Move to the parent directory if the file was not found
+        // Move to the parent directory if the file|dir was not found
         match current_dir.parent() {
             Some(parent_dir) => current_dir = parent_dir.to_path_buf(),
             None => break, // Reached root directory
@@ -46,7 +46,7 @@ mod tests {
         File::create(test_file).await?;
 
         // Look for the temporal test file
-        let result = find_file_in_previous_dirs(test_file).await;
+        let result = find_in_previous_dirs("file", test_file).await;
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(),
@@ -75,7 +75,7 @@ mod tests {
         std::env::set_current_dir(canonicalize(test_directory.clone()).await?)?;
 
         // Look for the temporal test file
-        let result = find_file_in_previous_dirs(test_file).await;
+        let result = find_in_previous_dirs("file", test_file).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(previous_dir.join(test_file)));
 
@@ -93,9 +93,27 @@ mod tests {
     async fn test_find_file_not_found() -> Result<()> {
         let test_file = "non_existent_file.txt";
 
-        let result = find_file_in_previous_dirs(test_file).await;
+        let result = find_in_previous_dirs("file", test_file).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), None);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_find_dir_in_current_dir() -> Result<()> {
+        // Create temporal test directory
+        let test_directory = PathBuf::from("parent_dir2");
+
+        create_dir(&test_directory).await?;
+
+        // Look for the temporal directory
+        let result = find_in_previous_dirs("dir", test_directory.clone().to_str().unwrap()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(canonicalize(test_directory.clone()).await?));
+
+        // Cleanup test directory
+        remove_dir(test_directory).await?;
 
         Ok(())
     }
