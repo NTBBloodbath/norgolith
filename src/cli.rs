@@ -7,9 +7,7 @@ use crate::net;
 #[cfg(test)]
 use mockall::{automock, predicate::*};
 #[cfg(test)]
-use std::path::PathBuf;
-#[cfg(test)]
-use tokio::{fs::remove_dir_all, net::TcpListener};
+use tokio::{fs::remove_dir_all, fs::canonicalize};
 
 #[derive(Parser)]
 #[command(
@@ -109,7 +107,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Cleanup
-        remove_dir_all(PathBuf::from(test_name)).await.unwrap();
+        remove_dir_all(test_name).await.unwrap();
     }
 
     #[tokio::test]
@@ -143,9 +141,20 @@ mod tests {
 
     #[tokio::test]
     #[cfg_attr(feature = "ci", ignore)]
-    async fn test_check_and_serve_unavailable_port() {
-        let temp_listener = TcpListener::bind("localhost:3030").await.unwrap();
-        let port = temp_listener.local_addr().unwrap().port();
+    async fn test_check_and_serve_unavailable_port() -> Result<()> {
+        // Bind port
+        let temp_listener = std::net::TcpListener::bind(("127.0.0.1", 3030))?;
+        let port = temp_listener.local_addr()?.port();
+
+        // Create temporal site
+        let test_site_dir = String::from("my-unavailable-site");
+        init_site(Some(&test_site_dir)).await?;
+
+        // Save current directory as the previous directory to restore it later
+        let previous_dir = std::env::current_dir()?;
+
+        // Enter the test directory
+        std::env::set_current_dir(canonicalize(test_site_dir.clone()).await?)?;
 
         let result = check_and_serve(port).await;
         assert!(result.is_err());
@@ -154,5 +163,13 @@ mod tests {
             .root_cause()
             .to_string()
             .contains("failed to open listener"));
+
+        // Restore previous directory
+        std::env::set_current_dir(previous_dir)?;
+
+        // Cleanup test directory and test file
+        remove_dir_all(test_site_dir).await?;
+
+        Ok(())
     }
 }
