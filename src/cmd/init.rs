@@ -94,7 +94,7 @@ async fn create_directories(path: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn init(name: &String) -> Result<()> {
+pub async fn init(name: &str) -> Result<()> {
     let path_exists = fs::try_exists(name).await?;
 
     if path_exists {
