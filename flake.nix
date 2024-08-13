@@ -23,7 +23,11 @@
         pname = cargoPackage.name;
         version = cargoPackage.version;
         src = "${self}";
-        cargoLock.lockFile = "${self}/Cargo.lock";
+        cargoLock = {
+          lockFile = "${self}/Cargo.lock";
+          allowBuiltinFetchGit = true;
+        };
+        useNextest = true;
 
         meta = {
           description = cargoPackage.description;
