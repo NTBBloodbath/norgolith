@@ -11,7 +11,7 @@
     nixpkgs,
     flake-utils,
     ...
-  } @ inputs:
+  }:
     flake-utils.lib.eachDefaultSystem(system: let
       pkgs = import nixpkgs { inherit system; };
       toolchain = pkgs.rustPlatform;
