@@ -51,7 +51,6 @@
           rustfmt
           cargo-nextest
           rust-analyzer
-          pkg-config
         ];
 
         # Many editors rely on this rust-src PATH variable
