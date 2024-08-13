@@ -110,7 +110,10 @@ mod tests {
         // Look for the temporal directory
         let result = find_in_previous_dirs("dir", test_directory.clone().to_str().unwrap()).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some(canonicalize(test_directory.clone()).await?));
+        assert_eq!(
+            result.unwrap(),
+            Some(canonicalize(test_directory.clone()).await?)
+        );
 
         // Cleanup test directory
         remove_dir(test_directory).await?;

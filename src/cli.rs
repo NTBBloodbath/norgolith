@@ -7,7 +7,7 @@ use crate::net;
 #[cfg(test)]
 use mockall::{automock, predicate::*};
 #[cfg(test)]
-use tokio::{fs::remove_dir_all, fs::canonicalize};
+use tokio::{fs::canonicalize, fs::remove_dir_all};
 
 #[derive(Parser)]
 #[command(
