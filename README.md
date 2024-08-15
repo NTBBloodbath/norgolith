@@ -2,13 +2,13 @@
 
 <img src="./res/norgolith_text.png" alt="Norgolith logo"/>
 
+</div>
+
 ---
 
 The monolithic Norg static site generator built with Rust. Leverage the precision of [rust-norg]
 syntax validation with the power of our in-house Norg-to-HTML conversion library to create stunning
 static sites from your Norg content with an unparalleled performance.
-
-</div>
 
 ## 🌟 Features / Why use Norgolith?
 
