@@ -4,8 +4,9 @@
 
 ---
 
-The monolithic Norg static site generator built with Rust. Leverage the power of [tree-sitter]
-validation and [norg-pandoc] conversion to create stunning static sites from your Norg content.
+The monolithic Norg static site generator built with Rust. Leverage the precision of [rust-norg]
+syntax validation with the power of our in-house Norg-to-HTML conversion library to create stunning
+static sites from your Norg content with an unparalleled performance.
 
 </div>
 
@@ -26,7 +27,7 @@ solution for crafting static websites from Norg content. Here's what makes Norgo
 
 ### ⚙️ For developers who value validation and control
 
-- **Robust syntax validation**: leverage the power of tree-sitter to catch errors in your Norg
+- **Robust syntax validation**: leverage the power of the [rust-norg] parser to catch errors in your Norg
   documents before conversion. This ensures clean, well-structured HTML output and avoids surprises
   later during the development process.
 - **Modern Rust codebase**: contribute with ease! Norgolith boasts a clean, well-structured codebase.
@@ -37,10 +38,9 @@ solution for crafting static websites from Norg content. Here's what makes Norgo
 
 ## 📝 Requirements
 
-| Component |         Requirement          |
-|-----------|------------------------------|
-| Build     | C/C++ compiler, Rust >= 1.77 |
-| Runtime   | pandoc                       |
+| Component | Requirement  |
+|-----------|--------------|
+| Build     | Rust >= 1.77 |
 
 ## 📚 Usage
 
@@ -54,9 +54,11 @@ The monolithic Norg static site generator
 Usage: norgolith <COMMAND>
 
 Commands:
-  init   Initialize a new Norgolith site (WIP)
-  serve  Build a site for development (WIP)
-  build  Build a site for production (WIP)
+  init   Initialize a new Norgolith site
+  serve  Build a site for development
+  new    Create a new asset in the site (e.g. 'new -k content post1.norg' ->
+         'content/post1.norg') and open it using your preferred system editor
+  build  Build a site for production
   help   Print this message or the help of the given subcommand(s)
 
 Options:
@@ -67,6 +69,52 @@ Options:
 ## ⚡ Install
 
 Run `cargo install --profile optimized --path .` to compile and install Norgolith in your `~/.cargo/bin` directory.
+
+## ❄️ Developing and testing with Nix
+
+The Norgolith repository includes a Nix flake for development and testing purposes in the root directory. This section outlines how to
+use the Nix flake for these workflows.
+
+<details>
+<summary>Usage</summary>
+
+### Building Norgolith
+
+```sh
+# For extra verbosity add '--show-trace -Lv'
+nix build .
+```
+
+This command builds Norgolith using Nix and places the executable in the `result` directory.
+
+### Build and run Norgolith:
+
+```sh
+# For extra verbosity add '--show-trace -Lv'
+nix run .
+```
+This command builds Norgolith the same way the `nix build` command would (including the `result`
+directory symlink), and then proceeds to run the project.
+
+### Development shell
+
+```sh
+# For extra verbosity add '--show-trace -Lv'
+nix develop .
+```
+
+This command creates a development shell pre-configured with all the dependencies required to build
+and test Norgolith. Inside the development shell, you can directly work on the source code and test
+changes.
+
+### Nix-direnv integration (optional)
+
+For a more convenient development experience, consider using
+[nix-direnv](https://github.com/nix-community/nix-direnv). With the `nix-direnv` integration,
+entering the project directory will automatically activate the development shell defined in the
+flake.
+
+</details>
 
 ## 🚀 Community
 
@@ -93,5 +141,4 @@ This project is licensed under the GNU General Public License v2 (GPLv2).
 You can find the license details in the [LICENSE](./LICENSE) file.
 
 
-[tree-sitter]: https://tree-sitter.github.io/tree-sitter/
-[norg-pandoc]: https://github.com/boltlessengineer/norg-pandoc
+[rust-norg]: https://github.com/nvim-neorg/rust-norg
