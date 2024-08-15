@@ -22,7 +22,7 @@
       packages.default = toolchain.buildRustPackage {
         pname = cargoPackage.name;
         version = cargoPackage.version;
-        src = "${self}";
+        src = pkgs.lib.cleanSource "${self}";
         cargoLock = {
           lockFile = "${self}/Cargo.lock";
           allowBuiltinFetchGit = true;
