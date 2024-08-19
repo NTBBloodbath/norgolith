@@ -28,16 +28,19 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>> {
         Err(e) => bail!("Tera parsing error(s): {}", e),
     };
 
-    // XXX: remove this later, it is useful for me during the development cycle but we will surely want something
-    // less verbose to log the server in the future
-    println!("{:?}", req);
-    let request_path = req.uri().path();
+    let request_path = req.uri().path().to_owned();
+
+    // FIXME: find a way to return an "error" log if the request path does not exist
+    let (req_parts, _) = req.into_parts();
+    // XXX: add headers here as well?
+    println!("{:#?} - {} '{}'", req_parts.version, req_parts.method, req_parts.uri);
+
     if !request_path.contains('.') {
         let context = Context::new();
         // HACK: currently we are setting a custom hardcoded template during the runtime called 'current.html'
         // which extends site's 'base.html' template to be able to embed the norg->html document in the site.
         // Perhaps there is a better way to achieve this?
-        let path_contents = get_content(request_path).await?;
+        let path_contents = get_content(&request_path).await?;
         let body = format!(
             r#"{{% extends "base.html" %}}
 {{% block content %}}
