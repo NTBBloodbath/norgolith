@@ -33,7 +33,10 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>> {
     // FIXME: find a way to return an "error" log if the request path does not exist
     let (req_parts, _) = req.into_parts();
     // XXX: add headers here as well?
-    println!("{:#?} - {} '{}'", req_parts.version, req_parts.method, req_parts.uri);
+    println!(
+        "{:#?} - {} '{}'",
+        req_parts.version, req_parts.method, req_parts.uri
+    );
 
     if !request_path.contains('.') {
         let context = Context::new();
