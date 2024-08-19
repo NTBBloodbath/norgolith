@@ -36,7 +36,9 @@ async fn create_norg_document(path: &str, name: &str) -> Result<()> {
         r#"@document.meta
 title: {}
 description:
-authors: {}
+authors: [
+  {}
+]
 categories: []
 created: {}
 updated: {}

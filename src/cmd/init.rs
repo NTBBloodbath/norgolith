@@ -28,7 +28,9 @@ async fn create_index_norg(root: &str) -> Result<()> {
         r#"@document.meta
 title: hello norgolith
 description: This is my first post made with Norgolith :D
-authors: {}
+authors: [
+  {}
+]
 categories: []
 created: {}
 updated: {}
