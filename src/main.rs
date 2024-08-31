@@ -8,7 +8,7 @@ use eyre::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // XXX: junk to test the conversion tool
+    // XXX: junk to test the conversion tool, remove later
     //let norg_doc = tokio::fs::read_to_string("/home/amartin/notes/languages/elixir.norg").await?;
     //let norg_html = converter::convert(norg_doc.clone());
     //println!("Norg code:{}\n", norg_doc);

@@ -45,7 +45,8 @@ enum Commands {
         )]
         open: bool,
     },
-    /// Create a new asset in the site (e.g. 'new -k content post1.norg' -> 'content/post1.norg') and open it using your preferred system editor
+    /// Create a new asset in the site and open it using your preferred system editor.
+    /// e.g. 'new -k content post1.norg' -> 'content/post1.norg'
     New {
         #[arg(
             short = 'k',
