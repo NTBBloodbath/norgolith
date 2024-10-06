@@ -16,8 +16,31 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
                 paragraph.push(*c)
             }
         },
-        // TODO(ntbbloodbath): add support for AttachedModifierOpener and AttachedModifierCloser
-        _ => println!("{:?}", node),
+        ParagraphSegment::AttachedModifier { modifier_type, content } => {
+            match modifier_type {
+                '*' => {
+                    paragraph.push_str("<strong>");
+                    paragraph.push_str(&paragraph_to_string(content));
+                    paragraph.push_str("</strong>");
+                },
+                '/' => {
+                    paragraph.push_str("<em>");
+                    paragraph.push_str(&paragraph_to_string(content));
+                    paragraph.push_str("</em>");
+                },
+                // NOTE: it seems like the parser does not support inline verbatim?
+                //'`' => {
+                //    paragraph.push_str("<code>");
+                //    paragraph.push_str(&paragraph_to_string(content));
+                //    paragraph.push_str("</code>");
+                //}
+                _ => todo!()
+            }
+        }
+        _ => {
+            println!("ParagraphSegment: {:?}", node);
+            todo!()
+        }
     });
 
     paragraph
@@ -148,19 +171,18 @@ impl NorgToHtml for NorgAST {
                     // TODO: support other verbatim ranged tags like '@image', '@math'
                     _ => {
                         if name[0] != "document" {
-                            //println!("{:?}", self);
+                            println!("VerbatimRangedTag: {:?}", self);
                             todo!()
                         }
                     }
                 }
                 verbatim_tag
             }
-            NorgAST::CarryoverTag { .. } => {
-                // FIXME: add Carryover tags support
+            NorgAST::CarryoverTag { .. } => { // FIXME: add Carryover tags support, we are currently ignoring them
                 println!("CarryoverTag: {:?}", self);
                 "".to_string()
             }
-            NorgAST::InfirmTag { .. } => {
+            NorgAST::InfirmTag { .. } => { // FIXME: add Infirm tags support, we are currently ignoring them
                 println!("InfirmTag: {:?}", self);
                 "".to_string()
             }
