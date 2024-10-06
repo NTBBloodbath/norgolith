@@ -38,7 +38,10 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
                 //    paragraph.push_str("</code>");
                 //}
                 _ => {
-                    println!("ParagraphSegment::AttachedModifier: {} {:?}", modifier_type, content);
+                    println!(
+                        "ParagraphSegment::AttachedModifier: {} {:?}",
+                        modifier_type, content
+                    );
                     todo!()
                 }
             }
