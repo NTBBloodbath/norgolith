@@ -1,16 +1,22 @@
 // TODO(ntbbloodbath): move this converter to a separate rust library called norg-converter
 
 use rust_norg::{
-    parse_tree, NestableDetachedModifier, NorgAST, NorgASTFlat, ParagraphSegmentToken,
+    parse_tree, NestableDetachedModifier, NorgAST, NorgASTFlat, ParagraphSegment, ParagraphSegmentToken
 };
 
 /// Converts a ParagraphSegment into a String
-fn paragraph_to_string(segment: &[ParagraphSegmentToken]) -> String {
+fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
     let mut paragraph = String::new();
     segment.iter().for_each(|node| match node {
-        ParagraphSegmentToken::Text(s) => paragraph.push_str(s),
-        ParagraphSegmentToken::Whitespace => paragraph.push(' '),
-        ParagraphSegmentToken::Special(c) | ParagraphSegmentToken::Escape(c) => paragraph.push(*c),
+        ParagraphSegment::Token(t) => {
+            match t {
+                ParagraphSegmentToken::Text(s) => paragraph.push_str(s),
+                ParagraphSegmentToken::Whitespace => paragraph.push(' '),
+                ParagraphSegmentToken::Special(c) | ParagraphSegmentToken::Escape(c) => paragraph.push(*c),
+            }
+        },
+        // TODO(ntbbloodbath): add support for AttachedModifierOpener and AttachedModifierCloser
+        _ => println!("{:?}", node)
     });
 
     paragraph
@@ -147,6 +153,14 @@ impl NorgToHtml for NorgAST {
                     }
                 }
                 verbatim_tag
+            }
+            NorgAST::CarryoverTag { .. } => { // FIXME: add Carryover tags support
+                println!("CarryoverTag: {:?}", self);
+                "".to_string()
+            }
+            NorgAST::InfirmTag { .. } => {
+                println!("InfirmTag: {:?}", self);
+                "".to_string()
             }
             _ => {
                 println!("{:?}", self);
