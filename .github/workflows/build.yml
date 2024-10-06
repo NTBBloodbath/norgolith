@@ -28,15 +28,14 @@ jobs:
       - name: Run
         run: cargo run -- --version
 
-  # FIXME: tree-sitter-norg2 does not compile on MacOS without hijacking the default C++ compiler
-  # macos:
-  #   runs-on: macos-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Install Rust toolchain
-  #       run: rustup toolchain install stable --profile minimal --no-self-update
-  #     - uses: Swatinem/rust-cache@v2
-  #     - name: Build
-  #       run: cargo build --release
-  #     - name: Run
-  #       run: cargo run -- --version
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release
+      - name: Run
+        run: cargo run -- --version
