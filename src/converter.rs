@@ -16,25 +16,28 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
                 paragraph.push(*c)
             }
         },
-        ParagraphSegment::AttachedModifier { modifier_type, content } => {
+        ParagraphSegment::AttachedModifier {
+            modifier_type,
+            content,
+        } => {
             match modifier_type {
                 '*' => {
                     paragraph.push_str("<strong>");
                     paragraph.push_str(&paragraph_to_string(content));
                     paragraph.push_str("</strong>");
-                },
+                }
                 '/' => {
                     paragraph.push_str("<em>");
                     paragraph.push_str(&paragraph_to_string(content));
                     paragraph.push_str("</em>");
-                },
+                }
                 // NOTE: it seems like the parser does not support inline verbatim?
                 //'`' => {
                 //    paragraph.push_str("<code>");
                 //    paragraph.push_str(&paragraph_to_string(content));
                 //    paragraph.push_str("</code>");
                 //}
-                _ => todo!()
+                _ => todo!(),
             }
         }
         _ => {
@@ -178,11 +181,13 @@ impl NorgToHtml for NorgAST {
                 }
                 verbatim_tag
             }
-            NorgAST::CarryoverTag { .. } => { // FIXME: add Carryover tags support, we are currently ignoring them
+            NorgAST::CarryoverTag { .. } => {
+                // FIXME: add Carryover tags support, we are currently ignoring them
                 println!("CarryoverTag: {:?}", self);
                 "".to_string()
             }
-            NorgAST::InfirmTag { .. } => { // FIXME: add Infirm tags support, we are currently ignoring them
+            NorgAST::InfirmTag { .. } => {
+                // FIXME: add Infirm tags support, we are currently ignoring them
                 println!("InfirmTag: {:?}", self);
                 "".to_string()
             }
