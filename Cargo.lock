@@ -1163,7 +1163,7 @@ checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 [[package]]
 name = "rust-norg"
 version = "0.1.0"
-source = "git+https://github.com/benlubas/rust-norg?branch=push-utvptmquwkop#903bffa6cd556a63f40d11914128dfd9d8998bb5"
+source = "git+https://github.com/benlubas/rust-norg?branch=push-muvktopotzpo#46f3e48141d0b5762835a9bff8948230c150d912"
 dependencies = [
  "chumsky",
  "itertools",
