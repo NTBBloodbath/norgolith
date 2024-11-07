@@ -45,7 +45,8 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>> {
         // which extends site's 'base.html' template to be able to embed the norg->html document in the site.
         // Perhaps there is a better way to achieve this?
         let path_contents = get_content(&request_path).await?;
-        let body = formatdoc!(r#"
+        let body = formatdoc!(
+            r#"
             {{% extends "base.html" %}}
             {{% block content %}}
             {}

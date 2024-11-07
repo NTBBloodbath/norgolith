@@ -33,7 +33,8 @@ async fn create_norg_document(path: &str, name: &str) -> Result<()> {
 
     let creation_date =
         chrono::offset::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
-    let norg_document = formatdoc!(r#"
+    let norg_document = formatdoc!(
+        r#"
         @document.meta
         title: {}
         description:

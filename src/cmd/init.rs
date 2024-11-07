@@ -7,7 +7,8 @@ use tokio::fs;
 
 /// Create basic site configuration TOML
 async fn create_config(root: &str) -> Result<()> {
-    let site_config = formatdoc!(r#"
+    let site_config = formatdoc!(
+        r#"
         rootUrl = '{}'
         language = '{}'
         title = '{}'"#,
@@ -25,7 +26,8 @@ async fn create_config(root: &str) -> Result<()> {
 async fn create_index_norg(root: &str) -> Result<()> {
     let creation_date =
         chrono::offset::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
-    let norg_metadata = formatdoc!(r#"
+    let norg_metadata = formatdoc!(
+        r#"
         @document.meta
         title: hello norgolith
         description: This is my first post made with Norgolith :D
@@ -56,7 +58,8 @@ async fn create_index_norg(root: &str) -> Result<()> {
 async fn create_html_templates(root: &str) -> Result<()> {
     // TODO: add 'head.html', 'footer.html'
     // TODO: extract some information like language and title from the site config?
-    let base_template = formatdoc!(r#"
+    let base_template = formatdoc!(
+        r#"
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -140,7 +143,8 @@ pub async fn init(name: &str) -> Result<()> {
             .add_row(vec![Cell::new("theme"), Cell::new("Site theme files")])
             .add_row(vec![Cell::new(".build"), Cell::new("Dev server artifacts")]);
 
-        let init_message = formatdoc!(r#"
+        let init_message = formatdoc!(
+            r#"
             Congratulations, your new Norgolith site was created in {}
 
             Your new site structure:
