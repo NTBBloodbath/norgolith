@@ -3,6 +3,7 @@ use std::convert::Infallible;
 use eyre::{bail, Result};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
+use indoc::formatdoc;
 use tera::{Context, Tera};
 
 use crate::converter;
@@ -44,12 +45,12 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>> {
         // which extends site's 'base.html' template to be able to embed the norg->html document in the site.
         // Perhaps there is a better way to achieve this?
         let path_contents = get_content(&request_path).await?;
-        let body = format!(
-            r#"{{% extends "base.html" %}}
-{{% block content %}}
-{}
-{{% endblock content %}}
-"#,
+        let body = formatdoc!(r#"
+            {{% extends "base.html" %}}
+            {{% block content %}}
+            {}
+            {{% endblock content %}}
+            "#,
             path_contents
         );
         templates.add_raw_template("current.html", &body)?;
