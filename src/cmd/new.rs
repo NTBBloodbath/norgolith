@@ -1,4 +1,5 @@
 use eyre::{bail, Result};
+use indoc::formatdoc;
 use tokio::fs::{create_dir_all, metadata, write};
 
 use crate::fs;
@@ -32,23 +33,23 @@ async fn create_norg_document(path: &str, name: &str) -> Result<()> {
 
     let creation_date =
         chrono::offset::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
-    let norg_document = format!(
-        r#"@document.meta
-title: {}
-description:
-authors: [
-  {}
-]
-categories: []
-created: {}
-updated: {}
-draft: true
-version: 1.1.1
-@end
+    let norg_document = formatdoc!(r#"
+        @document.meta
+        title: {}
+        description:
+        authors: [
+          {}
+        ]
+        categories: []
+        created: {}
+        updated: {}
+        draft: true
+        version: 1.1.1
+        @end
 
-* {}
-  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
-  labore et dolore magna aliqua. Lobortis scelerisque fermentum dui faucibus in ornare."#,
+        * {}
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
+          labore et dolore magna aliqua. Lobortis scelerisque fermentum dui faucibus in ornare."#,
         title,
         whoami::username(),
         creation_date,

@@ -2,14 +2,15 @@ use comfy_table::modifiers::UTF8_SOLID_INNER_BORDERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, ContentArrangement, Table};
 use eyre::{bail, Result};
+use indoc::formatdoc;
 use tokio::fs;
 
 /// Create basic site configuration TOML
 async fn create_config(root: &str) -> Result<()> {
-    let site_config = format!(
-        r#"rootUrl = '{}'
-language = '{}'
-title = '{}'"#,
+    let site_config = formatdoc!(r#"
+        rootUrl = '{}'
+        language = '{}'
+        title = '{}'"#,
         "http://localhost:3030", // this is the default port
         "en-us",
         root.to_owned()
@@ -24,23 +25,23 @@ title = '{}'"#,
 async fn create_index_norg(root: &str) -> Result<()> {
     let creation_date =
         chrono::offset::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
-    let norg_metadata = format!(
-        r#"@document.meta
-title: hello norgolith
-description: This is my first post made with Norgolith :D
-authors: [
-  {}
-]
-categories: []
-created: {}
-updated: {}
-draft: true
-version: 1.1.1
-@end
+    let norg_metadata = formatdoc!(r#"
+        @document.meta
+        title: hello norgolith
+        description: This is my first post made with Norgolith :D
+        authors: [
+          {}
+        ]
+        categories: []
+        created: {}
+        updated: {}
+        draft: true
+        version: 1.1.1
+        @end
 
-* Hello world
-  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
-  labore et dolore magna aliqua. Lobortis scelerisque fermentum dui faucibus in ornare."#,
+        * Hello world
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
+          labore et dolore magna aliqua. Lobortis scelerisque fermentum dui faucibus in ornare."#,
         whoami::username(),
         creation_date,
         creation_date
@@ -55,26 +56,26 @@ version: 1.1.1
 async fn create_html_templates(root: &str) -> Result<()> {
     // TODO: add 'head.html', 'footer.html'
     // TODO: extract some information like language and title from the site config?
-    let base_template = format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    {{% block head %}}
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="style.css" />
-    <title>{{% block title %}}{{% endblock title %}} - {}</title>
-    {{% endblock head %}}
-</head>
-<body>
-    <div id="content">{{% block content %}}{{% endblock content %}}</div>
-    <div id="footer">
-        {{% block footer %}}
-        &copy; Copyright {} by {}.
-        {{% endblock footer %}}
-    </div>
-</body>
-</html>"#,
+    let base_template = formatdoc!(r#"
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            {{% block head %}}
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <link rel="stylesheet" href="style.css" />
+            <title>{{% block title %}}{{% endblock title %}} - {}</title>
+            {{% endblock head %}}
+        </head>
+        <body>
+            <div id="content">{{% block content %}}{{% endblock content %}}</div>
+            <div id="footer">
+                {{% block footer %}}
+                &copy; Copyright {} by {}.
+                {{% endblock footer %}}
+            </div>
+        </body>
+        </html>"#,
         root.to_owned(),
         chrono::offset::Local::now().format("%Y"),
         whoami::username()
@@ -139,13 +140,13 @@ pub async fn init(name: &str) -> Result<()> {
             .add_row(vec![Cell::new("theme"), Cell::new("Site theme files")])
             .add_row(vec![Cell::new(".build"), Cell::new("Dev server artifacts")]);
 
-        let init_message = format!(
-            r#"Congratulations, your new Norgolith site was created in {}
+        let init_message = formatdoc!(r#"
+            Congratulations, your new Norgolith site was created in {}
 
-Your new site structure:
-{}
+            Your new site structure:
+            {}
 
-Please make sure to read the documentation at {}."#,
+            Please make sure to read the documentation at {}."#,
             path.display(),
             structure_table,
             "https://foobar.wip/"
