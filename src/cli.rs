@@ -1,3 +1,6 @@
+use std::env::set_current_dir;
+use std::path::PathBuf;
+
 use clap::{builder::PossibleValue, Parser, Subcommand};
 use eyre::{bail, Result};
 
@@ -20,6 +23,10 @@ struct Cli {
     /// Print version
     #[arg(short = 'v', long, action = clap::builder::ArgAction::Version)]
     version: (),
+
+    /// Operate on the project in the given directory.
+    #[arg(short = 'd', long = "dir", global = true)]
+    project_dir: Option<PathBuf>,
 
     #[command(subcommand)]
     command: Commands,
@@ -74,6 +81,10 @@ enum Commands {
 ///   A `Result<()>` indicating success or error. On error, the context message will provide information on why the subcommand failed.
 pub async fn start() -> Result<()> {
     let cli = Cli::parse();
+
+    if let Some(dir) = cli.project_dir {
+        set_current_dir(dir)?;
+    }
 
     match &cli.command {
         Commands::Init { name } => init_site(name.as_ref()).await?,
