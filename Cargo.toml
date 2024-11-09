@@ -22,10 +22,11 @@ hyper = { version = "=0.14.28", features = ["runtime", "server", "http1", "http2
 tera = "1.19.1"
 tokio = { version = "1.37.0", features = ["fs", "time", "rt-multi-thread", "macros", "process"] }
 toml = "0.8.12"
-rust-norg = { git = "https://github.com/benlubas/rust-norg", branch = "push-muvktopotzpo" }
+rust-norg = { git = "https://github.com/nvim-neorg/rust-norg", branch = "main" }
 whoami = "1.5.1"
 open = "5.3.0"
 indoc = "2.0.5"
+html-escape = "0.2.13"
 
 [profile.optimized]   # Size optimizations that will hurt build speed
 inherits = "release"  # Which profile we inherit

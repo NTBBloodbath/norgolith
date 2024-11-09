@@ -1,9 +1,29 @@
 // TODO(ntbbloodbath): move this converter to a separate rust library called norg-converter
 
+use html_escape::encode_text_minimal_to_string;
 use rust_norg::{
     parse_tree, NestableDetachedModifier, NorgAST, NorgASTFlat, ParagraphSegment,
     ParagraphSegmentToken,
 };
+
+/// Converts paragraph segment tokens to a String
+fn paragraph_tokens_to_string(tokens: &[ParagraphSegmentToken]) -> String {
+    let mut s = String::new();
+    encode_text_minimal_to_string(
+        tokens
+            .iter()
+            .map(|token| match token {
+                ParagraphSegmentToken::Text(txt) => txt.clone(),
+                ParagraphSegmentToken::Whitespace => String::from(" "),
+                ParagraphSegmentToken::Special(c) => String::from(*c),
+                ParagraphSegmentToken::Escape(c) => String::from(*c),
+            })
+            .collect::<Vec<String>>()
+            .join(""),
+        &mut s,
+    );
+    s
+}
 
 /// Converts a ParagraphSegment into a String
 fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
@@ -45,7 +65,22 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
                     todo!()
                 }
             }
+        },
+        ParagraphSegment::InlineVerbatim(content) => {
+            paragraph.push_str(dbg!(&format!(
+                "<code>{}</code>",
+                &paragraph_tokens_to_string(content)
+            )));
         }
+        // ParagraphSegment::AttachedModifierOpener(_) => todo!(),
+        // ParagraphSegment::AttachedModifierOpenerFail(_) => todo!(),
+        // ParagraphSegment::AttachedModifierCloserCandidate(_) => todo!(),
+        // ParagraphSegment::AttachedModifierCloser(_) => todo!(),
+        // ParagraphSegment::AttachedModifierCandidate { modifier_type, content, closer } => todo!(),
+        // ParagraphSegment::Link { filepath, targets, description } => todo!(),
+        // ParagraphSegment::AnchorDefinition { content, target } => todo!(),
+        // ParagraphSegment::Anchor { content, description } => todo!(),
+        // ParagraphSegment::InlineLinkTarget(_) => todo!(),
         _ => {
             println!("ParagraphSegment: {:?}", node);
             todo!()

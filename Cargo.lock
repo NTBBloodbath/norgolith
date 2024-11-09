@@ -565,6 +565,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d231dfb89cfffdbc30e7fc41579ed6066ad03abda9e567ccafae602b97ec5024"
 
 [[package]]
+name = "html-escape"
+version = "0.2.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d1ad449764d627e22bfd7cd5e8868264fc9236e07c752972b4080cd351cb476"
+dependencies = [
+ "utf8-width",
+]
+
+[[package]]
 name = "http"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -843,6 +852,7 @@ dependencies = [
  "clap",
  "comfy-table",
  "eyre",
+ "html-escape",
  "hyper",
  "indoc",
  "mockall",
@@ -1170,7 +1180,7 @@ checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 [[package]]
 name = "rust-norg"
 version = "0.1.0"
-source = "git+https://github.com/benlubas/rust-norg?branch=push-muvktopotzpo#46f3e48141d0b5762835a9bff8948230c150d912"
+source = "git+https://github.com/nvim-neorg/rust-norg?branch=main#58041045fa63546cd271329a98f44f1775717f70"
 dependencies = [
  "chumsky",
  "itertools",
@@ -1618,6 +1628,12 @@ name = "unicode_categories"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39ec24b3121d976906ece63c9daad25b85969647682eee313cb5779fdd69e14e"
+
+[[package]]
+name = "utf8-width"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86bd8d4e895da8537e5315b8254664e6b769c4ff3db18321b297a1e7004392e3"
 
 [[package]]
 name = "utf8parse"
