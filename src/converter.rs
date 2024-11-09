@@ -40,23 +40,25 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
             modifier_type,
             content,
         } => {
+            let mut tag = |name: &str| {
+                paragraph.push_str(&format!(
+                    "<{name}>{}</{name}>",
+                    &paragraph_to_string(content)
+                ))
+            };
             match modifier_type {
-                '*' => {
-                    paragraph.push_str("<strong>");
-                    paragraph.push_str(&paragraph_to_string(content));
-                    paragraph.push_str("</strong>");
-                }
-                '/' => {
-                    paragraph.push_str("<em>");
-                    paragraph.push_str(&paragraph_to_string(content));
-                    paragraph.push_str("</em>");
-                }
-                // NOTE: it seems like the parser does not support inline verbatim?
-                //'`' => {
-                //    paragraph.push_str("<code>");
-                //    paragraph.push_str(&paragraph_to_string(content));
-                //    paragraph.push_str("</code>");
-                //}
+                '*' => tag("strong"),
+                '/' => tag("em"),
+                '_' => tag("u"),
+                '-' => tag("s"),
+                '^' => tag("sup"),
+                ',' => tag("sub"),
+                '!' => paragraph.push_str(&format!(
+                    "<span class='spoiler'>{}</span>",
+                    &paragraph_to_string(content)
+                )),
+                '$' => tag("code"), // TODO: Real Math Rendering?
+                '%' => {}, // ignore comments
                 _ => {
                     println!(
                         "ParagraphSegment::AttachedModifier: {} {:?}",
@@ -65,7 +67,7 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
                     todo!()
                 }
             }
-        },
+        }
         ParagraphSegment::InlineVerbatim(content) => {
             paragraph.push_str(dbg!(&format!(
                 "<code>{}</code>",
