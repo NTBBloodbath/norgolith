@@ -69,10 +69,10 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
             }
         }
         ParagraphSegment::InlineVerbatim(content) => {
-            paragraph.push_str(dbg!(&format!(
+            paragraph.push_str(&format!(
                 "<code>{}</code>",
                 &paragraph_tokens_to_string(content)
-            )));
+            ));
         }
         // ParagraphSegment::AttachedModifierOpener(_) => todo!(),
         // ParagraphSegment::AttachedModifierOpenerFail(_) => todo!(),
