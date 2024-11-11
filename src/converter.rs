@@ -58,7 +58,7 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
                     &paragraph_to_string(content)
                 )),
                 '$' => tag("code"), // TODO: Real Math Rendering?
-                '%' => {}, // ignore comments
+                '%' => {}           // ignore comments
                 _ => {
                     println!(
                         "ParagraphSegment::AttachedModifier: {} {:?}",
