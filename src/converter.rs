@@ -1,9 +1,29 @@
 // TODO(ntbbloodbath): move this converter to a separate rust library called norg-converter
 
+use html_escape::encode_text_minimal_to_string;
 use rust_norg::{
     parse_tree, NestableDetachedModifier, NorgAST, NorgASTFlat, ParagraphSegment,
     ParagraphSegmentToken,
 };
+
+/// Converts paragraph segment tokens to a String
+fn paragraph_tokens_to_string(tokens: &[ParagraphSegmentToken]) -> String {
+    let mut s = String::new();
+    encode_text_minimal_to_string(
+        tokens
+            .iter()
+            .map(|token| match token {
+                ParagraphSegmentToken::Text(txt) => txt.clone(),
+                ParagraphSegmentToken::Whitespace => String::from(" "),
+                ParagraphSegmentToken::Special(c) => String::from(*c),
+                ParagraphSegmentToken::Escape(c) => String::from(*c),
+            })
+            .collect::<Vec<String>>()
+            .join(""),
+        &mut s,
+    );
+    s
+}
 
 /// Converts a ParagraphSegment into a String
 fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
@@ -20,23 +40,25 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
             modifier_type,
             content,
         } => {
+            let mut tag = |name: &str| {
+                paragraph.push_str(&format!(
+                    "<{name}>{}</{name}>",
+                    &paragraph_to_string(content)
+                ))
+            };
             match modifier_type {
-                '*' => {
-                    paragraph.push_str("<strong>");
-                    paragraph.push_str(&paragraph_to_string(content));
-                    paragraph.push_str("</strong>");
-                }
-                '/' => {
-                    paragraph.push_str("<em>");
-                    paragraph.push_str(&paragraph_to_string(content));
-                    paragraph.push_str("</em>");
-                }
-                // NOTE: it seems like the parser does not support inline verbatim?
-                //'`' => {
-                //    paragraph.push_str("<code>");
-                //    paragraph.push_str(&paragraph_to_string(content));
-                //    paragraph.push_str("</code>");
-                //}
+                '*' => tag("strong"),
+                '/' => tag("em"),
+                '_' => tag("u"),
+                '-' => tag("s"),
+                '^' => tag("sup"),
+                ',' => tag("sub"),
+                '!' => paragraph.push_str(&format!(
+                    "<span class='spoiler'>{}</span>",
+                    &paragraph_to_string(content)
+                )),
+                '$' => tag("code"), // TODO: Real Math Rendering?
+                '%' => {}, // ignore comments
                 _ => {
                     println!(
                         "ParagraphSegment::AttachedModifier: {} {:?}",
@@ -46,6 +68,21 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
                 }
             }
         }
+        ParagraphSegment::InlineVerbatim(content) => {
+            paragraph.push_str(dbg!(&format!(
+                "<code>{}</code>",
+                &paragraph_tokens_to_string(content)
+            )));
+        }
+        // ParagraphSegment::AttachedModifierOpener(_) => todo!(),
+        // ParagraphSegment::AttachedModifierOpenerFail(_) => todo!(),
+        // ParagraphSegment::AttachedModifierCloserCandidate(_) => todo!(),
+        // ParagraphSegment::AttachedModifierCloser(_) => todo!(),
+        // ParagraphSegment::AttachedModifierCandidate { modifier_type, content, closer } => todo!(),
+        // ParagraphSegment::Link { filepath, targets, description } => todo!(),
+        // ParagraphSegment::AnchorDefinition { content, target } => todo!(),
+        // ParagraphSegment::Anchor { content, description } => todo!(),
+        // ParagraphSegment::InlineLinkTarget(_) => todo!(),
         _ => {
             println!("ParagraphSegment: {:?}", node);
             todo!()
