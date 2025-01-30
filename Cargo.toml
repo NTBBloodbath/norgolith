@@ -14,17 +14,17 @@ include = ["src/**/*", "LICENSE", "README.md"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chrono = "0.4.38"
-clap = { version = "4.5.4", features = ["deprecated", "derive", "env", "wrap_help"] }
-comfy-table = "7.1.1"
+chrono = "0.4.39"
+clap = { version = "4.5.27", features = ["deprecated", "derive", "env", "wrap_help"] }
+comfy-table = "7.1.3"
 eyre = "0.6.12"
 hyper = { version = "=0.14.28", features = ["runtime", "server", "http1", "http2"] }
-tera = "1.19.1"
-tokio = { version = "1.37.0", features = ["fs", "time", "rt-multi-thread", "macros", "process"] }
-toml = "0.8.12"
+tera = "1.20.0"
+tokio = { version = "1.43.0", features = ["fs", "time", "rt-multi-thread", "macros", "process"] }
+toml = "0.8.19"
 rust-norg = { git = "https://github.com/nvim-neorg/rust-norg", branch = "main" }
-whoami = "1.5.1"
-open = "5.3.0"
+whoami = "1.5.2"
+open = "5.3.2"
 indoc = "2.0.5"
 html-escape = "0.2.13"
 
@@ -35,7 +35,7 @@ codegen-units = 1     # Build speed -> Executable size
 strip = true          # Remove debug symbols
 
 [dev-dependencies]
-mockall = "0.12.1"
+mockall = "0.13.1"
 
 [features]
 ci = []               # Used to ignore certain tests on GitHub CIs
