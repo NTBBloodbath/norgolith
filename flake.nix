@@ -1,5 +1,5 @@
 {
-  description = "Rust development environment";
+  description = "The monolithic Norg static site generator built with Rust";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
