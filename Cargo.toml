@@ -28,6 +28,7 @@ open = "5.3.2"
 indoc = "2.0.5"
 html-escape = "0.2.13"
 notify = "8.0.0"
+notify-debouncer-full = "0.5.0"
 
 [profile.optimized]   # Size optimizations that will hurt build speed
 inherits = "release"  # Which profile we inherit
