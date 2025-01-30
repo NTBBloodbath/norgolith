@@ -53,6 +53,7 @@
             ])
             clippy
             rustfmt
+            cargo-edit
             cargo-nextest
             rust-analyzer
           ];
