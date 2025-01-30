@@ -71,7 +71,9 @@ async fn create_html_templates(root: &str) -> Result<()> {
             {{% endblock head %}}
         </head>
         <body>
-            <div id="content">{{% block content %}}{{% endblock content %}}</div>
+            <div id="content">
+                {{{{ content | safe }}}}
+            </div>
             <div id="footer">
                 {{% block footer %}}
                 &copy; Copyright {} by {}.
