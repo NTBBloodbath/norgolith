@@ -35,7 +35,7 @@ jobs:
             flake_files:
               - "flake.*"
       - name: Run nix flake check
-        if: steps.flake_changes.outputs.flake_files == "true"
+        if: steps.flake_changes.outputs.flake_files == 'true'
         run: nix flake check
       - uses: Swatinem/rust-cache@v2
       - name: Build
@@ -59,7 +59,7 @@ jobs:
             flake_files:
               - "flake.*"
       - name: Run nix flake check
-        if: steps.flake_changes.outputs.flake_files == "true"
+        if: steps.flake_changes.outputs.flake_files == 'true'
         run: nix flake check
       - uses: Swatinem/rust-cache@v2
       - name: Build
