@@ -39,4 +39,4 @@ jobs:
         run: nix flake check
       - uses: Swatinem/rust-cache@v2
       - name: Test codebase
-        run: nix develop .#devShells.default -c cargo nextest run --features ci
+        run: nix develop . -c cargo nextest run --features ci
