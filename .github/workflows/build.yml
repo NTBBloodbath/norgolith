@@ -39,9 +39,9 @@ jobs:
         run: nix flake check
       - uses: Swatinem/rust-cache@v2
       - name: Build
-        run: nix develop .#devShells.default -c cargo build --release
+        run: nix develop . -c cargo build --release
       - name: Run
-        run: nix develop .#devShells.default -c cargo run -- --version
+        run: nix develop . -c cargo run -- --version
 
   macos:
     runs-on: macos-latest
@@ -63,6 +63,6 @@ jobs:
         run: nix flake check
       - uses: Swatinem/rust-cache@v2
       - name: Build
-        run: nix develop .#devShells.default -c cargo build --release
+        run: nix develop . -c cargo build --release
       - name: Run
-        run: nix develop .#devShells.default -c cargo run -- --version
+        run: nix develop . -c cargo run -- --version
