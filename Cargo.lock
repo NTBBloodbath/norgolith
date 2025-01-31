@@ -945,6 +945,7 @@ dependencies = [
  "notify-debouncer-full",
  "open",
  "rust-norg",
+ "serde",
  "tera",
  "tokio",
  "toml",

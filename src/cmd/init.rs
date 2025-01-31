@@ -11,10 +11,12 @@ async fn create_config(root: &str) -> Result<()> {
         r#"
         rootUrl = '{}'
         language = '{}'
-        title = '{}'"#,
+        title = '{}'
+        author = '{}'"#,
         "http://localhost:3030", // this is the default port
         "en-us",
-        root.to_owned()
+        root.to_owned(),
+        whoami::username()
     );
     // TBD: add Windows separator support
     fs::write(root.to_owned() + "/norgolith.toml", site_config).await?;
@@ -57,34 +59,7 @@ async fn create_index_norg(root: &str) -> Result<()> {
 /// Create basic HTML templates
 async fn create_html_templates(root: &str) -> Result<()> {
     // TODO: add 'head.html', 'footer.html'
-    // TODO: extract some information like language and title from the site config?
-    let base_template = formatdoc!(
-        r#"
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            {{% block head %}}
-            <meta charset="UTF-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <link rel="stylesheet" href="style.css" />
-            <title>{{% block title %}}{{% endblock title %}} - {}</title>
-            {{% endblock head %}}
-        </head>
-        <body>
-            <div id="content">
-                {{{{ content | safe }}}}
-            </div>
-            <div id="footer">
-                {{% block footer %}}
-                &copy; Copyright {} by {}.
-                {{% endblock footer %}}
-            </div>
-        </body>
-        </html>"#,
-        root.to_owned(),
-        chrono::offset::Local::now().format("%Y"),
-        whoami::username()
-    );
+    let base_template = include_str!("../templates/base.html");
     // TBD: add Windows separator support
     fs::write(root.to_owned() + "/templates/base.html", base_template).await?;
 
