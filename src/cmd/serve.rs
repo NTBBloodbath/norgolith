@@ -7,7 +7,7 @@ use eyre::{bail, eyre, Result};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{
     header::{HeaderValue, CONTENT_TYPE},
-    Body, Request, Response, Server,
+    Body, Request, Response, Server, StatusCode,
 };
 use indoc::formatdoc;
 use notify::RecursiveMode;
@@ -143,7 +143,6 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
         return Ok(Response::new(Body::from("reload")));
     }
 
-    // FIXME: find a way to return an "error" log if the request path does not exist
     let (req_parts, _) = req.into_parts();
     // XXX: add headers here as well?
     println!(
@@ -151,85 +150,124 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
         req_parts.version, req_parts.method, req_parts.uri
     );
 
-    let mut response = if !request_path.contains('.') {
+    // Helper function to handle content retrieval errors
+    async fn get_content_or_error(request_path: &str) -> Result<String> {
+        get_content(request_path).await.map_err(|e| {
+            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+                if io_err.kind() == std::io::ErrorKind::NotFound {
+                    eyre!("Path not found: {}", request_path)
+                } else {
+                    eyre!("Error reading '{}': {}", request_path, io_err)
+                }
+            } else {
+                eyre!("Unexpected error for '{}': {}", request_path, e)
+            }
+        })
+    }
+
+    let response = if !request_path.contains('.') {
         // HTML content handling
-        let mut context = Context::new();
-        let path_contents = get_content(&request_path).await?;
-        context.insert("content", &path_contents);
-        // TODO: convert the template title into a variable and add it to the context
+        match get_content_or_error(&request_path).await {
+            Ok(path_contents) => {
+                let mut context = Context::new();
+                context.insert("content", &path_contents);
 
-        let tera = state.tera.read().await;
-        let body = tera
-            .render("base.html", &context)
-            .map_err(|e| eyre!("[server] Template rendering error: {}", e))?;
-
-        // Create response with proper headers
-        let mut response = Response::new(Body::from(body));
-        response.headers_mut().insert(
-            CONTENT_TYPE,
-            HeaderValue::from_static("text/html; charset=utf-8"),
-        );
-        Ok(response)
+                let tera = state.tera.read().await;
+                tera.render("base.html", &context)
+                    .map(|body| {
+                        let mut response = Response::new(Body::from(body));
+                        response.headers_mut().insert(
+                            CONTENT_TYPE,
+                            HeaderValue::from_static("text/html; charset=utf-8"),
+                        );
+                        response
+                    })
+                    .map_err(|e| {
+                        eyre!("Template rendering error for '{}': {}", request_path, e)
+                    })
+            }
+            Err(e) => Err(e),
+        }
     } else {
-        // Static assets handling
-        let path_contents = get_content(&request_path).await?;
-        let mut response = Response::new(Body::from(path_contents));
+        match get_content_or_error(&request_path).await {
+            Ok(path_contents) => {
+                // Static assets handling
+                let mut response = Response::new(Body::from(path_contents));
 
-        // Set content type based on file extension
-        // XXX: replace with the mimetype crate that does the job for us
-        let mime_type = match request_path.split('.').last() {
-            Some("css") => "text/css",
-            Some("js") => "application/javascript",
-            Some("png") => "image/png",
-            Some("jpg") | Some("jpeg") => "image/jpeg",
-            Some("svg") => "image/svg+xml",
-            _ => "text/plain",
-        };
+                // Set content type based on file extension
+                // XXX: replace with the mimetype crate that does the job for us
+                let mime_type = match request_path.split('.').last() {
+                    Some("css") => "text/css",
+                    Some("js") => "application/javascript",
+                    Some("png") => "image/png",
+                    Some("jpg") | Some("jpeg") => "image/jpeg",
+                    Some("svg") => "image/svg+xml",
+                    _ => "text/plain",
+                };
 
-        response.headers_mut().insert(
-            CONTENT_TYPE,
-            HeaderValue::from_str(mime_type)
-                .unwrap_or_else(|_| HeaderValue::from_static("text/plain")),
-        );
-        Ok(response)
+                response.headers_mut().insert(
+                    CONTENT_TYPE,
+                    HeaderValue::from_str(mime_type)
+                        .unwrap_or_else(|_| HeaderValue::from_static("text/plain")),
+                );
+                Ok(response)
+            }
+            Err(e) => Err(e)
+        }
     };
 
     // Inject reload script into HTML responses
-    if let Ok(ref mut response) = response {
-        if let Some(content_type) = response.headers().get(CONTENT_TYPE) {
-            if content_type.to_str().unwrap() == "text/html; charset=utf-8" {
-                let body = hyper::body::to_bytes(response.body_mut()).await?;
-                let mut html = String::from_utf8(body.to_vec())?;
+    match response {
+        Ok(mut response) => {
+            if let Some(content_type) = response.headers().get(CONTENT_TYPE) {
+                if content_type.to_str().unwrap() == "text/html; charset=utf-8" {
+                    let body = hyper::body::to_bytes(response.body_mut()).await?;
+                    let mut html = String::from_utf8(body.to_vec())?;
 
-                // Inject reload script before closing body tag, it does reload every second
-                let reload_script = formatdoc!(
-                    r#"
-                    <script>
-                        (function() {{
-                            function checkReload() {{
-                                fetch('/_norgolith_reload')
-                                    .then(r => r.text())
-                                    .then(t => {{
-                                        if(t === 'reload') location.reload();
-                                        else setTimeout(checkReload, 1000);
-                                    }})
-                                    .catch(() => setTimeout(checkReload, 1000));
-                            }}
-                            checkReload();
-                        }})();
-                    </script>
-                "#
-                );
+                    // Inject reload script before closing body tag, it does reload every second
+                    let reload_script = formatdoc!(
+                        r#"
+                        <script>
+                            (function() {{
+                                function checkReload() {{
+                                    fetch('/_norgolith_reload')
+                                        .then(r => r.text())
+                                        .then(t => {{
+                                            if(t === 'reload') location.reload();
+                                            else setTimeout(checkReload, 1000);
+                                        }})
+                                        .catch(() => setTimeout(checkReload, 1000));
+                                }}
+                                checkReload();
+                            }})();
+                        </script>
+                    "#
+                    );
 
-                if let Some(pos) = html.rfind("</body>") {
-                    html.insert_str(pos, &reload_script);
+                    if let Some(pos) = html.rfind("</body>") {
+                        html.insert_str(pos, &reload_script);
+                    }
+                    *response.body_mut() = Body::from(html);
                 }
-                *response.body_mut() = Body::from(html);
+            }
+            Ok(response)
+        }
+        Err(e) => {
+            // Single error logging point
+            eprintln!("[server] {}", e);
+            if e.to_string().contains("Path not found") {
+                // TODO: add a 404 template using Tera
+                Ok(Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Body::from("404 Not Found"))?)
+            } else {
+                // TODO: add a 500 template using Tera
+                Ok(Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::from("500 Internal Server Error"))?)
             }
         }
     }
-
-    response
 }
 
 pub async fn serve(port: u16, open: bool) -> Result<()> {
