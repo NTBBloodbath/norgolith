@@ -27,6 +27,7 @@ struct ServerState {
     reload_tx: watch::Sender<bool>,
     tera: Arc<RwLock<Tera>>,
     config: config::SiteConfig,
+    content_dir: PathBuf,
 }
 
 async fn get_content(name: &str) -> Result<String> {
@@ -41,43 +42,58 @@ async fn get_content(name: &str) -> Result<String> {
 }
 
 /// Recursively converts all the norg files in the content directory
-async fn convert_content() -> Result<()> {
-    async fn process_entry(entry: tokio::fs::DirEntry) -> Result<()> {
+async fn convert_content(content_dir: &Path) -> Result<()> {
+    async fn process_entry(entry: tokio::fs::DirEntry, content_dir: &Path) -> Result<()> {
         let path = entry.path();
         if path.is_dir() {
             // Process directory recursively
             let mut content_stream = tokio::fs::read_dir(&path).await?;
             while let Some(entry) = content_stream.next_entry().await? {
-                Box::pin(process_entry(entry)).await?;
+                Box::pin(process_entry(entry, content_dir)).await?;
             }
         } else {
-            convert_document(&path).await?;
+            convert_document(&path, content_dir).await?;
         }
         Ok(())
     }
 
-    let mut content_stream = tokio::fs::read_dir("content").await?;
+    let mut content_stream = tokio::fs::read_dir(content_dir).await?;
     while let Some(entry) = content_stream.next_entry().await? {
-        Box::pin(process_entry(entry)).await?;
+        Box::pin(process_entry(entry, content_dir)).await?;
     }
 
     Ok(())
 }
 
-async fn convert_document(file_path: &Path) -> Result<()> {
+async fn convert_document(file_path: &Path, content_dir: &Path) -> Result<()> {
     if file_path.extension().unwrap_or_default() == "norg"
         && tokio::fs::try_exists(file_path).await?
     {
         let mut should_convert = true;
+        let mut should_write_meta = true;
 
         // Preserve directory structure relative to content directory
-        let relative_path = file_path.strip_prefix("content")?;
+        let relative_path = file_path.strip_prefix(content_dir)
+            .map_err(|_| eyre!("File {:?} is not in content directory {:?}", file_path, content_dir))?;
+
         let html_file_path = Path::new(".build")
             .join(relative_path)
             .with_extension("html");
+        let meta_file_path = html_file_path.with_extension("meta.toml");
 
+        // Convert html content
         let norg_document = tokio::fs::read_to_string(file_path).await?;
-        let norg_html = converter::convert(norg_document);
+        let norg_html = converter::html::convert(norg_document.clone());
+
+        // Convert metadata
+        let norg_meta = converter::meta::convert(&norg_document)?;
+        let meta_toml = toml::to_string_pretty(&norg_meta)?;
+
+        // Check existing metadata only if file exists
+        if tokio::fs::try_exists(&meta_file_path).await? {
+            let meta_content = tokio::fs::read_to_string(&meta_file_path).await?;
+            should_write_meta = meta_toml != meta_content;
+        }
 
         // Check existing content only if file exists
         if tokio::fs::try_exists(&html_file_path).await? {
@@ -85,7 +101,7 @@ async fn convert_document(file_path: &Path) -> Result<()> {
             should_convert = norg_html != html_content;
         }
 
-        if should_convert {
+        if should_convert || should_write_meta {
             println!("[server] Converting norg file: {}", file_path.display());
 
             // Create parent directories if needed
@@ -93,7 +109,12 @@ async fn convert_document(file_path: &Path) -> Result<()> {
                 tokio::fs::create_dir_all(parent).await?;
             }
 
-            tokio::fs::write(&html_file_path, norg_html).await?;
+            if should_convert {
+                tokio::fs::write(&html_file_path, norg_html).await?;
+            }
+            if should_write_meta {
+                tokio::fs::write(&meta_file_path, meta_toml).await?;
+            }
         }
     }
 
@@ -122,8 +143,14 @@ fn is_content_change(event: &notify::Event) -> Result<bool> {
     let is_content_file = event.paths.iter().any(|path| {
         // NOTE: we do not check for the norg filetype here because content directory
         // can also hold assets like images, and we want to also trigger a reload when
-        // an asset file is created, modified or removed
-        path.parent().unwrap().ends_with("content")
+        // an asset file is created, modified or removed.
+        //
+        // We are also excluding these fucking temp (Neo)vim backup files because they trigger
+        // stupid bugs that I'm not willing to debug anymore.
+        //
+        // TODO: also ignore swap files, my mental health will thank me later.
+        path.parent().unwrap().ends_with("content") &&
+            !path.file_name().unwrap().to_str().unwrap().ends_with('~')
     });
 
     let is_content_change = matches!(
@@ -171,9 +198,32 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
         // HTML content handling
         match get_content_or_error(&request_path).await {
             Ok(path_contents) => {
+                // Get metadata path
+                let meta_path = if request_path == "/" {
+                    PathBuf::from(".build/index.meta.toml")
+                } else {
+                    PathBuf::from(format!(".build/{}.meta.toml", &request_path[1..]))
+                };
+
+                // Handle metadata loading with proper error fallback
+                let metadata: toml::Value = match tokio::fs::read_to_string(meta_path.clone()).await {
+                    Ok(content) => toml::from_str(&content).unwrap_or_else(|e| {
+                        // Fallback to empty table on parse errors
+                        eprintln!("[server] Failed to parse metadata: {}", e);
+                        toml::Value::Table(toml::map::Map::new())
+                    }),
+                    Err(e) => {
+                        // Fallback to empty table if file not found
+                        eprintln!("[server] Metadata file not found: {}", e);
+                        toml::Value::Table(toml::map::Map::new())
+                    }
+                };
+
+                // Build template context
                 let mut context = Context::new();
                 context.insert("content", &path_contents);
                 context.insert("config", &state.config);
+                context.insert("metadata", &metadata);
 
                 let tera = state.tera.read().await;
                 tera.render("base.html", &context)
@@ -286,7 +336,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
 
         // Tera wants a `dir: &str` parameter for some reason instead of asking for a `&Path` or `&PathBuf`...
         let templates_dir = root_dir.clone() + "/templates";
-        let content_dir = root_dir.clone() + "/content";
+        let content_dir = Path::new(&root_dir.clone()).join("content");
 
         // Async runtime handle
         let rt = Handle::current();
@@ -303,7 +353,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         let (reload_tx, _) = watch::channel(false);
 
         // Initialize server state
-        let state = Arc::new(ServerState { reload_tx, tera, config: site_config });
+        let state = Arc::new(ServerState { reload_tx, tera, config: site_config, content_dir: content_dir.clone() });
 
         // Create debouncer with 200ms delay, this should be enough to handle both the
         // (Neo)vim swap files and also the VSCode atomic saves
@@ -377,9 +427,9 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                         if rebuild_needed {
                             let state = Arc::clone(&state_watcher);
                             tokio::task::spawn(async move {
-                                match convert_document(&rebuild_document_path).await {
+                                match convert_document(&rebuild_document_path, &state.content_dir).await {
                                     Ok(_) => {
-                                        println!("[server] Content successfully regenerated");
+                                        println!("[server] Content successfully regenerated {}", &rebuild_document_path.display());
                                         let _ = state.reload_tx.send(true);
                                         // Reset
                                         let _ = state.reload_tx.send(false);
@@ -406,7 +456,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         let uri = format!("http://localhost:{}/", port);
 
         // Convert the norg documents to html
-        convert_content().await?;
+        convert_content(&content_dir).await?;
 
         println!("[server] Serving site ...");
         println!("[server] Web server is available at {}", uri);
