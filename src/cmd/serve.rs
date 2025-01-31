@@ -38,13 +38,25 @@ async fn get_content(name: &str) -> Result<String> {
     Ok(contents)
 }
 
-/// Converts all the norg files in the content directory
+/// Recursively converts all the norg files in the content directory
 async fn convert_content() -> Result<()> {
+    async fn process_entry(entry: tokio::fs::DirEntry) -> Result<()> {
+        let path = entry.path();
+        if path.is_dir() {
+            // Process directory recursively
+            let mut content_stream = tokio::fs::read_dir(&path).await?;
+            while let Some(entry) = content_stream.next_entry().await? {
+                Box::pin(process_entry(entry)).await?;
+            }
+        } else {
+            convert_document(&path).await?;
+        }
+        Ok(())
+    }
+
     let mut content_stream = tokio::fs::read_dir("content").await?;
     while let Some(entry) = content_stream.next_entry().await? {
-        let file_path = entry.path();
-
-        convert_document(&file_path).await?;
+        Box::pin(process_entry(entry)).await?;
     }
 
     Ok(())
@@ -56,17 +68,16 @@ async fn convert_document(file_path: &Path) -> Result<()> {
     {
         let mut should_convert = true;
 
-        let html_file_path = ".build/".to_owned()
-            + &file_path
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .replace("norg", "html");
+        // Preserve directory structure relative to content directory
+        let relative_path = file_path.strip_prefix("content")?;
+        let html_file_path = Path::new(".build")
+            .join(relative_path)
+            .with_extension("html");
+
         let norg_document = tokio::fs::read_to_string(file_path).await?;
         let norg_html = converter::convert(norg_document);
 
-        // Avoid converting a file that has not been changed from the last conversion
+        // Check existing content only if file exists
         if tokio::fs::try_exists(&html_file_path).await? {
             let html_content = tokio::fs::read_to_string(&html_file_path).await?;
             should_convert = norg_html != html_content;
@@ -74,7 +85,12 @@ async fn convert_document(file_path: &Path) -> Result<()> {
 
         if should_convert {
             println!("[server] Converting norg file: {}", file_path.display());
-            // FIXME: this will produce an unexpected output for nested content like 'content/foo-post/bar.norg'
+
+            // Create parent directories if needed
+            if let Some(parent) = html_file_path.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+
             tokio::fs::write(&html_file_path, norg_html).await?;
         }
     }
