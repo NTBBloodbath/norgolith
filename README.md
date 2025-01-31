@@ -44,26 +44,27 @@ solution for crafting static websites from Norg content. Here's what makes Norgo
 
 ## 📚 Usage
 
-Compile the project using the `optimized` Cargo profile (recommended).
+Compile the project using the `optimized` Cargo profile (recommended). Note that the produced binary
+is called `lith` and not `norgolith`, this is for ergonomic reasons.
 
 ```
-$ cargo build --profile optimized && ./target/optimized/norgolith --help
+$ cargo build --profile optimized && ./target/optimized/lith --help
 
 The monolithic Norg static site generator
 
-Usage: norgolith <COMMAND>
+Usage: lith [OPTIONS] <COMMAND>
 
 Commands:
   init   Initialize a new Norgolith site
   serve  Build a site for development
-  new    Create a new asset in the site (e.g. 'new -k content post1.norg' ->
-         'content/post1.norg') and open it using your preferred system editor
+  new    Create a new asset in the site and optionally open it using your preferred          system editor. e.g. 'new -k content post1.norg' -> 'content/post1.norg'
   build  Build a site for production
   help   Print this message or the help of the given subcommand(s)
 
 Options:
-  -v, --version  Print version
-  -h, --help     Print help
+  -v, --version            Print version
+  -d, --dir <PROJECT_DIR>  Operate on the project in the given directory
+  -h, --help               Print help
 ```
 
 ## ⚡ Install
