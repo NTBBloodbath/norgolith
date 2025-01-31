@@ -28,6 +28,7 @@
             allowBuiltinFetchGit = true;
           };
           useNextest = true;
+          dontUseCargoParallelTests = true;
 
           meta = {
             description = cargoPackage.description;
