@@ -63,7 +63,7 @@ async fn create_norg_document(path: &str, name: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn new(kind: &str, name: &str) -> Result<()> {
+pub async fn new(kind: &str, name: &str, open: bool) -> Result<()> {
     // Save the asset name in a variable to re-use it later
     let mut file_path = name;
     let file_extension = name
@@ -135,13 +135,15 @@ pub async fn new(kind: &str, name: &str) -> Result<()> {
             // Add the filename to the mix
             full_path.push(String::from(file_path));
 
-            // Open the file using the preferred system editor
-            match open::that(full_path.join("/")) {
-                Ok(()) => println!(
-                    "Opening '{}' with your preferred system editor ...",
-                    full_path.join("/")
-                ),
-                Err(e) => bail!("Unable to open the asset '{}': {}", full_path.join("/"), e),
+            // Open the file using the preferred system editor if '--open' has been passed to the command
+            if open {
+                match open::that(full_path.join("/")) {
+                    Ok(()) => println!(
+                        "Opening '{}' with your preferred system editor ...",
+                        full_path.join("/")
+                    ),
+                    Err(e) => bail!("Unable to open the asset '{}': {}", full_path.join("/"), e),
+                }
             }
         }
         // XXX: it is impossible to reach an invalid asset kind because it is already filtered in the cli module
