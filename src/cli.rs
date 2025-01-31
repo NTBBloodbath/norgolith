@@ -52,9 +52,17 @@ enum Commands {
         )]
         open: bool,
     },
-    /// Create a new asset in the site and open it using your preferred system editor.
+    /// Create a new asset in the site and optionally open it using your preferred system editor.
     /// e.g. 'new -k content post1.norg' -> 'content/post1.norg'
     New {
+        #[arg(
+            short = 'o',
+            long,
+            default_value_t = false,
+            help = "Open the new file using your preferred system editor"
+        )]
+        open: bool,
+
         #[arg(
             short = 'k',
             long,
@@ -89,7 +97,7 @@ pub async fn start() -> Result<()> {
     match &cli.command {
         Commands::Init { name } => init_site(name.as_ref()).await?,
         Commands::Serve { port, open } => check_and_serve(*port, *open).await?,
-        Commands::New { kind, name } => new_asset(kind.as_ref(), name.as_ref()).await?,
+        Commands::New { kind, name, open } => new_asset(kind.as_ref(), name.as_ref(), *open).await?,
         _ => bail!("Unsupported command"),
     }
 
@@ -156,7 +164,7 @@ async fn check_and_serve(port: u16, open: bool) -> Result<()> {
 /// Ok(())
 /// }
 /// ```
-async fn new_asset(kind: Option<&String>, name: Option<&String>) -> Result<()> {
+async fn new_asset(kind: Option<&String>, name: Option<&String>, open: bool) -> Result<()> {
     let asset_type = kind.unwrap_or(&String::from("content")).to_owned();
 
     if ![
@@ -170,7 +178,7 @@ async fn new_asset(kind: Option<&String>, name: Option<&String>) -> Result<()> {
     }
 
     match name {
-        Some(name) => cmd::new(&asset_type, name).await?,
+        Some(name) => cmd::new(&asset_type, name, open).await?,
         None => bail!("Unable to create site asset: missing name for the asset"),
     }
     Ok(())
