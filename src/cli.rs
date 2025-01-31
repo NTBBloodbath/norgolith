@@ -97,7 +97,9 @@ pub async fn start() -> Result<()> {
     match &cli.command {
         Commands::Init { name } => init_site(name.as_ref()).await?,
         Commands::Serve { port, open } => check_and_serve(*port, *open).await?,
-        Commands::New { kind, name, open } => new_asset(kind.as_ref(), name.as_ref(), *open).await?,
+        Commands::New { kind, name, open } => {
+            new_asset(kind.as_ref(), name.as_ref(), *open).await?
+        }
         _ => bail!("Unsupported command"),
     }
 
