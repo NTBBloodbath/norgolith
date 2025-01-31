@@ -1,8 +1,10 @@
 mod cli;
 mod cmd;
+mod config;
 mod converter;
 mod fs;
 mod net;
+mod tera_functions;
 
 use eyre::Result;
 

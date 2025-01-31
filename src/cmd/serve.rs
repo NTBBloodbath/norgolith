@@ -18,6 +18,7 @@ use tokio::{
     sync::{watch, RwLock},
 };
 
+use crate::{config, tera_functions};
 use crate::converter;
 use crate::fs;
 
@@ -25,6 +26,7 @@ use crate::fs;
 struct ServerState {
     reload_tx: watch::Sender<bool>,
     tera: Arc<RwLock<Tera>>,
+    config: config::SiteConfig,
 }
 
 async fn get_content(name: &str) -> Result<String> {
@@ -171,6 +173,7 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
             Ok(path_contents) => {
                 let mut context = Context::new();
                 context.insert("content", &path_contents);
+                context.insert("config", &state.config);
 
                 let tera = state.tera.read().await;
                 tera.render("base.html", &context)
@@ -182,9 +185,7 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                         );
                         response
                     })
-                    .map_err(|e| {
-                        eyre!("Template rendering error for '{}': {}", request_path, e)
-                    })
+                    .map_err(|e| eyre!("Template rendering error for '{}': {}", request_path, e))
             }
             Err(e) => Err(e),
         }
@@ -212,7 +213,7 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                 );
                 Ok(response)
             }
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     };
 
@@ -275,7 +276,11 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
     let found_site_root = fs::find_in_previous_dirs("file", "norgolith.toml").await?;
 
     if let Some(mut root) = found_site_root {
-        // Remove the `/norgolith.toml` from the root path
+        // Load site configuration, root already contains the norgolith.toml path
+        let config_content = tokio::fs::read_to_string(&root).await?;
+        let site_config: config::SiteConfig = toml::from_str(&config_content)?;
+
+        // Remove `norgolith.toml` from the root path
         root.pop();
         let root_dir = root.into_os_string().into_string().unwrap();
 
@@ -287,17 +292,18 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         let rt = Handle::current();
 
         // Initialize Tera once
-        let tera = match Tera::new(&(templates_dir.clone() + "/**/*.html")) {
+        let mut tera = match Tera::new(&(templates_dir.clone() + "/**/*.html")) {
             Ok(t) => t,
             Err(e) => bail!("[server] Tera parsing error(s): {}", e),
         };
+        tera.register_function("now", tera_functions::NowFunction);
         let tera = Arc::new(RwLock::new(tera));
 
         // Create reload channel
         let (reload_tx, _) = watch::channel(false);
 
         // Initialize server state
-        let state = Arc::new(ServerState { reload_tx, tera });
+        let state = Arc::new(ServerState { reload_tx, tera, config: site_config });
 
         // Create debouncer with 200ms delay, this should be enough to handle both the
         // (Neo)vim swap files and also the VSCode atomic saves
