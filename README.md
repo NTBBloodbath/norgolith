@@ -44,11 +44,11 @@ solution for crafting static websites from Norg content. Here's what makes Norgo
 
 ## 📚 Usage
 
-Compile the project using the `optimized` Cargo profile (recommended). Note that the produced binary
+Compile the project using the `release` Cargo profile (recommended). Note that the produced binary
 is called `lith` and not `norgolith`, this is for ergonomic reasons.
 
 ```
-$ cargo build --profile optimized && ./target/optimized/lith --help
+$ cargo build --release && ./target/optimized/lith --help
 
 The monolithic Norg static site generator
 
@@ -69,7 +69,7 @@ Options:
 
 ## ⚡ Install
 
-Run `cargo install --profile optimized --path .` to compile and install Norgolith in your `~/.cargo/bin` directory.
+Run `cargo install --release --path .` to compile and install Norgolith in your `~/.cargo/bin` directory.
 
 ## ❄️ Developing and testing with Nix
 

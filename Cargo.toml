@@ -33,12 +33,6 @@ notify = "8.0.0"
 notify-debouncer-full = "0.5.0"
 serde = { version = "1.0.217", features = ["derive"] }
 
-[profile.optimized]   # Size optimizations that will hurt build speed
-inherits = "release"  # Which profile we inherit
-opt-level = "z"       # Optimize for size
-codegen-units = 1     # Build speed -> Executable size
-strip = true          # Remove debug symbols
-
 [dev-dependencies]
 mockall = "0.13.1"
 
