@@ -3,9 +3,12 @@
 <head>
     {% block head %}
     <meta charset="UTF-8" />
+    <meta name="description" content="{{ metadata.description }}" />
+    <meta name="author" content="{{ config.author }}" />
+    <meta name="keywords" content="{{ metadata.categories | join(sep=", ") }}" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="style.css" />
-    <title>{% block title %}{% endblock title %} - {{ config.title }}</title>
+    <title>{% block title %}{{ metadata.title | title }}{% endblock title %} - {{ config.title | title }}</title>
     {% endblock head %}
 </head>
 <body>
