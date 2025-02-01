@@ -266,14 +266,18 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                     }
                 };
 
+                // Get the layout (template) to render the content, fallback to base if the metadata field was not found.
+                let layout = metadata.get("layout").unwrap_or(&toml::Value::from("base")).as_str().unwrap().to_owned();
+
                 // Build template context
                 let mut context = Context::new();
                 context.insert("content", &path_contents);
                 context.insert("config", &state.config);
                 context.insert("metadata", &metadata);
 
+                // Get the template to use for rendering
                 let tera = state.tera.read().await;
-                tera.render("base.html", &context)
+                tera.render(&(layout + ".html"), &context)
                     .map(|body| {
                         let mut response = Response::new(Body::from(body));
                         response.headers_mut().insert(
