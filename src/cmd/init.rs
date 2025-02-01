@@ -39,6 +39,7 @@ async fn create_index_norg(root: &str) -> Result<()> {
         categories: []
         created: {}
         updated: {}
+        layout: base
         draft: true
         version: 1.1.1
         @end
