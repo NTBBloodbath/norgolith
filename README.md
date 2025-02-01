@@ -48,7 +48,7 @@ Compile the project using the `release` Cargo profile (recommended). Note that t
 is called `lith` and not `norgolith`, this is for ergonomic reasons.
 
 ```
-$ cargo build --release && ./target/optimized/lith --help
+$ cargo build --release && ./target/release/lith --help
 
 The monolithic Norg static site generator
 
