@@ -62,7 +62,7 @@ mod tests {
     async fn test_find_file_from_child_directory() -> Result<()> {
         // Create temporal test directory and test file
         let test_file = "test_file_2.txt";
-        let mut test_directory = PathBuf::from("parent_dir");
+        let test_directory = PathBuf::from("parent_dir");
 
         create_dir(&test_directory).await?;
         File::create(test_file).await?;
@@ -74,7 +74,7 @@ mod tests {
         std::env::set_current_dir(canonicalize(test_directory.clone()).await?)?;
 
         // Look for the temporal test file
-        let result = find_in_previous_dirs("file", test_file, &mut test_directory).await;
+        let result = find_in_previous_dirs("file", test_file, &mut previous_dir.join(test_directory.clone())).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(previous_dir.join(test_file)));
 
