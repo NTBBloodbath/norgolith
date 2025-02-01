@@ -18,9 +18,9 @@ use tokio::{
     sync::{watch, RwLock},
 };
 
-use crate::{config, tera_functions};
 use crate::converter;
 use crate::fs;
+use crate::{config, tera_functions};
 
 // Global state for reloading
 struct ServerState {
@@ -74,8 +74,13 @@ async fn convert_document(file_path: &Path, content_dir: &Path) -> Result<()> {
         let mut should_write_meta = true;
 
         // Preserve directory structure relative to content directory
-        let relative_path = file_path.strip_prefix(content_dir)
-            .map_err(|_| eyre!("File {:?} is not in content directory {:?}", file_path, content_dir))?;
+        let relative_path = file_path.strip_prefix(content_dir).map_err(|_| {
+            eyre!(
+                "File {:?} is not in content directory {:?}",
+                file_path,
+                content_dir
+            )
+        })?;
 
         let html_file_path = Path::new(".build")
             .join(relative_path)
@@ -124,11 +129,26 @@ async fn convert_document(file_path: &Path, content_dir: &Path) -> Result<()> {
 }
 
 async fn is_template_change(event: &notify::Event) -> Result<bool> {
-    let mut parent_dir = event.paths.first().unwrap().parent().as_mut().unwrap().to_path_buf();
-    let is_template_dir = fs::find_in_previous_dirs("dir", "templates", &mut parent_dir).await.is_ok();
+    let mut parent_dir = event
+        .paths
+        .first()
+        .unwrap()
+        .parent()
+        .as_mut()
+        .unwrap()
+        .to_path_buf();
+    let is_template_dir = fs::find_in_previous_dirs("dir", "templates", &mut parent_dir)
+        .await
+        .is_ok();
 
     // Filter events to only trigger reloading on meaningful changes
-    let is_template = event.paths.first().unwrap().extension().map(|ext| ext == "html").unwrap_or(false);
+    let is_template = event
+        .paths
+        .first()
+        .unwrap()
+        .extension()
+        .map(|ext| ext == "html")
+        .unwrap_or(false);
 
     let is_template_change = matches!(
         event.kind,
@@ -143,7 +163,9 @@ async fn is_template_change(event: &notify::Event) -> Result<bool> {
 async fn is_content_change(event: &notify::Event) -> Result<bool> {
     let event_path = event.paths.first().as_mut().unwrap().to_path_buf();
     let mut parent_dir = event_path.parent().as_mut().unwrap().to_path_buf();
-    let is_content_dir = fs::find_in_previous_dirs("dir", "content", &mut parent_dir).await.is_ok();
+    let is_content_dir = fs::find_in_previous_dirs("dir", "content", &mut parent_dir)
+        .await
+        .is_ok();
 
     // Filter events to only trigger reloading on meaningful changes
     // NOTE: we do not check for the norg filetype here because content directory
@@ -162,7 +184,9 @@ async fn is_content_change(event: &notify::Event) -> Result<bool> {
 async fn is_asset_change(event: &notify::Event) -> Result<bool> {
     let event_path = event.paths.first().unwrap();
     let mut parent_dir = event_path.parent().as_mut().unwrap().to_path_buf();
-    let is_assets_dir = fs::find_in_previous_dirs("dir", "assets", &mut parent_dir).await.is_ok();
+    let is_assets_dir = fs::find_in_previous_dirs("dir", "assets", &mut parent_dir)
+        .await
+        .is_ok();
 
     // Filter events to only trigger reloading on meaningful changes
     // NOTE: we do not check for any filetype here because assets directory
@@ -253,7 +277,8 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                 };
 
                 // Handle metadata loading with proper error fallback
-                let metadata: toml::Value = match tokio::fs::read_to_string(meta_path.clone()).await {
+                let metadata: toml::Value = match tokio::fs::read_to_string(meta_path.clone()).await
+                {
                     Ok(content) => toml::from_str(&content).unwrap_or_else(|e| {
                         // Fallback to empty table on parse errors
                         eprintln!("[server] Failed to parse metadata: {}", e);
@@ -267,7 +292,12 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                 };
 
                 // Get the layout (template) to render the content, fallback to base if the metadata field was not found.
-                let layout = metadata.get("layout").unwrap_or(&toml::Value::from("base")).as_str().unwrap().to_owned();
+                let layout = metadata
+                    .get("layout")
+                    .unwrap_or(&toml::Value::from("base"))
+                    .as_str()
+                    .unwrap()
+                    .to_owned();
 
                 // Build template context
                 let mut context = Context::new();
@@ -366,7 +396,8 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
 pub async fn serve(port: u16, open: bool) -> Result<()> {
     // Try to find a 'norgolith.toml' file in the current working directory and its parents
     let mut current_dir = std::env::current_dir()?;
-    let found_site_root = fs::find_in_previous_dirs("file", "norgolith.toml", &mut current_dir).await?;
+    let found_site_root =
+        fs::find_in_previous_dirs("file", "norgolith.toml", &mut current_dir).await?;
 
     if let Some(mut root) = found_site_root {
         // Load site configuration, root already contains the norgolith.toml path
@@ -397,7 +428,13 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         let (reload_tx, _) = watch::channel(false);
 
         // Initialize server state
-        let state = Arc::new(ServerState { reload_tx, tera, config: site_config, content_dir: content_dir.clone(), assets_dir: assets_dir.clone() });
+        let state = Arc::new(ServerState {
+            reload_tx,
+            tera,
+            config: site_config,
+            content_dir: content_dir.clone(),
+            assets_dir: assets_dir.clone(),
+        });
 
         // Create debouncer with 200ms delay, this should be enough to handle both the
         // (Neo)vim swap files and also the VSCode atomic saves
@@ -435,30 +472,27 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                             let file_name = file_path.file_name().unwrap().to_str().unwrap();
 
                             if is_template_change(&event).await.unwrap_or(false) {
-                                println!(
-                                    "[server] Detected template change: {}", file_name
-                                );
+                                println!("[server] Detected template change: {}", file_name);
                                 reload_templates_needed = true;
                             }
-
 
                             // We are excluding these fucking temp (Neo)vim backup files because they trigger
                             // stupid bugs that I'm not willing to debug anymore.
                             //
                             // TODO: also ignore swap files, my mental health will thank me later.
                             if !file_name.ends_with('~') {
-                                if file_path.strip_prefix(&state_watcher.content_dir).is_ok() && is_content_change(&event).await.unwrap_or(false) {
-                                    println!(
-                                        "[server] Detected content change: {}", file_name
-                                    );
+                                if file_path.strip_prefix(&state_watcher.content_dir).is_ok()
+                                    && is_content_change(&event).await.unwrap_or(false)
+                                {
+                                    println!("[server] Detected content change: {}", file_name);
                                     rebuild_needed = true;
                                     rebuild_document_path = file_path.to_owned();
                                 }
 
-                                if file_path.strip_prefix(&state_watcher.assets_dir).is_ok() && is_asset_change(&event).await.unwrap_or(false) {
-                                    println!(
-                                        "[server] Detected asset change: {}", file_name
-                                    );
+                                if file_path.strip_prefix(&state_watcher.assets_dir).is_ok()
+                                    && is_asset_change(&event).await.unwrap_or(false)
+                                {
+                                    println!("[server] Detected asset change: {}", file_name);
                                     reload_assets_needed = true;
                                 }
                             }
@@ -486,11 +520,17 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                         if rebuild_needed {
                             let state = Arc::clone(&state_watcher);
                             tokio::task::spawn(async move {
-                                match convert_document(&rebuild_document_path, &state.content_dir).await {
+                                match convert_document(&rebuild_document_path, &state.content_dir)
+                                    .await
+                                {
                                     Ok(_) => {
-
-                                        let stripped_path = rebuild_document_path.strip_prefix(&state.content_dir).unwrap();
-                                        println!("[server] Content successfully regenerated: {}", stripped_path.display());
+                                        let stripped_path = rebuild_document_path
+                                            .strip_prefix(&state.content_dir)
+                                            .unwrap();
+                                        println!(
+                                            "[server] Content successfully regenerated: {}",
+                                            stripped_path.display()
+                                        );
                                         let _ = state.reload_tx.send(true);
                                         // Reset
                                         let _ = state.reload_tx.send(false);

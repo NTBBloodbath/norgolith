@@ -7,7 +7,11 @@ use tokio::fs::{metadata, read_dir};
 use tokio::fs::{canonicalize, create_dir, remove_dir, remove_file, File};
 
 /// Find a given file or directory in the current working directory and its parent directories recursively
-pub async fn find_in_previous_dirs(kind: &str, filename: &str, current_dir: &mut PathBuf) -> Result<Option<PathBuf>> {
+pub async fn find_in_previous_dirs(
+    kind: &str,
+    filename: &str,
+    current_dir: &mut PathBuf,
+) -> Result<Option<PathBuf>> {
     loop {
         // Check if the file|dir exists in the current directory first
         let path = current_dir.join(filename);
@@ -74,7 +78,12 @@ mod tests {
         std::env::set_current_dir(canonicalize(test_directory.clone()).await?)?;
 
         // Look for the temporal test file
-        let result = find_in_previous_dirs("file", test_file, &mut previous_dir.join(test_directory.clone())).await;
+        let result = find_in_previous_dirs(
+            "file",
+            test_file,
+            &mut previous_dir.join(test_directory.clone()),
+        )
+        .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(previous_dir.join(test_file)));
 
@@ -109,7 +118,12 @@ mod tests {
 
         // Look for the temporal directory
         let mut current_dir = std::env::current_dir()?;
-        let result = find_in_previous_dirs("dir", test_directory.clone().to_str().unwrap(), &mut current_dir).await;
+        let result = find_in_previous_dirs(
+            "dir",
+            test_directory.clone().to_str().unwrap(),
+            &mut current_dir,
+        )
+        .await;
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(),
