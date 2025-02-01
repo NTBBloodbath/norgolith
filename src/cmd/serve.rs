@@ -149,14 +149,6 @@ async fn is_content_change(event: &notify::Event) -> Result<bool> {
     // NOTE: we do not check for the norg filetype here because content directory
     // can also hold assets like images, and we want to also trigger a reload when
     // an asset file is created, modified or removed.
-    //
-    // We are also excluding these fucking temp (Neo)vim backup files because they trigger
-    // stupid bugs that I'm not willing to debug anymore.
-    //
-    // TODO: also ignore swap files, my mental health will thank me later.
-    let content_file = event_path.file_name().unwrap().to_str().unwrap();
-    let is_content = !content_file.ends_with('~');
-
     let is_content_change = matches!(
         event.kind,
         notify::EventKind::Create(_)
@@ -164,7 +156,7 @@ async fn is_content_change(event: &notify::Event) -> Result<bool> {
             | notify::EventKind::Modify(notify::event::ModifyKind::Data(_))
     );
 
-    Ok(is_content_dir && is_content && is_content_change)
+    Ok(is_content_dir && is_content_change)
 }
 
 async fn is_asset_change(event: &notify::Event) -> Result<bool> {
@@ -176,14 +168,6 @@ async fn is_asset_change(event: &notify::Event) -> Result<bool> {
     // NOTE: we do not check for any filetype here because assets directory
     // can hold assets like css, javascript, images, etc and we want to
     // trigger a reload when any asset file is created, modified or removed.
-    //
-    // We are also excluding these fucking temp (Neo)vim backup files because they trigger
-    // stupid bugs that I'm not willing to debug anymore.
-    //
-    // TODO: also ignore swap files, my mental health will thank me later.
-    let asset_file = event_path.file_name().unwrap().to_str().unwrap();
-    let is_asset = !asset_file.ends_with('~');
-
     let is_asset_change = matches!(
         event.kind,
         notify::EventKind::Create(_)
@@ -191,7 +175,7 @@ async fn is_asset_change(event: &notify::Event) -> Result<bool> {
             | notify::EventKind::Modify(notify::event::ModifyKind::Data(_))
     );
 
-    Ok(is_assets_dir && is_asset && is_asset_change)
+    Ok(is_assets_dir && is_asset_change)
 }
 
 async fn handle_asset(request_path: &str, assets_dir: &Path) -> Result<Response<Body>> {
@@ -444,34 +428,35 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
 
                         for event in events {
                             let file_path = event.paths.first().unwrap();
+                            let file_name = file_path.file_name().unwrap().to_str().unwrap();
 
                             if is_template_change(&event).await.unwrap_or(false) {
                                 println!(
-                                    "[server] Detected template change: {}",
-                                    file_path
-                                        .file_name()
-                                        .unwrap()
-                                        .to_str()
-                                        .unwrap()
+                                    "[server] Detected template change: {}", file_name
                                 );
                                 reload_templates_needed = true;
                             }
 
-                            if file_path.strip_prefix(&state_watcher.content_dir).is_ok() && is_content_change(&event).await.unwrap_or(false) {
-                                println!(
-                                    "[server] Detected content change: {}",
-                                    file_path.file_name().unwrap().to_str().unwrap()
-                                );
-                                rebuild_needed = true;
-                                rebuild_document_path = file_path.to_owned();
-                            }
 
-                            if file_path.strip_prefix(&state_watcher.assets_dir).is_ok() && is_asset_change(&event).await.unwrap_or(false) {
-                                println!(
-                                    "[server] Detected asset change: {}",
-                                    file_path.file_name().unwrap().to_str().unwrap()
-                                );
-                                reload_assets_needed = true;
+                            // We are excluding these fucking temp (Neo)vim backup files because they trigger
+                            // stupid bugs that I'm not willing to debug anymore.
+                            //
+                            // TODO: also ignore swap files, my mental health will thank me later.
+                            if !file_name.ends_with('~') {
+                                if file_path.strip_prefix(&state_watcher.content_dir).is_ok() && is_content_change(&event).await.unwrap_or(false) {
+                                    println!(
+                                        "[server] Detected content change: {}", file_name
+                                    );
+                                    rebuild_needed = true;
+                                    rebuild_document_path = file_path.to_owned();
+                                }
+
+                                if file_path.strip_prefix(&state_watcher.assets_dir).is_ok() && is_asset_change(&event).await.unwrap_or(false) {
+                                    println!(
+                                        "[server] Detected asset change: {}", file_name
+                                    );
+                                    reload_assets_needed = true;
+                                }
                             }
                         }
 
