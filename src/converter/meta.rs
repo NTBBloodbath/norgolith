@@ -1,7 +1,7 @@
+use eyre::{Error, Result};
 use rust_norg::metadata::{parse_metadata, NorgMeta};
 use std::str::FromStr;
 use toml::{self, value::Datetime};
-use eyre::{Error, Result};
 
 fn parse_str_to_toml_value(s: &str) -> Result<toml::Value, MetaToTomlError> {
     if let Ok(datetime) = Datetime::from_str(s) {
@@ -90,11 +90,9 @@ fn extract_meta(input: &str) -> String {
 /// Extracts and converts Norg metadata to TOML format
 pub fn convert(document: &str) -> Result<toml::Value, Error> {
     let extracted_meta = extract_meta(document);
-    let meta = parse_metadata(&extracted_meta)
-        .expect("Failed to parse metadata");
+    let meta = parse_metadata(&extracted_meta).expect("Failed to parse metadata");
 
-    let toml_value = norg_meta_to_toml(&meta)
-        .expect("Failed to convert metadata to TOML");
+    let toml_value = norg_meta_to_toml(&meta).expect("Failed to convert metadata to TOML");
 
     Ok(toml_value)
 }
