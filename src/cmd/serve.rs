@@ -28,6 +28,7 @@ struct ServerState {
     tera: Arc<RwLock<Tera>>,
     config: config::SiteConfig,
     content_dir: PathBuf,
+    assets_dir: PathBuf,
 }
 
 async fn get_content(name: &str) -> Result<String> {
@@ -102,17 +103,18 @@ async fn convert_document(file_path: &Path, content_dir: &Path) -> Result<()> {
         }
 
         if should_convert || should_write_meta {
-            println!("[server] Converting norg file: {}", file_path.display());
-
             // Create parent directories if needed
             if let Some(parent) = html_file_path.parent() {
                 tokio::fs::create_dir_all(parent).await?;
             }
 
+            // XXX: maybe these println makes stuff too verbose? Modifying a norg file already triggers two stdout messages
             if should_convert {
+                // println!("[server] Converting norg file: {}", relative_path.display());
                 tokio::fs::write(&html_file_path, norg_html).await?;
             }
             if should_write_meta {
+                // println!("[server] Converting norg meta: {}", relative_path.display());
                 tokio::fs::write(&meta_file_path, meta_toml).await?;
             }
         }
@@ -121,12 +123,12 @@ async fn convert_document(file_path: &Path, content_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn is_template_change(event: &notify::Event) -> Result<bool> {
+async fn is_template_change(event: &notify::Event) -> Result<bool> {
+    let mut parent_dir = event.paths.first().unwrap().parent().as_mut().unwrap().to_path_buf();
+    let is_template_dir = fs::find_in_previous_dirs("dir", "templates", &mut parent_dir).await.is_ok();
+
     // Filter events to only trigger reloading on meaningful changes
-    let is_template = event.paths.iter().any(|path| {
-        path.parent().unwrap().ends_with("templates")
-            && path.extension().map(|ext| ext == "html").unwrap_or(false)
-    });
+    let is_template = event.paths.first().unwrap().extension().map(|ext| ext == "html").unwrap_or(false);
 
     let is_template_change = matches!(
         event.kind,
@@ -135,24 +137,18 @@ fn is_template_change(event: &notify::Event) -> Result<bool> {
             | notify::EventKind::Modify(notify::event::ModifyKind::Data(_))
     );
 
-    Ok(is_template && is_template_change)
+    Ok(is_template_dir && is_template && is_template_change)
 }
 
-fn is_content_change(event: &notify::Event) -> Result<bool> {
-    // Filter events to only trigger reloading on meaningful changes
-    let is_content_file = event.paths.iter().any(|path| {
-        // NOTE: we do not check for the norg filetype here because content directory
-        // can also hold assets like images, and we want to also trigger a reload when
-        // an asset file is created, modified or removed.
-        //
-        // We are also excluding these fucking temp (Neo)vim backup files because they trigger
-        // stupid bugs that I'm not willing to debug anymore.
-        //
-        // TODO: also ignore swap files, my mental health will thank me later.
-        path.parent().unwrap().ends_with("content") &&
-            !path.file_name().unwrap().to_str().unwrap().ends_with('~')
-    });
+async fn is_content_change(event: &notify::Event) -> Result<bool> {
+    let event_path = event.paths.first().as_mut().unwrap().to_path_buf();
+    let mut parent_dir = event_path.parent().as_mut().unwrap().to_path_buf();
+    let is_content_dir = fs::find_in_previous_dirs("dir", "content", &mut parent_dir).await.is_ok();
 
+    // Filter events to only trigger reloading on meaningful changes
+    // NOTE: we do not check for the norg filetype here because content directory
+    // can also hold assets like images, and we want to also trigger a reload when
+    // an asset file is created, modified or removed.
     let is_content_change = matches!(
         event.kind,
         notify::EventKind::Create(_)
@@ -160,11 +156,62 @@ fn is_content_change(event: &notify::Event) -> Result<bool> {
             | notify::EventKind::Modify(notify::event::ModifyKind::Data(_))
     );
 
-    Ok(is_content_file && is_content_change)
+    Ok(is_content_dir && is_content_change)
+}
+
+async fn is_asset_change(event: &notify::Event) -> Result<bool> {
+    let event_path = event.paths.first().unwrap();
+    let mut parent_dir = event_path.parent().as_mut().unwrap().to_path_buf();
+    let is_assets_dir = fs::find_in_previous_dirs("dir", "assets", &mut parent_dir).await.is_ok();
+
+    // Filter events to only trigger reloading on meaningful changes
+    // NOTE: we do not check for any filetype here because assets directory
+    // can hold assets like css, javascript, images, etc and we want to
+    // trigger a reload when any asset file is created, modified or removed.
+    let is_asset_change = matches!(
+        event.kind,
+        notify::EventKind::Create(_)
+            | notify::EventKind::Remove(_)
+            | notify::EventKind::Modify(notify::event::ModifyKind::Data(_))
+    );
+
+    Ok(is_assets_dir && is_asset_change)
+}
+
+async fn handle_asset(request_path: &str, assets_dir: &Path) -> Result<Response<Body>> {
+    let asset_path = request_path.trim_start_matches("/assets/");
+    let full_path = assets_dir.join(asset_path);
+
+    match tokio::fs::read(&full_path).await {
+        Ok(content) => {
+            let mime_type = mime_guess::from_path(asset_path).first_or_octet_stream();
+
+            Response::builder()
+                .header(CONTENT_TYPE, mime_type.as_ref())
+                .body(Body::from(content))
+                .map_err(Into::into)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("[server] Asset not found: {}", asset_path);
+            Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("404 Asset Not Found"))?)
+        }
+        Err(e) => {
+            eprintln!("[server] Error reading asset: {}", e);
+            Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from("500 Internal Server Error"))?)
+        }
+    }
 }
 
 async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<Response<Body>> {
     let request_path = req.uri().path().to_owned();
+
+    if request_path.starts_with("/assets/") {
+        return handle_asset(&request_path, &state.assets_dir).await;
+    }
 
     if request_path == "/_norgolith_reload" {
         let mut reload_rx = state.reload_tx.subscribe();
@@ -246,19 +293,10 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                 let mut response = Response::new(Body::from(path_contents));
 
                 // Set content type based on file extension
-                // XXX: replace with the mimetype crate that does the job for us
-                let mime_type = match request_path.split('.').last() {
-                    Some("css") => "text/css",
-                    Some("js") => "application/javascript",
-                    Some("png") => "image/png",
-                    Some("jpg") | Some("jpeg") => "image/jpeg",
-                    Some("svg") => "image/svg+xml",
-                    _ => "text/plain",
-                };
-
+                let mime_type = mime_guess::from_path(request_path).first_or_octet_stream();
                 response.headers_mut().insert(
                     CONTENT_TYPE,
-                    HeaderValue::from_str(mime_type)
+                    HeaderValue::from_str(mime_type.as_ref())
                         .unwrap_or_else(|_| HeaderValue::from_static("text/plain")),
                 );
                 Ok(response)
@@ -323,7 +361,8 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
 
 pub async fn serve(port: u16, open: bool) -> Result<()> {
     // Try to find a 'norgolith.toml' file in the current working directory and its parents
-    let found_site_root = fs::find_in_previous_dirs("file", "norgolith.toml").await?;
+    let mut current_dir = std::env::current_dir()?;
+    let found_site_root = fs::find_in_previous_dirs("file", "norgolith.toml", &mut current_dir).await?;
 
     if let Some(mut root) = found_site_root {
         // Load site configuration, root already contains the norgolith.toml path
@@ -337,6 +376,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         // Tera wants a `dir: &str` parameter for some reason instead of asking for a `&Path` or `&PathBuf`...
         let templates_dir = root_dir.clone() + "/templates";
         let content_dir = Path::new(&root_dir.clone()).join("content");
+        let assets_dir = Path::new(&root_dir.clone()).join("assets");
 
         // Async runtime handle
         let rt = Handle::current();
@@ -353,7 +393,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         let (reload_tx, _) = watch::channel(false);
 
         // Initialize server state
-        let state = Arc::new(ServerState { reload_tx, tera, config: site_config, content_dir: content_dir.clone() });
+        let state = Arc::new(ServerState { reload_tx, tera, config: site_config, content_dir: content_dir.clone(), assets_dir: assets_dir.clone() });
 
         // Create debouncer with 200ms delay, this should be enough to handle both the
         // (Neo)vim swap files and also the VSCode atomic saves
@@ -375,43 +415,58 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         // Set up watchers
         debouncer.watch(Path::new(&templates_dir.clone()), RecursiveMode::Recursive)?;
         debouncer.watch(Path::new(&content_dir.clone()), RecursiveMode::Recursive)?;
+        debouncer.watch(Path::new(&assets_dir.clone()), RecursiveMode::Recursive)?;
 
         tokio::spawn(async move {
             while let Some(result) = debouncer_rx.recv().await {
                 match result {
                     DebounceEventResult::Ok(events) => {
-                        let mut reload_needed = false;
+                        let mut reload_templates_needed = false;
+                        let mut reload_assets_needed = false;
                         let mut rebuild_needed = false;
                         let mut rebuild_document_path = PathBuf::new();
 
                         for event in events {
-                            if is_template_change(&event).unwrap_or(false) {
+                            let file_path = event.paths.first().unwrap();
+                            let file_name = file_path.file_name().unwrap().to_str().unwrap();
+
+                            if is_template_change(&event).await.unwrap_or(false) {
                                 println!(
-                                    "[server] Detected template change: {}",
-                                    event
-                                        .paths
-                                        .first()
-                                        .unwrap()
-                                        .file_name()
-                                        .unwrap()
-                                        .to_str()
-                                        .unwrap()
+                                    "[server] Detected template change: {}", file_name
                                 );
-                                reload_needed = true;
+                                reload_templates_needed = true;
                             }
 
-                            if is_content_change(&event).unwrap_or(false) {
-                                let file_path = event.paths.first().unwrap();
-                                println!(
-                                    "[server] Detected content change: {}",
-                                    file_path.file_name().unwrap().to_str().unwrap()
-                                );
-                                rebuild_needed = true;
-                                rebuild_document_path = file_path.to_owned();
+
+                            // We are excluding these fucking temp (Neo)vim backup files because they trigger
+                            // stupid bugs that I'm not willing to debug anymore.
+                            //
+                            // TODO: also ignore swap files, my mental health will thank me later.
+                            if !file_name.ends_with('~') {
+                                if file_path.strip_prefix(&state_watcher.content_dir).is_ok() && is_content_change(&event).await.unwrap_or(false) {
+                                    println!(
+                                        "[server] Detected content change: {}", file_name
+                                    );
+                                    rebuild_needed = true;
+                                    rebuild_document_path = file_path.to_owned();
+                                }
+
+                                if file_path.strip_prefix(&state_watcher.assets_dir).is_ok() && is_asset_change(&event).await.unwrap_or(false) {
+                                    println!(
+                                        "[server] Detected asset change: {}", file_name
+                                    );
+                                    reload_assets_needed = true;
+                                }
                             }
                         }
 
-                        if reload_needed {
+                        if reload_assets_needed {
+                            let _ = state_watcher.reload_tx.send(true);
+                            // Reset
+                            let _ = state_watcher.reload_tx.send(false);
+                        }
+
+                        if reload_templates_needed {
                             let mut tera = state_watcher.tera.write().await;
                             match tera.full_reload() {
                                 Ok(_) => {
@@ -429,7 +484,9 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                             tokio::task::spawn(async move {
                                 match convert_document(&rebuild_document_path, &state.content_dir).await {
                                     Ok(_) => {
-                                        println!("[server] Content successfully regenerated {}", &rebuild_document_path.display());
+
+                                        let stripped_path = rebuild_document_path.strip_prefix(&state.content_dir).unwrap();
+                                        println!("[server] Content successfully regenerated: {}", stripped_path.display());
                                         let _ = state.reload_tx.send(true);
                                         // Reset
                                         let _ = state.reload_tx.send(false);

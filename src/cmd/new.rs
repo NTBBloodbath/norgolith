@@ -92,7 +92,8 @@ pub async fn new(kind: &str, name: &str, open: bool) -> Result<()> {
     }
 
     // Find Norgolith site root directory
-    let found_site_root = fs::find_in_previous_dirs("file", "norgolith.toml").await?;
+    let mut current_dir = std::env::current_dir()?;
+    let found_site_root = fs::find_in_previous_dirs("file", "norgolith.toml", &mut current_dir).await?;
 
     let site_root = match found_site_root {
         Some(mut root) => {

@@ -1,5 +1,3 @@
-// converter/meta.rs
-
 use rust_norg::metadata::{parse_metadata, NorgMeta};
 use std::str::FromStr;
 use toml::{self, value::Datetime};

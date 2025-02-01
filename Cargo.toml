@@ -32,6 +32,7 @@ html-escape = "0.2.13"
 notify = "8.0.0"
 notify-debouncer-full = "0.5.0"
 serde = { version = "1.0.217", features = ["derive"] }
+mime_guess = "2.0.5"
 
 [dev-dependencies]
 mockall = "0.13.1"
