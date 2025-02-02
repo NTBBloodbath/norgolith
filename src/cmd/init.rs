@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
+
 use comfy_table::modifiers::UTF8_SOLID_INNER_BORDERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, ContentArrangement, Table};
@@ -26,46 +29,39 @@ async fn create_config(root: &str) -> Result<()> {
 
 /// Create a basic hello world norg document
 async fn create_index_norg(root: &str) -> Result<()> {
-    // TODO: move this to src/resources/content and load it using `include_str!`
-    //
-    // let norg_index = format_args!(include_str!(".../index.norg"), foo="test");
     let creation_date =
         chrono::offset::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
-    let norg_metadata = formatdoc!(
-        r#"
-        @document.meta
-        title: hello norgolith
-        description: This is my first post made with Norgolith :D
-        authors: [
-          {}
-        ]
-        categories: []
-        created: {}
-        updated: {}
-        layout: base
-        draft: true
-        version: 1.1.1
-        @end
-
-        * Hello world
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
-          labore et dolore magna aliqua. Lobortis scelerisque fermentum dui faucibus in ornare."#,
-        whoami::username(),
-        creation_date,
-        creation_date
+    let norg_index = format!(
+        "{}",
+        format_args!(
+            include_str!("../resources/content/index.norg"),
+            username = whoami::username(),
+            created_at = creation_date,
+            updated_at = creation_date
+        )
     );
     // TBD: add Windows separator support
-    fs::write(root.to_owned() + "/content/index.norg", norg_metadata).await?;
+    fs::write(root.to_owned() + "/content/index.norg", norg_index).await?;
 
     Ok(())
 }
 
 /// Create basic HTML templates
 async fn create_html_templates(root: &str) -> Result<()> {
-    // TODO: add 'head.html', 'footer.html'
-    let base_template = include_str!("../resources/templates/base.html");
-    // TBD: add Windows separator support
-    fs::write(root.to_owned() + "/templates/base.html", base_template).await?;
+    // TODO: add 'head.html', 'footer.html' for more granular content?
+    let templates = HashMap::from([
+        ("base", include_str!("../resources/templates/base.html")),
+        (
+            "default",
+            include_str!("../resources/templates/default.html"),
+        ),
+    ]);
+
+    let templates_dir = PathBuf::from(root).join("templates");
+    for (&name, &contents) in templates.iter() {
+        let template_path = templates_dir.join(name.to_owned() + ".html");
+        fs::write(template_path, contents).await?;
+    }
 
     Ok(())
 }

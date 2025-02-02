@@ -315,10 +315,10 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                     }
                 };
 
-                // Get the layout (template) to render the content, fallback to base if the metadata field was not found.
+                // Get the layout (template) to render the content, fallback to default if the metadata field was not found.
                 let layout = metadata
                     .get("layout")
-                    .unwrap_or(&toml::Value::from("base"))
+                    .unwrap_or(&toml::Value::from("default"))
                     .as_str()
                     .unwrap()
                     .to_owned();

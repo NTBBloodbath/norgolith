@@ -19,13 +19,11 @@
     <script>hljs.highlightAll();</script>
     {# User-defined styling #}
     <link rel="stylesheet" href="/assets/style.css" />
-    <title>{% block title %}{{ metadata.title | title }}{% endblock title %} - {{ config.title | title }}</title>
+    <title>{% block title %}{% endblock title %} - {{ config.title | title }}</title>
     {% endblock head %}
 </head>
 <body>
-    <div id="content">
-        {{ content | safe }}
-    </div>
+    <div id="content">{% block content %}{% endblock content %}</div>
     <div id="footer">
         {% block footer %}
         &copy; Copyright {{ now(format="%Y") }} by {{ config.author }}.

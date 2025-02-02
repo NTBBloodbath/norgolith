@@ -1,0 +1,17 @@
+@document.meta
+title: Welcome to Norgolith
+description: This is a static site made using norgolith.
+authors: [
+  {username}
+]
+categories: []
+created: {created_at}
+updated: {updated_at}
+layout: default
+draft: true
+version: 1.1.1
+@end
+
+* Welcome to Norgolith
+  Lorem ipsum dolor sitamet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
+  labore et dolore magna aliqua. Lobortis scelerisque fermentum dui faucibus in ornare.
