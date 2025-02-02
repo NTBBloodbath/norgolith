@@ -31,16 +31,32 @@ struct ServerState {
     assets_dir: PathBuf,
 }
 
-async fn get_content(name: &str) -> Result<String> {
-    let contents: String = if name == "/" {
-        // '/' is always the index, fast return it
-        tokio::fs::read_to_string(".build/index.html").await?
+async fn get_content(name: &str) -> Result<(String, PathBuf)> {
+    let build_path = Path::new(".build");
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    // Normalize path by trimming slashes
+    let clean_name = name.trim_matches('/');
+
+    if clean_name.is_empty() {
+        // Root path
+        candidates.push(build_path.join("index.html"));
     } else {
-        let content_file = format!("{}{}{}", ".build/", &name[1..], ".html");
-        tokio::fs::read_to_string(content_file).await?
-    };
-    Ok(contents)
-}
+        // Generate potential file paths
+        candidates.push(build_path.join(format!("{}.html", clean_name)));  // /docs -> docs.html
+        candidates.push(build_path.join(clean_name).join("index.html"));   // /docs -> docs/index.html
+    }
+
+    // Try candidates in order
+    for path in &candidates {
+        if tokio::fs::try_exists(path).await? {
+            return Ok((
+                    tokio::fs::read_to_string(path).await?,
+                    path.to_path_buf()));
+        }
+    }
+
+    Err(eyre::eyre!("Content not found for path: {}", name))}
 
 /// Recursively converts all the norg files in the content directory
 async fn convert_content(content_dir: &Path) -> Result<()> {
@@ -233,25 +249,30 @@ async fn handle_asset(request_path: &str, assets_dir: &Path) -> Result<Response<
 async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<Response<Body>> {
     let request_path = req.uri().path().to_owned();
 
+    // Ignore the hidden reload enpoint when printing out the logs
+    if request_path != "/_norgolith_reload" {
+        // XXX: add headers here as well?
+        let (req_parts, _) = req.into_parts();
+        println!(
+            "[server] {:#?} - {} '{}'",
+            req_parts.version, req_parts.method, req_parts.uri
+        );
+    }
+
+    // Handle assets first
     if request_path.starts_with("/assets/") {
         return handle_asset(&request_path, &state.assets_dir).await;
     }
 
+    // Handle reload endpoint
     if request_path == "/_norgolith_reload" {
         let mut reload_rx = state.reload_tx.subscribe();
         reload_rx.changed().await?;
         return Ok(Response::new(Body::from("reload")));
     }
 
-    let (req_parts, _) = req.into_parts();
-    // XXX: add headers here as well?
-    println!(
-        "[server] {:#?} - {} '{}'",
-        req_parts.version, req_parts.method, req_parts.uri
-    );
-
     // Helper function to handle content retrieval errors
-    async fn get_content_or_error(request_path: &str) -> Result<String> {
+    async fn get_content_or_error(request_path: &str) -> Result<(String, PathBuf)> {
         get_content(request_path).await.map_err(|e| {
             if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
                 if io_err.kind() == std::io::ErrorKind::NotFound {
@@ -265,16 +286,19 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
         })
     }
 
-    let response = if !request_path.contains('.') {
+    // Normalize path for content handling
+    let normalized_path = if request_path.ends_with('/') {
+        request_path.trim_end_matches('/').to_owned()
+    } else {
+        request_path.clone()
+    };
+
+    let response = if !normalized_path.contains('.') {
         // HTML content handling
-        match get_content_or_error(&request_path).await {
-            Ok(path_contents) => {
-                // Get metadata path
-                let meta_path = if request_path == "/" {
-                    PathBuf::from(".build/index.meta.toml")
-                } else {
-                    PathBuf::from(format!(".build/{}.meta.toml", &request_path[1..]))
-                };
+        match get_content_or_error(&normalized_path).await {
+            Ok((path_contents, html_path)) => {
+                // Get metadata path, derive it from actual HTML file path
+                let meta_path = html_path.with_extension("meta.toml");
 
                 // Handle metadata loading with proper error fallback
                 let metadata: toml::Value = match tokio::fs::read_to_string(meta_path.clone()).await
@@ -316,18 +340,18 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                         );
                         response
                     })
-                    .map_err(|e| eyre!("Template rendering error for '{}': {}", request_path, e))
+                    .map_err(|e| eyre!("Template rendering error for '{}': {}", normalized_path, e))
             }
             Err(e) => Err(e),
         }
     } else {
-        match get_content_or_error(&request_path).await {
-            Ok(path_contents) => {
+        match get_content_or_error(&normalized_path).await {
+            Ok((path_contents, asset_path)) => {
                 // Static assets handling
                 let mut response = Response::new(Body::from(path_contents));
 
                 // Set content type based on file extension
-                let mime_type = mime_guess::from_path(request_path).first_or_octet_stream();
+                let mime_type = mime_guess::from_path(asset_path).first_or_octet_stream();
                 response.headers_mut().insert(
                     CONTENT_TYPE,
                     HeaderValue::from_str(mime_type.as_ref())
