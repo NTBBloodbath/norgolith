@@ -26,6 +26,9 @@ async fn create_config(root: &str) -> Result<()> {
 
 /// Create a basic hello world norg document
 async fn create_index_norg(root: &str) -> Result<()> {
+    // TODO: move this to src/resources/content and load it using `include_str!`
+    //
+    // let norg_index = format_args!(include_str!(".../index.norg"), foo="test");
     let creation_date =
         chrono::offset::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
     let norg_metadata = formatdoc!(
@@ -60,9 +63,16 @@ async fn create_index_norg(root: &str) -> Result<()> {
 /// Create basic HTML templates
 async fn create_html_templates(root: &str) -> Result<()> {
     // TODO: add 'head.html', 'footer.html'
-    let base_template = include_str!("../templates/base.html");
+    let base_template = include_str!("../resources/templates/base.html");
     // TBD: add Windows separator support
     fs::write(root.to_owned() + "/templates/base.html", base_template).await?;
+
+    Ok(())
+}
+
+async fn create_css(root: &str) -> Result<()> {
+    let base_style = include_str!("../resources/assets/style.css");
+    fs::write(root.to_owned() + "/assets/style.css", base_style).await?;
 
     Ok(())
 }
@@ -93,10 +103,11 @@ pub async fn init(name: &str) -> Result<()> {
         create_directories(name).await?;
 
         // Create initial files
-        // TBD: Basic HTML templates and start work with Tera
+        // TBD: Basic HTML templates
         create_config(name).await?;
         create_index_norg(name).await?;
         create_html_templates(name).await?;
+        create_css(name).await?;
 
         // Get the canonical (absolute) path to the new site root
         let path = fs::canonicalize(name).await?;
