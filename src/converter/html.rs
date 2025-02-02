@@ -1,10 +1,20 @@
 // TODO(ntbbloodbath): move this converter to a separate rust library called norg-converter
+//
+// NOTE: the current carryover tags management is the worst boilerplate code I've ever written.
+// Refactor later to abstract it even further and make the code cleaner.
 
 use html_escape::encode_text_minimal_to_string;
 use rust_norg::{
-    parse_tree, NestableDetachedModifier, NorgAST, NorgASTFlat, ParagraphSegment,
+    parse_tree, CarryoverTag, NestableDetachedModifier, NorgAST, NorgASTFlat, ParagraphSegment,
     ParagraphSegmentToken,
 };
+
+/// CarryOver
+#[derive(Clone, Debug)]
+struct CarryOverTag {
+    name: Vec<String>,
+    parameters: Vec<String>,
+}
 
 /// Converts paragraph segment tokens to a String
 fn paragraph_tokens_to_string(tokens: &[ParagraphSegmentToken]) -> String {
@@ -61,7 +71,7 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
                 '%' => {}           // ignore comments
                 _ => {
                     println!(
-                        "ParagraphSegment::AttachedModifier: {} {:?}",
+                        "[converter] ParagraphSegment::AttachedModifier: {} {:#?}",
                         modifier_type, content
                     );
                     todo!()
@@ -84,7 +94,7 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
         // ParagraphSegment::Anchor { content, description } => todo!(),
         // ParagraphSegment::InlineLinkTarget(_) => todo!(),
         _ => {
-            println!("ParagraphSegment: {:?}", node);
+            println!("[converter] ParagraphSegment: {:#?}", node);
             todo!()
         }
     });
@@ -114,19 +124,59 @@ fn get_list_tag(mod_type: NestableDetachedModifier, is_opening: bool) -> String 
     }
 }
 
+/// Converts a carryover weak tag into a String vector containing an html attribute
+fn weak_carryover_attribute(weak_carryover: CarryOverTag) -> String {
+    let mut attr = String::new();
+    let namespace = &weak_carryover.name[0];
+    // XXX: any non-html namespaced weak carryover tag is being ignored right now. Should we keep
+    // this behaviour?
+    if namespace == "html" {
+        if weak_carryover.name.len() < 2 {
+            eprintln!("[converter] Carryover tag with namespace 'html' is expected to have an attribute name (e.g. 'html.class')");
+        } else if weak_carryover.name.len() >= 3 {
+            eprintln!(
+                "[converter] Carryover tag with namespace 'html' is expected to have only one attribute name (e.g. 'html.class'), '{}' provided",
+                weak_carryover.name.join(".")
+            )
+        } else {
+            let attr_name = weak_carryover.name[1].as_str();
+            let values_sep = if attr_name == "style" { ";" } else { " " };
+
+            attr.push_str(format!(
+                "{}=\"{}\"",
+                &weak_carryover.name[1],
+                weak_carryover.parameters.join(values_sep)
+            ).as_str());
+        }
+    }
+    attr
+}
+
 trait NorgToHtml {
-    fn to_html(&self) -> String;
+    fn to_html(&self, strong_carry: Vec<CarryOverTag>, weak_carry: Vec<CarryOverTag>) -> String;
 }
 
 impl NorgToHtml for NorgAST {
-    // TODO: finish VerbatimRangedTag support, add support for carry over tags, footnotes (they are tricky in HTML), anything else that I'm missing
-    fn to_html(&self) -> String {
+    // TODO: finish VerbatimRangedTag support, add support for strong carryover tags, footnotes (they are tricky in HTML), anything else that I'm missing
+    fn to_html(
+        &self,
+        strong_carry: Vec<CarryOverTag>,
+        mut weak_carry: Vec<CarryOverTag>,
+    ) -> String {
         match self {
             NorgAST::Paragraph(s) => {
-                let mut paragraph: String = "<p>".to_string();
-                paragraph.push_str(&paragraph_to_string(s));
-                paragraph.push_str("</p>");
-                paragraph
+                let mut paragraph = Vec::<String>::new();
+                paragraph.push("<p".to_string());
+                if !weak_carry.is_empty() {
+                    for weak_carryover in weak_carry.clone() {
+                        paragraph.push(weak_carryover_attribute(weak_carryover));
+                        // Remove the carryover tag after using it because its lifetime
+                        // ended after invocating it
+                        weak_carry.remove(0);
+                    }
+                }
+                paragraph.push(format!(">{}</p>", paragraph_to_string(s)));
+                paragraph.join(" ")
             }
             NorgAST::Heading {
                 level,
@@ -134,21 +184,38 @@ impl NorgToHtml for NorgAST {
                 content,
                 ..
             } => {
-                let mut section = String::new();
+                let mut section = Vec::<String>::new();
 
                 match level {
-                    1..=6 => section.push_str(
-                        format!("<h{0}>{1}</h{0}>", level, paragraph_to_string(title)).as_str(),
-                    ),
+                    1..=6 => {
+                        section.push(format!("<h{level}"));
+                        if !weak_carry.is_empty() {
+                            for weak_carryover in weak_carry.clone() {
+                                section.push(weak_carryover_attribute(weak_carryover));
+                                // Remove the carryover tag after using it because its lifetime
+                                // ended after invocating it
+                                weak_carry.remove(0);
+                            }
+                        }
+                        section.push(format!(">{}</h{}>", paragraph_to_string(title), level));
+                    }
                     // XXX: fallback to h6 if the header level is higher than 6
-                    _ => section
-                        .push_str(format!("<h6>{}</h6>", paragraph_to_string(title)).as_str()),
+                    _ => {
+                        section.push("<h6".to_string());
+                        if !weak_carry.is_empty() {
+                            for weak_carryover in weak_carry.clone() {
+                                section.push(weak_carryover_attribute(weak_carryover));
+                                // Remove the carryover tag after using it because its lifetime
+                                // ended after invocating it
+                                weak_carry.remove(0);
+                            }
+                        }
+                        section.push(format!(">{}</h6>", paragraph_to_string(title)));
+                    }
                 }
-                // HACK: currently, rust-norg trims all trailing whitespaces and every single newline from the norg documents
-                section.push('\n');
-                section.push_str(&to_html(content));
+                section.push(to_html(content, &strong_carry, &weak_carry));
 
-                section
+                section.join(" ")
             }
             NorgAST::NestableDetachedModifier {
                 modifier_type,
@@ -167,30 +234,49 @@ impl NorgToHtml for NorgAST {
                 match modifier_type {
                     NestableDetachedModifier::UnorderedList
                     | NestableDetachedModifier::OrderedList => {
-                        let mut list = String::new();
+                        println!("{:#?}", &self);
+                        let mut list = Vec::<String>::new();
                         if *level == 1 {
-                            list.push_str(&get_list_tag(modifier_type.clone(), true));
+                            list.push(get_list_tag(modifier_type.clone(), true));
                         }
-                        list.push_str(format!("<li>{}</li>", mod_text).as_str());
+                        list.push("<li".to_string());
+                        if !weak_carry.is_empty() {
+                            for weak_carryover in weak_carry.clone() {
+                                list.push(weak_carryover_attribute(weak_carryover));
+                                // Remove the carryover tag after using it because its lifetime
+                                // ended after invocating it
+                                weak_carry.remove(0);
+                            }
+                        }
+                        list.push(format!(">{}", mod_text));
+                        list.push("</li>".to_string());
                         if !content.is_empty() {
-                            list.push_str(&get_list_tag(modifier_type.clone(), true));
-                            list.push_str(&to_html(content));
-                            list.push_str(&get_list_tag(modifier_type.clone(), false));
+                            list.push(get_list_tag(modifier_type.clone(), true));
+                            list.push(to_html(content, &strong_carry, &weak_carry));
+                            list.push(get_list_tag(modifier_type.clone(), false));
                         }
                         if *level == 1 {
-                            list.push_str(&get_list_tag(modifier_type.clone(), false));
+                            list.push(get_list_tag(modifier_type.clone(), false));
                         }
-                        list
+                        list.join(" ")
                     }
                     NestableDetachedModifier::Quote => {
-                        let mut quote = String::new();
-                        quote.push_str("<blockquote>");
-                        quote.push_str(mod_text.as_str());
-                        if !content.is_empty() {
-                            quote.push_str(&to_html(content));
+                        let mut quote = Vec::<String>::new();
+                        quote.push("<blockquote".to_string());
+                        if !weak_carry.is_empty() {
+                            for weak_carryover in weak_carry.clone() {
+                                quote.push(weak_carryover_attribute(weak_carryover));
+                                // Remove the carryover tag after using it because its lifetime
+                                // ended after invocating it
+                                weak_carry.remove(0);
+                            }
                         }
-                        quote.push_str("</blockquote>");
-                        quote
+                        quote.push(mod_text);
+                        if !content.is_empty() {
+                            quote.push(to_html(content, &strong_carry, &weak_carry));
+                        }
+                        quote.push("</blockquote>".to_string());
+                        quote.join(" ")
                     }
                 }
             }
@@ -201,9 +287,11 @@ impl NorgToHtml for NorgAST {
                 content,
             } => {
                 let mut verbatim_tag = String::new();
-                // HACK: why is name a vector?
                 match name[0].as_str() {
                     "code" => {
+                        // TODO: add carryover tags support, this one is trigger for the class
+                        // attribute because we are already setting a default value for it
+                        //
                         // NOTE: the class `language-foo` is being added by default so the converter can work out-of-the-box
                         // with libraries like highlight.js or prismjs
                         verbatim_tag.push_str(
@@ -212,40 +300,94 @@ impl NorgToHtml for NorgAST {
                                 parameters[0], content
                             )
                             .as_str(),
-                        )
+                        );
                     }
-                    // TODO: support other verbatim ranged tags like '@image', '@math'
+                    // NOTE: this only works for base64 encoded images, regular images
+                    // use the .image infirm tag.
+                    "image" => {
+                        let mut image_tag = Vec::<String>::new();
+                        image_tag.push(format!("<img src=\"{}\"", content));
+                        if !weak_carry.is_empty() {
+                            for weak_carryover in weak_carry.clone() {
+                                image_tag.push(weak_carryover_attribute(weak_carryover));
+                                // Remove the carryover tag after using it because its lifetime
+                                // ended after invocating it
+                                weak_carry.remove(0);
+                            }
+                        }
+                        image_tag.push("/>".to_string());
+                        verbatim_tag = image_tag.join(" ");
+                    }
+                    // TODO: support other verbatim ranged tags like '@math'
                     _ => {
                         if name[0] != "document" {
-                            println!("VerbatimRangedTag: {:?}", self);
+                            println!("[converter] VerbatimRangedTag: {:#?}", self);
                             todo!()
                         }
                     }
                 }
                 verbatim_tag
             }
-            NorgAST::CarryoverTag { .. } => {
-                // FIXME: add Carryover tags support, we are currently ignoring them
-                println!("CarryoverTag: {:?}", self);
-                "".to_string()
+            // CarryoverTag { tag_type: Attribute, name: ["style"], parameters: ["width:120px;height:120px;"], next_object: VerbatimRangedTag { ... }
+            NorgAST::CarryoverTag {
+                tag_type,
+                name,
+                parameters,
+                next_object,
+            } => {
+                match tag_type {
+                    CarryoverTag::Attribute => {
+                        let tag = CarryOverTag {
+                            name: name.clone(),
+                            parameters: parameters.clone(),
+                        };
+                        weak_carry.push(tag);
+                        to_html(&[*next_object.clone()], &strong_carry, &weak_carry)
+                    }
+                    CarryoverTag::Macro => {
+                        eprintln!("[converter] Carryover tag macros are unsupported right now");
+                        todo!()
+                    }
+                }
             }
-            NorgAST::InfirmTag { .. } => {
-                // FIXME: add Infirm tags support, we are currently ignoring them
-                println!("InfirmTag: {:?}", self);
-                "".to_string()
+            // InfirmTag: InfirmTag { name: ["image"], parameters: ["/assets/norgolith.svg", "Norgolith", "logo"] }
+            NorgAST::InfirmTag { name, parameters } => {
+                match name[0].as_str() {
+                    "image" => {
+                        let mut image_tag = Vec::<String>::new();
+
+                        image_tag.push(format!("<img src=\"{}\"", parameters[0]));
+                        if !weak_carry.is_empty() {
+                            for weak_carryover in weak_carry.clone() {
+                                image_tag.push(weak_carryover_attribute(weak_carryover));
+                                // Remove the carryover tag after using it because its lifetime
+                                // ended after invocating it
+                                weak_carry.remove(0);
+                            }
+                        }
+
+                        image_tag.push("/>".to_string());
+                        image_tag.join(" ")
+                    }
+                    _ => {
+                        // FIXME: add Infirm tags support, we are currently ignoring them
+                        println!("[converter] InfirmTag: {:#?}", self);
+                        todo!()
+                    }
+                }
             }
             _ => {
-                println!("{:?}", self);
+                println!("[converter] {:#?}", self);
                 todo!() // Fail on stuff that we cannot parse yet
             }
         }
     }
 }
 
-fn to_html(ast: &[NorgAST]) -> String {
+fn to_html(ast: &[NorgAST], strong_carry: &[CarryOverTag], weak_carry: &[CarryOverTag]) -> String {
     let mut res = String::new();
     for node in ast {
-        res.push_str(&node.to_html());
+        res.push_str(&node.to_html(strong_carry.to_vec(), weak_carry.to_vec()));
     }
 
     res
@@ -253,5 +395,6 @@ fn to_html(ast: &[NorgAST]) -> String {
 
 pub fn convert(document: String) -> String {
     let ast = parse_tree(&document).unwrap();
-    to_html(&ast)
+    // We do not have any carryover tag when starting to convert the document
+    to_html(&ast, &[], &[])
 }
