@@ -8,8 +8,7 @@
 
 use html_escape::encode_text_minimal_to_string;
 use rust_norg::{
-    parse_tree, CarryoverTag, NestableDetachedModifier, NorgAST, NorgASTFlat, ParagraphSegment,
-    ParagraphSegmentToken,
+    parse_tree, CarryoverTag, LinkTarget, NestableDetachedModifier, NorgAST, NorgASTFlat, ParagraphSegment, ParagraphSegmentToken
 };
 
 /// CarryOver
@@ -39,9 +38,8 @@ fn paragraph_tokens_to_string(tokens: &[ParagraphSegmentToken]) -> String {
 }
 
 /// Converts a ParagraphSegment into a String
-fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
+fn paragraph_to_string(segment: &[ParagraphSegment], _strong_carry: &Vec<CarryOverTag>, weak_carry: &mut Vec<CarryOverTag>) -> String {
     let mut paragraph = String::new();
-    // TODO: support carryover tags here
     segment.iter().for_each(|node| match node {
         ParagraphSegment::Token(t) => match t {
             ParagraphSegmentToken::Text(s) => paragraph.push_str(s),
@@ -57,7 +55,7 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
             let mut tag = |name: &str| {
                 paragraph.push_str(&format!(
                     "<{name}>{}</{name}>",
-                    &paragraph_to_string(content)
+                    &paragraph_to_string(content, _strong_carry, weak_carry)
                 ))
             };
             match modifier_type {
@@ -69,7 +67,7 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
                 ',' => tag("sub"),
                 '!' => paragraph.push_str(&format!(
                     "<span class='spoiler'>{}</span>",
-                    &paragraph_to_string(content)
+                    &paragraph_to_string(content, _strong_carry, weak_carry)
                 )),
                 '$' => tag("code"), // TODO: Real Math Rendering?
                 '%' => {}           // ignore comments
@@ -93,7 +91,42 @@ fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
         // ParagraphSegment::AttachedModifierCloserCandidate(_) => todo!(),
         // ParagraphSegment::AttachedModifierCloser(_) => todo!(),
         // ParagraphSegment::AttachedModifierCandidate { modifier_type, content, closer } => todo!(),
-        // ParagraphSegment::Link { filepath, targets, description } => todo!(),
+        ParagraphSegment::Link { filepath, targets, description } => {
+            let mut a_tag = Vec::<String>::new();
+            a_tag.push("<a".to_string());
+            // link to local paths (':/about:' -> '/about')
+            if let Some(path) = filepath {
+                a_tag.push(format!("href=\"{}\"", path));
+            }
+            // link to anything else
+            if !targets.is_empty() {
+                match &targets[0] {
+                    // link to external URLs
+                    LinkTarget::Url(path) | LinkTarget::Path(path) => {
+                        a_tag.push(format!("href=\"{}\"", path));
+                    }
+                    LinkTarget::Heading { level: _, title } => {
+                        a_tag.push(format!("href=\"#{}\"", paragraph_to_string(title, _strong_carry, weak_carry).replace(" ", "-")));
+                    }
+                    // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
+                    _ => {
+                        println!("ParagraphSegment::Link: {:#?}", &node);
+                        todo!()
+                    }
+                }
+            }
+            if !weak_carry.is_empty() {
+                for weak_carryover in weak_carry.clone() {
+                    a_tag.push(weak_carryover_attribute(weak_carryover));
+                    // Remove the carryover tag after using it because its lifetime
+                    // ended after invocating it
+                    weak_carry.remove(0);
+                }
+            }
+            // TODO: description is an option, should we handle it or YAGNI?
+            a_tag.push(format!(">{}</a>", paragraph_to_string(&description.clone().unwrap(), _strong_carry, weak_carry)));
+            paragraph.push_str(a_tag.join(" ").as_str());
+        },
         // ParagraphSegment::AnchorDefinition { content, target } => todo!(),
         // ParagraphSegment::Anchor { content, description } => todo!(),
         // ParagraphSegment::InlineLinkTarget(_) => todo!(),
@@ -179,7 +212,7 @@ impl NorgToHtml for NorgAST {
                         weak_carry.remove(0);
                     }
                 }
-                paragraph.push(format!(">{}</p>", paragraph_to_string(s)));
+                paragraph.push(format!(">{}</p>", paragraph_to_string(s, &strong_carry, &mut weak_carry)));
                 paragraph.join(" ")
             }
             NorgAST::Heading {
@@ -189,10 +222,11 @@ impl NorgToHtml for NorgAST {
                 ..
             } => {
                 let mut section = Vec::<String>::new();
+                let heading_title = paragraph_to_string(title, &strong_carry, &mut weak_carry);
 
                 match level {
                     1..=6 => {
-                        section.push(format!("<h{level}"));
+                        section.push(format!("<h{} id=\"{}\"", level, heading_title.replace(" ", "-")));
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
                                 section.push(weak_carryover_attribute(weak_carryover));
@@ -201,11 +235,11 @@ impl NorgToHtml for NorgAST {
                                 weak_carry.remove(0);
                             }
                         }
-                        section.push(format!(">{}</h{}>", paragraph_to_string(title), level));
+                        section.push(format!(">{}</h{}>", heading_title, level));
                     }
                     // XXX: fallback to h6 if the header level is higher than 6
                     _ => {
-                        section.push("<h6".to_string());
+                        section.push(format!("<h6 id=\"{}\"", heading_title.replace(" ", "-")));
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
                                 section.push(weak_carryover_attribute(weak_carryover));
@@ -214,7 +248,7 @@ impl NorgToHtml for NorgAST {
                                 weak_carry.remove(0);
                             }
                         }
-                        section.push(format!(">{}</h6>", paragraph_to_string(title)));
+                        section.push(format!(">{}</h6>", heading_title));
                     }
                 }
                 section.push(to_html(content, &strong_carry, &weak_carry));
@@ -230,7 +264,7 @@ impl NorgToHtml for NorgAST {
             } => {
                 // HACK: 'text' is actually a 'Box<NorgASTFlat>' value. It should be converted into a `ParagraphSegment` later in the rust-norg parser
                 let mod_text = if let NorgASTFlat::Paragraph(s) = *text.clone() {
-                    paragraph_to_string(&s)
+                    paragraph_to_string(&s, &strong_carry, &mut weak_carry)
                 } else {
                     unreachable!();
                 };
