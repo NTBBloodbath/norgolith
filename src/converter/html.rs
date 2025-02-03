@@ -2,6 +2,9 @@
 //
 // NOTE: the current carryover tags management is the worst boilerplate code I've ever written.
 // Refactor later to abstract it even further and make the code cleaner.
+//
+// BUG: currently, strong carryover tags AST is missing a lot of things in the rust-norg parser
+// so we are going to omit them for now until it's fixed.
 
 use html_escape::encode_text_minimal_to_string;
 use rust_norg::{
@@ -38,6 +41,7 @@ fn paragraph_tokens_to_string(tokens: &[ParagraphSegmentToken]) -> String {
 /// Converts a ParagraphSegment into a String
 fn paragraph_to_string(segment: &[ParagraphSegment]) -> String {
     let mut paragraph = String::new();
+    // TODO: support carryover tags here
     segment.iter().for_each(|node| match node {
         ParagraphSegment::Token(t) => match t {
             ParagraphSegmentToken::Text(s) => paragraph.push_str(s),
@@ -234,7 +238,6 @@ impl NorgToHtml for NorgAST {
                 match modifier_type {
                     NestableDetachedModifier::UnorderedList
                     | NestableDetachedModifier::OrderedList => {
-                        println!("{:#?}", &self);
                         let mut list = Vec::<String>::new();
                         if *level == 1 {
                             list.push(get_list_tag(modifier_type.clone(), true));
@@ -289,18 +292,20 @@ impl NorgToHtml for NorgAST {
                 let mut verbatim_tag = String::new();
                 match name[0].as_str() {
                     "code" => {
-                        // TODO: add carryover tags support, this one is trigger for the class
-                        // attribute because we are already setting a default value for it
-                        //
-                        // NOTE: the class `language-foo` is being added by default so the converter can work out-of-the-box
-                        // with libraries like highlight.js or prismjs
-                        verbatim_tag.push_str(
-                            format!(
-                                "<pre><code class=\"language-{}\">{}</code></pre>",
-                                parameters[0], content
-                            )
-                            .as_str(),
-                        );
+                        let mut code_tag = Vec::<String>::new();
+                        code_tag.push("<pre".to_string());
+                        if !weak_carry.is_empty() {
+                            for weak_carryover in weak_carry.clone() {
+                                code_tag.push(weak_carryover_attribute(weak_carryover));
+                                // Remove the carryover tag after using it because its lifetime
+                                // ended after invocating it
+                                weak_carry.remove(0);
+                            }
+                        }
+                        // NOTE: the class `language-foo` is being added by default so the converter can
+                        // work out-of-the-box with code highlighting libraries like highlight.js or prismjs
+                        code_tag.push(format!("><code class=\"language-{}\">{}</code></pre>", parameters[0], content));
+                        verbatim_tag = code_tag.join(" ")
                     }
                     // NOTE: this only works for base64 encoded images, regular images
                     // use the .image infirm tag.
