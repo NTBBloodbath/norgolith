@@ -15,7 +15,12 @@ async fn create_config(root: &str) -> Result<()> {
         rootUrl = '{}'
         language = '{}'
         title = '{}'
-        author = '{}'"#,
+        author = '{}'
+
+        # Code blocks highlighting
+        [highlighter]
+        enable = false
+        # engine = 'prism' # Can be 'prism' or 'hljs'. Defaults to 'prism'"#,
         "http://localhost:3030", // this is the default port
         "en-us",
         root.to_owned(),
