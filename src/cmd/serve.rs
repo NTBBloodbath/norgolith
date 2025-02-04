@@ -144,6 +144,43 @@ async fn convert_document(file_path: &Path, content_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+async fn cleanup_orphaned_build_files(content_dir: &Path) -> Result<()> {
+    let build_dir = Path::new(".build");
+    if !build_dir.exists() {
+        return Ok(());
+    }
+
+    let mut stack = vec![build_dir.to_path_buf()];
+
+    while let Some(current_dir) = stack.pop() {
+        let mut entries = tokio::fs::read_dir(&current_dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().map(|e| e == "html").unwrap_or(false) {
+                let relative_path = path.strip_prefix(build_dir)?;
+                let norg_path = content_dir.join(relative_path).with_extension("norg");
+
+                if !norg_path.exists() {
+                    // Delete HTML and meta files
+                    let meta_path = path.with_extension("meta.toml");
+
+                    tokio::fs::remove_file(&path).await?;
+                    if tokio::fs::try_exists(&meta_path).await? {
+                        tokio::fs::remove_file(&meta_path).await?;
+                    }
+
+                    println!("[server] Cleaned orphaned build file: {}", path.display());
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn is_template_change(event: &notify::Event) -> Result<bool> {
     let mut parent_dir = event
         .paths
@@ -492,9 +529,35 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                         let mut rebuild_document_path = PathBuf::new();
 
                         for event in events {
-                            let file_path = event.paths.first().unwrap();
-                            let file_name = file_path.file_name().unwrap().to_str().unwrap();
+                            if let notify::EventKind::Remove(_) = &event.kind {
+                                // I hate duplicating code but it makes the borrow checker happy so who cares!
+                                let file_path = event.paths.first().unwrap().clone();
 
+                                // Spawn cleanup task with owned data
+                                let state = Arc::clone(&state_watcher);
+                                let content_dir = state_watcher.content_dir.clone();
+                                tokio::task::spawn(async move {
+                                    if let Ok(relative_path) = file_path.strip_prefix(content_dir) {
+                                        if relative_path.extension().map(|e| e == "norg").unwrap_or(false) {
+                                            // Create owned paths for async task
+                                            let html_path = Path::new(".build")
+                                                .join(relative_path)
+                                                .with_extension("html");
+                                            let meta_path = html_path.with_extension("meta.toml");
+
+                                            let _ = tokio::fs::remove_file(&html_path).await;
+                                            let _ = tokio::fs::remove_file(&meta_path).await;
+                                            println!("[server] Removed build files for deleted content: {}", relative_path.display());
+
+                                            let _ = state.reload_tx.send(true);
+                                            let _ = state.reload_tx.send(false);
+                                        }
+                                    }
+                                });
+                            }
+
+                            let file_path = event.paths.first().unwrap();
+                            let file_name = event.paths.first().unwrap().file_name().unwrap().to_str().unwrap();
                             if is_template_change(&event).await.unwrap_or(false) {
                                 println!("[server] Detected template change: {}", file_name);
                                 reload_templates_needed = true;
@@ -546,21 +609,21 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                             tokio::task::spawn(async move {
                                 match convert_document(&rebuild_document_path, &state.content_dir)
                                     .await
-                                {
-                                    Ok(_) => {
-                                        let stripped_path = rebuild_document_path
-                                            .strip_prefix(&state.content_dir)
-                                            .unwrap();
-                                        println!(
-                                            "[server] Content successfully regenerated: {}",
-                                            stripped_path.display()
-                                        );
-                                        let _ = state.reload_tx.send(true);
-                                        // Reset
-                                        let _ = state.reload_tx.send(false);
+                                    {
+                                        Ok(_) => {
+                                            let stripped_path = rebuild_document_path
+                                                .strip_prefix(&state.content_dir)
+                                                .unwrap();
+                                            println!(
+                                                "[server] Content successfully regenerated: {}",
+                                                stripped_path.display()
+                                            );
+                                            let _ = state.reload_tx.send(true);
+                                            // Reset
+                                            let _ = state.reload_tx.send(false);
+                                        }
+                                        Err(e) => eprintln!("[server] Content conversion error: {}", e),
                                     }
-                                    Err(e) => eprintln!("[server] Content conversion error: {}", e),
-                                }
                             });
                         }
                     }
@@ -582,6 +645,9 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
 
         // Convert the norg documents to html
         convert_content(&content_dir).await?;
+
+        // Clean up orphaned files before starting server
+        cleanup_orphaned_build_files(&content_dir).await?;
 
         println!("[server] Serving site ...");
         println!("[server] Web server is available at {}", uri);
