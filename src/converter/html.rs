@@ -27,8 +27,7 @@ fn paragraph_tokens_to_string(tokens: &[ParagraphSegmentToken]) -> String {
             .map(|token| match token {
                 ParagraphSegmentToken::Text(txt) => txt.clone(),
                 ParagraphSegmentToken::Whitespace => String::from(" "),
-                ParagraphSegmentToken::Special(c) => String::from(*c),
-                ParagraphSegmentToken::Escape(c) => String::from(*c),
+                ParagraphSegmentToken::Special(c) | ParagraphSegmentToken::Escape(c) => String::from(*c),
             })
             .collect::<Vec<String>>()
             .join(""),
@@ -127,7 +126,38 @@ fn paragraph_to_string(segment: &[ParagraphSegment], _strong_carry: &Vec<CarryOv
             a_tag.push(format!(">{}</a>", paragraph_to_string(&description.clone().unwrap(), _strong_carry, weak_carry)));
             paragraph.push_str(a_tag.join(" ").as_str());
         },
-        // ParagraphSegment::AnchorDefinition { content, target } => todo!(),
+        ParagraphSegment::AnchorDefinition { content, target } => {
+            let mut a_tag = Vec::<String>::new();
+            a_tag.push("<a".to_string());
+            // XXX: here the ParagraphSegment::Link node only has targets and thus we cannot just recursively use paragraph_to_string
+            if let ParagraphSegment::Link { filepath: _, targets, description: _ } = *target.clone() {
+
+                match &targets[0] {
+                    // link to external URLs
+                    LinkTarget::Url(path) | LinkTarget::Path(path) => {
+                        a_tag.push(format!("href=\"{}\"", path));
+                    }
+                    LinkTarget::Heading { level: _, title } => {
+                        a_tag.push(format!("href=\"#{}\"", paragraph_to_string(title, _strong_carry, weak_carry).replace(" ", "-")));
+                    }
+                    // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
+                    _ => {
+                        println!("ParagraphSegment::Link: {:#?}", &node);
+                        todo!()
+                    }
+                }
+            }
+            if !weak_carry.is_empty() {
+                for weak_carryover in weak_carry.clone() {
+                    a_tag.push(weak_carryover_attribute(weak_carryover));
+                    // Remove the carryover tag after using it because its lifetime
+                    // ended after invocating it
+                    weak_carry.remove(0);
+                }
+            }
+            a_tag.push(format!(">{}</a>", paragraph_to_string(&content.clone(), _strong_carry, weak_carry)));
+            paragraph.push_str(a_tag.join(" ").as_str());
+        },
         // ParagraphSegment::Anchor { content, description } => todo!(),
         // ParagraphSegment::InlineLinkTarget(_) => todo!(),
         _ => {
