@@ -8,7 +8,8 @@
 
 use html_escape::encode_text_minimal_to_string;
 use rust_norg::{
-    parse_tree, CarryoverTag, LinkTarget, NestableDetachedModifier, NorgAST, NorgASTFlat, ParagraphSegment, ParagraphSegmentToken
+    parse_tree, CarryoverTag, LinkTarget, NestableDetachedModifier, NorgAST, NorgASTFlat,
+    ParagraphSegment, ParagraphSegmentToken,
 };
 
 /// CarryOver
@@ -27,7 +28,9 @@ fn paragraph_tokens_to_string(tokens: &[ParagraphSegmentToken]) -> String {
             .map(|token| match token {
                 ParagraphSegmentToken::Text(txt) => txt.clone(),
                 ParagraphSegmentToken::Whitespace => String::from(" "),
-                ParagraphSegmentToken::Special(c) | ParagraphSegmentToken::Escape(c) => String::from(*c),
+                ParagraphSegmentToken::Special(c) | ParagraphSegmentToken::Escape(c) => {
+                    String::from(*c)
+                }
             })
             .collect::<Vec<String>>()
             .join(""),
@@ -37,7 +40,11 @@ fn paragraph_tokens_to_string(tokens: &[ParagraphSegmentToken]) -> String {
 }
 
 /// Converts a ParagraphSegment into a String
-fn paragraph_to_string(segment: &[ParagraphSegment], _strong_carry: &Vec<CarryOverTag>, weak_carry: &mut Vec<CarryOverTag>) -> String {
+fn paragraph_to_string(
+    segment: &[ParagraphSegment],
+    _strong_carry: &Vec<CarryOverTag>,
+    weak_carry: &mut Vec<CarryOverTag>,
+) -> String {
     let mut paragraph = String::new();
     segment.iter().for_each(|node| match node {
         ParagraphSegment::Token(t) => match t {
@@ -90,7 +97,11 @@ fn paragraph_to_string(segment: &[ParagraphSegment], _strong_carry: &Vec<CarryOv
         // ParagraphSegment::AttachedModifierCloserCandidate(_) => todo!(),
         // ParagraphSegment::AttachedModifierCloser(_) => todo!(),
         // ParagraphSegment::AttachedModifierCandidate { modifier_type, content, closer } => todo!(),
-        ParagraphSegment::Link { filepath, targets, description } => {
+        ParagraphSegment::Link {
+            filepath,
+            targets,
+            description,
+        } => {
             let mut a_tag = Vec::<String>::new();
             a_tag.push("<a".to_string());
             // link to local paths (':/about:' -> '/about')
@@ -105,7 +116,10 @@ fn paragraph_to_string(segment: &[ParagraphSegment], _strong_carry: &Vec<CarryOv
                         a_tag.push(format!("href=\"{}\"", path));
                     }
                     LinkTarget::Heading { level: _, title } => {
-                        a_tag.push(format!("href=\"#{}\"", paragraph_to_string(title, _strong_carry, weak_carry).replace(" ", "-")));
+                        a_tag.push(format!(
+                            "href=\"#{}\"",
+                            paragraph_to_string(title, _strong_carry, weak_carry).replace(" ", "-")
+                        ));
                     }
                     // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
                     _ => {
@@ -123,22 +137,32 @@ fn paragraph_to_string(segment: &[ParagraphSegment], _strong_carry: &Vec<CarryOv
                 }
             }
             // TODO: description is an option, should we handle it or YAGNI?
-            a_tag.push(format!(">{}</a>", paragraph_to_string(&description.clone().unwrap(), _strong_carry, weak_carry)));
+            a_tag.push(format!(
+                ">{}</a>",
+                paragraph_to_string(&description.clone().unwrap(), _strong_carry, weak_carry)
+            ));
             paragraph.push_str(a_tag.join(" ").as_str());
-        },
+        }
         ParagraphSegment::AnchorDefinition { content, target } => {
             let mut a_tag = Vec::<String>::new();
             a_tag.push("<a".to_string());
             // XXX: here the ParagraphSegment::Link node only has targets and thus we cannot just recursively use paragraph_to_string
-            if let ParagraphSegment::Link { filepath: _, targets, description: _ } = *target.clone() {
-
+            if let ParagraphSegment::Link {
+                filepath: _,
+                targets,
+                description: _,
+            } = *target.clone()
+            {
                 match &targets[0] {
                     // link to external URLs
                     LinkTarget::Url(path) | LinkTarget::Path(path) => {
                         a_tag.push(format!("href=\"{}\"", path));
                     }
                     LinkTarget::Heading { level: _, title } => {
-                        a_tag.push(format!("href=\"#{}\"", paragraph_to_string(title, _strong_carry, weak_carry).replace(" ", "-")));
+                        a_tag.push(format!(
+                            "href=\"#{}\"",
+                            paragraph_to_string(title, _strong_carry, weak_carry).replace(" ", "-")
+                        ));
                     }
                     // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
                     _ => {
@@ -155,9 +179,12 @@ fn paragraph_to_string(segment: &[ParagraphSegment], _strong_carry: &Vec<CarryOv
                     weak_carry.remove(0);
                 }
             }
-            a_tag.push(format!(">{}</a>", paragraph_to_string(&content.clone(), _strong_carry, weak_carry)));
+            a_tag.push(format!(
+                ">{}</a>",
+                paragraph_to_string(&content.clone(), _strong_carry, weak_carry)
+            ));
             paragraph.push_str(a_tag.join(" ").as_str());
-        },
+        }
         // ParagraphSegment::Anchor { content, description } => todo!(),
         // ParagraphSegment::InlineLinkTarget(_) => todo!(),
         _ => {
@@ -209,11 +236,14 @@ fn weak_carryover_attribute(weak_carryover: CarryOverTag) -> String {
             let attr_name = weak_carryover.name[1].as_str();
             let values_sep = if attr_name == "style" { ";" } else { " " };
 
-            attr.push_str(format!(
-                "{}=\"{}\"",
-                &weak_carryover.name[1],
-                weak_carryover.parameters.join(values_sep)
-            ).as_str());
+            attr.push_str(
+                format!(
+                    "{}=\"{}\"",
+                    &weak_carryover.name[1],
+                    weak_carryover.parameters.join(values_sep)
+                )
+                .as_str(),
+            );
         }
     }
     attr
@@ -242,7 +272,10 @@ impl NorgToHtml for NorgAST {
                         weak_carry.remove(0);
                     }
                 }
-                paragraph.push(format!(">{}</p>", paragraph_to_string(s, &strong_carry, &mut weak_carry)));
+                paragraph.push(format!(
+                    ">{}</p>",
+                    paragraph_to_string(s, &strong_carry, &mut weak_carry)
+                ));
                 paragraph.join(" ")
             }
             NorgAST::Heading {
@@ -256,7 +289,11 @@ impl NorgToHtml for NorgAST {
 
                 match level {
                     1..=6 => {
-                        section.push(format!("<h{} id=\"{}\"", level, heading_title.replace(" ", "-")));
+                        section.push(format!(
+                            "<h{} id=\"{}\"",
+                            level,
+                            heading_title.replace(" ", "-")
+                        ));
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
                                 section.push(weak_carryover_attribute(weak_carryover));
@@ -368,7 +405,10 @@ impl NorgToHtml for NorgAST {
                         }
                         // NOTE: the class `language-foo` is being added by default so the converter can
                         // work out-of-the-box with code highlighting libraries like highlight.js or prismjs
-                        code_tag.push(format!("><code class=\"language-{}\">{}</code></pre>", parameters[0], content));
+                        code_tag.push(format!(
+                            "><code class=\"language-{}\">{}</code></pre>",
+                            parameters[0], content
+                        ));
                         verbatim_tag = code_tag.join(" ")
                     }
                     // NOTE: this only works for base64 encoded images, regular images
@@ -403,22 +443,20 @@ impl NorgToHtml for NorgAST {
                 name,
                 parameters,
                 next_object,
-            } => {
-                match tag_type {
-                    CarryoverTag::Attribute => {
-                        let tag = CarryOverTag {
-                            name: name.clone(),
-                            parameters: parameters.clone(),
-                        };
-                        weak_carry.push(tag);
-                        to_html(&[*next_object.clone()], &strong_carry, &weak_carry)
-                    }
-                    CarryoverTag::Macro => {
-                        eprintln!("[converter] Carryover tag macros are unsupported right now");
-                        todo!()
-                    }
+            } => match tag_type {
+                CarryoverTag::Attribute => {
+                    let tag = CarryOverTag {
+                        name: name.clone(),
+                        parameters: parameters.clone(),
+                    };
+                    weak_carry.push(tag);
+                    to_html(&[*next_object.clone()], &strong_carry, &weak_carry)
                 }
-            }
+                CarryoverTag::Macro => {
+                    eprintln!("[converter] Carryover tag macros are unsupported right now");
+                    todo!()
+                }
+            },
             // InfirmTag: InfirmTag { name: ["image"], parameters: ["/assets/norgolith.svg", "Norgolith", "logo"] }
             NorgAST::InfirmTag { name, parameters } => {
                 match name[0].as_str() {

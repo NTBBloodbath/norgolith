@@ -43,20 +43,19 @@ async fn get_content(name: &str) -> Result<(String, PathBuf)> {
         candidates.push(build_path.join("index.html"));
     } else {
         // Generate potential file paths
-        candidates.push(build_path.join(format!("{}.html", clean_name)));  // /docs -> docs.html
-        candidates.push(build_path.join(clean_name).join("index.html"));   // /docs -> docs/index.html
+        candidates.push(build_path.join(format!("{}.html", clean_name))); // /docs -> docs.html
+        candidates.push(build_path.join(clean_name).join("index.html")); // /docs -> docs/index.html
     }
 
     // Try candidates in order
     for path in &candidates {
         if tokio::fs::try_exists(path).await? {
-            return Ok((
-                    tokio::fs::read_to_string(path).await?,
-                    path.to_path_buf()));
+            return Ok((tokio::fs::read_to_string(path).await?, path.to_path_buf()));
         }
     }
 
-    Err(eyre::eyre!("Content not found for path: {}", name))}
+    Err(eyre::eyre!("Content not found for path: {}", name))
+}
 
 /// Recursively converts all the norg files in the content directory
 async fn convert_content(content_dir: &Path) -> Result<()> {
@@ -538,7 +537,11 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                                 let content_dir = state_watcher.content_dir.clone();
                                 tokio::task::spawn(async move {
                                     if let Ok(relative_path) = file_path.strip_prefix(content_dir) {
-                                        if relative_path.extension().map(|e| e == "norg").unwrap_or(false) {
+                                        if relative_path
+                                            .extension()
+                                            .map(|e| e == "norg")
+                                            .unwrap_or(false)
+                                        {
                                             // Create owned paths for async task
                                             let html_path = Path::new(".build")
                                                 .join(relative_path)
@@ -557,7 +560,14 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                             }
 
                             let file_path = event.paths.first().unwrap();
-                            let file_name = event.paths.first().unwrap().file_name().unwrap().to_str().unwrap();
+                            let file_name = event
+                                .paths
+                                .first()
+                                .unwrap()
+                                .file_name()
+                                .unwrap()
+                                .to_str()
+                                .unwrap();
                             if is_template_change(&event).await.unwrap_or(false) {
                                 println!("[server] Detected template change: {}", file_name);
                                 reload_templates_needed = true;
@@ -609,21 +619,21 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                             tokio::task::spawn(async move {
                                 match convert_document(&rebuild_document_path, &state.content_dir)
                                     .await
-                                    {
-                                        Ok(_) => {
-                                            let stripped_path = rebuild_document_path
-                                                .strip_prefix(&state.content_dir)
-                                                .unwrap();
-                                            println!(
-                                                "[server] Content successfully regenerated: {}",
-                                                stripped_path.display()
-                                            );
-                                            let _ = state.reload_tx.send(true);
-                                            // Reset
-                                            let _ = state.reload_tx.send(false);
-                                        }
-                                        Err(e) => eprintln!("[server] Content conversion error: {}", e),
+                                {
+                                    Ok(_) => {
+                                        let stripped_path = rebuild_document_path
+                                            .strip_prefix(&state.content_dir)
+                                            .unwrap();
+                                        println!(
+                                            "[server] Content successfully regenerated: {}",
+                                            stripped_path.display()
+                                        );
+                                        let _ = state.reload_tx.send(true);
+                                        // Reset
+                                        let _ = state.reload_tx.send(false);
                                     }
+                                    Err(e) => eprintln!("[server] Content conversion error: {}", e),
+                                }
                             });
                         }
                     }
