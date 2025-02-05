@@ -4,19 +4,22 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use eyre::{bail, eyre, Result};
+use futures_util::{SinkExt, StreamExt};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{
     header::{HeaderValue, CONTENT_TYPE},
     Body, Request, Response, Server, StatusCode,
 };
-use indoc::formatdoc;
 use notify::RecursiveMode;
 use notify_debouncer_full::{new_debouncer, DebounceEventResult};
 use tera::{Context, Tera};
+use tokio::sync::broadcast;
 use tokio::{
+    net::{TcpListener, TcpStream},
     runtime::Handle,
-    sync::{watch, RwLock},
+    sync::RwLock,
 };
+use tokio_tungstenite::accept_async;
 
 use crate::converter;
 use crate::fs;
@@ -24,12 +27,15 @@ use crate::{config, tera_functions};
 
 // Global state for reloading
 struct ServerState {
-    reload_tx: watch::Sender<bool>,
+    reload_tx: broadcast::Sender<()>,
     tera: Arc<RwLock<Tera>>,
     config: config::SiteConfig,
     content_dir: PathBuf,
     assets_dir: PathBuf,
 }
+
+// https//github.com/livereload/livereload-js dist/livereload.min.js v4.0.2
+const LIVE_RELOAD: &str = include_str!("../resources/assets/livereload.js");
 
 async fn get_content(name: &str) -> Result<(String, PathBuf)> {
     let build_path = Path::new(".build");
@@ -264,6 +270,7 @@ async fn handle_asset(request_path: &str, assets_dir: &Path) -> Result<Response<
 
             Response::builder()
                 .header(CONTENT_TYPE, mime_type.as_ref())
+                .status(StatusCode::OK)
                 .body(Body::from(content))
                 .map_err(Into::into)
         }
@@ -282,11 +289,59 @@ async fn handle_asset(request_path: &str, assets_dir: &Path) -> Result<Response<
     }
 }
 
+async fn handle_websocket(stream: TcpStream, reload_tx: broadcast::Sender<()>) {
+    let mut ws_stream = match accept_async(stream).await {
+        Ok(ws) => ws,
+        Err(e) => {
+            eprintln!("[server] WebSocket error: {}", e);
+            return;
+        }
+    };
+
+    let mut rx = reload_tx.subscribe();
+
+    let _ = ws_stream
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            r#"{
+        "command": "hello",
+        "protocols": ["http://livereload.com/protocols/official-7"],
+        "serverName": "norgolith"
+    }"#
+            .to_string()
+            .into(),
+        ))
+        .await;
+
+    loop {
+        tokio::select! {
+            _ = rx.recv() => {
+                if let Err(e) = ws_stream.send(tokio_tungstenite::tungstenite::Message::Text(r#"{
+                    "command": "reload",
+                    "path": "/"
+                }"#.to_string().into())).await {
+                    eprintln!("WebSocket send error: {}", e);
+                    break;
+                }
+            }
+            msg = ws_stream.next() => {
+                match msg {
+                    Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) => break,
+                    Some(Err(e)) => {
+                        eprintln!("WebSocket error: {}", e);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
 async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<Response<Body>> {
     let request_path = req.uri().path().to_owned();
 
-    // Ignore the hidden reload enpoint when printing out the logs
-    if request_path != "/_norgolith_reload" {
+    // Ignore the livereload enpoint when printing out the logs
+    if request_path != "/livereload.js" {
         // XXX: add headers here as well?
         let (req_parts, _) = req.into_parts();
         println!(
@@ -301,10 +356,11 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
     }
 
     // Handle reload endpoint
-    if request_path == "/_norgolith_reload" {
-        let mut reload_rx = state.reload_tx.subscribe();
-        reload_rx.changed().await?;
-        return Ok(Response::new(Body::from("reload")));
+    if request_path == "/livereload.js" {
+        return Ok(Response::builder()
+            .header(CONTENT_TYPE, "text/javascript")
+            .status(StatusCode::OK)
+            .body(LIVE_RELOAD.into())?);
     }
 
     // Helper function to handle content retrieval errors
@@ -369,12 +425,11 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                 let tera = state.tera.read().await;
                 tera.render(&(layout + ".html"), &context)
                     .map(|body| {
-                        let mut response = Response::new(Body::from(body));
-                        response.headers_mut().insert(
-                            CONTENT_TYPE,
-                            HeaderValue::from_static("text/html; charset=utf-8"),
-                        );
-                        response
+                        Response::builder()
+                            .header(CONTENT_TYPE, "text/html; charset=utf-8")
+                            .status(StatusCode::OK)
+                            .body(Body::from(body))
+                            .unwrap()
                     })
                     .map_err(|e| eyre!("Template rendering error for '{}': {}", normalized_path, e))
             }
@@ -384,22 +439,23 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
         match get_content_or_error(&normalized_path).await {
             Ok((path_contents, asset_path)) => {
                 // Static assets handling
-                let mut response = Response::new(Body::from(path_contents));
-
+                //
                 // Set content type based on file extension
                 let mime_type = mime_guess::from_path(asset_path).first_or_octet_stream();
-                response.headers_mut().insert(
-                    CONTENT_TYPE,
-                    HeaderValue::from_str(mime_type.as_ref())
-                        .unwrap_or_else(|_| HeaderValue::from_static("text/plain")),
-                );
-                Ok(response)
+                Ok(Response::builder()
+                    .header(
+                        CONTENT_TYPE,
+                        HeaderValue::from_str(mime_type.as_ref())
+                            .unwrap_or_else(|_| HeaderValue::from_static("text/plain")),
+                    )
+                    .status(StatusCode::OK)
+                    .body(Body::from(path_contents))?)
             }
             Err(e) => Err(e),
         }
     };
 
-    // Inject reload script into HTML responses
+    // Inject livereload script into HTML responses
     match response {
         Ok(mut response) => {
             if let Some(content_type) = response.headers().get(CONTENT_TYPE) {
@@ -408,27 +464,11 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
                     let mut html = String::from_utf8(body.to_vec())?;
 
                     // Inject reload script before closing body tag, it does reload every second
-                    let reload_script = formatdoc!(
-                        r#"
-                        <script>
-                            (function() {{
-                                function checkReload() {{
-                                    fetch('/_norgolith_reload')
-                                        .then(r => r.text())
-                                        .then(t => {{
-                                            if(t === 'reload') location.reload();
-                                            else setTimeout(checkReload, 1000);
-                                        }})
-                                        .catch(() => setTimeout(checkReload, 1000));
-                                }}
-                                checkReload();
-                            }})();
-                        </script>
-                    "#
-                    );
-
                     if let Some(pos) = html.rfind("</body>") {
-                        html.insert_str(pos, &reload_script);
+                        html.insert_str(
+                            pos,
+                            r#"<script src="/livereload.js?port=35729&amp;mindelay=10"></script>"#,
+                        );
                     }
                     *response.body_mut() = Body::from(html);
                 }
@@ -485,7 +525,17 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         let tera = Arc::new(RwLock::new(tera));
 
         // Create reload channel
-        let (reload_tx, _) = watch::channel(false);
+        let (reload_tx, _) = broadcast::channel(16);
+
+        // Start WebSocket server for livereload
+        let reload_tx_clone = reload_tx.clone();
+        tokio::spawn(async move {
+            let listener = TcpListener::bind("127.0.0.1:35729").await.unwrap();
+            while let Ok((stream, _)) = listener.accept().await {
+                let reload_tx = reload_tx_clone.clone();
+                tokio::spawn(handle_websocket(stream, reload_tx));
+            }
+        });
 
         // Initialize server state
         let state = Arc::new(ServerState {
@@ -552,8 +602,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                                             let _ = tokio::fs::remove_file(&meta_path).await;
                                             println!("[server] Removed build files for deleted content: {}", relative_path.display());
 
-                                            let _ = state.reload_tx.send(true);
-                                            let _ = state.reload_tx.send(false);
+                                            let _ = state.reload_tx.send(());
                                         }
                                     }
                                 });
@@ -596,9 +645,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                         }
 
                         if reload_assets_needed {
-                            let _ = state_watcher.reload_tx.send(true);
-                            // Reset
-                            let _ = state_watcher.reload_tx.send(false);
+                            let _ = state_watcher.reload_tx.send(());
                         }
 
                         if reload_templates_needed {
@@ -606,9 +653,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                             match tera.full_reload() {
                                 Ok(_) => {
                                     println!("[server] Templates successfully reloaded");
-                                    let _ = state_watcher.reload_tx.send(true);
-                                    // Reset
-                                    let _ = state_watcher.reload_tx.send(false);
+                                    let _ = state_watcher.reload_tx.send(());
                                 }
                                 Err(e) => eprintln!("[server] Failed to reload templates: {}", e),
                             }
@@ -628,9 +673,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                                             "[server] Content successfully regenerated: {}",
                                             stripped_path.display()
                                         );
-                                        let _ = state.reload_tx.send(true);
-                                        // Reset
-                                        let _ = state.reload_tx.send(false);
+                                        let _ = state.reload_tx.send(());
                                     }
                                     Err(e) => eprintln!("[server] Content conversion error: {}", e),
                                 }
