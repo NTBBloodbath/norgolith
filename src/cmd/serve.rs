@@ -340,16 +340,6 @@ async fn handle_websocket(stream: TcpStream, reload_tx: broadcast::Sender<()>) {
 async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<Response<Body>> {
     let request_path = req.uri().path().to_owned();
 
-    // Ignore the livereload enpoint when printing out the logs
-    if request_path != "/livereload.js" {
-        // XXX: add headers here as well?
-        let (req_parts, _) = req.into_parts();
-        println!(
-            "[server] {:#?} - {} '{}'",
-            req_parts.version, req_parts.method, req_parts.uri
-        );
-    }
-
     // Handle assets first
     if request_path.starts_with("/assets/") {
         return handle_asset(&request_path, &state.assets_dir).await;
@@ -493,6 +483,18 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
     }
 }
 
+fn get_elapsed_time(instant: std::time::Instant) -> String {
+    let duration = instant.elapsed();
+    let duration_ms = duration.subsec_millis() as f64;
+
+    if duration_ms < 1000.0 {
+        format!("Done in {}ms", duration_ms)
+    } else {
+        let duration_sec = duration_ms / 1000.0;
+        format!("Done in {:.1}s", ((duration_sec * 10.0).round() / 10.0))
+    }
+}
+
 pub async fn serve(port: u16, open: bool) -> Result<()> {
     // Try to find a 'norgolith.toml' file in the current working directory and its parents
     let mut current_dir = std::env::current_dir()?;
@@ -500,6 +502,8 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         fs::find_in_previous_dirs("file", "norgolith.toml", &mut current_dir).await?;
 
     if let Some(mut root) = found_site_root {
+        let server_start = std::time::Instant::now();
+
         // Load site configuration, root already contains the norgolith.toml path
         let config_content = tokio::fs::read_to_string(&root).await?;
         let site_config: config::SiteConfig = toml::from_str(&config_content)?;
@@ -690,7 +694,34 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         // Create the server binding
         let make_svc = make_service_fn(move |_conn| {
             let state = Arc::clone(&state);
-            async { Ok::<_, Infallible>(service_fn(move |req| handle_request(req, state.clone()))) }
+            async move {
+                Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
+                    let start = std::time::Instant::now();
+                    let method = req.method().clone();
+                    let uri = req.uri().clone();
+                    let state = state.clone();
+
+                    async move {
+                        let path = uri.path().to_owned();
+                        let response = handle_request(req, state).await.unwrap();
+                        let status = response.status();
+                        let duration = start.elapsed();
+
+                        if path != "/livereload.js" {
+                            println!(
+                                "[server] {} {} => {} {} in {:.1?}",
+                                method,
+                                path,
+                                status.as_u16(),
+                                status.canonical_reason().unwrap_or("Unknown"),
+                                duration
+                            );
+                        }
+
+                        Ok::<_, Infallible>(response)
+                    }
+                }))
+            }
         });
         let addr = ([127, 0, 0, 1], port).into();
         let server = Server::bind(&addr).serve(make_svc);
@@ -702,7 +733,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         // Clean up orphaned files before starting server
         cleanup_orphaned_build_files(&content_dir).await?;
 
-        println!("[server] Serving site ...");
+        println!("[server] Serving site... {}", get_elapsed_time(server_start));
         println!("[server] Web server is available at {}", uri);
         if open {
             match open::that_detached(uri) {
