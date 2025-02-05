@@ -21,15 +21,16 @@ version: 1.1.1
   ---- (x) templates
   ---- (x) assets
   ---- (x) themes
-  --- (-) Generate required files
+  --- (x) Generate required files
   ---- (x) Basic `index.norg`
   ---- (x) Site configuration (`norgolith.toml`)
   ---- (x) HTML templates
   --- ( ) Generate default theme using TailwindCSS
-  -- (-) `serve`
+  -- (x) `serve`
   --- (x) Create local server (default port: `3030`)
-  --- (-) Integrate Tera with Hyper
-  ---- (-) Routing
-  ----- (-) Integrate HTML templates with the produced html code from norg files
+  --- (x) Integrate Tera with Hyper
+  ---- (x) Routing
+  ----- (x) Integrate HTML templates with the produced html code from norg files
   ----- (x) Serve norg content converted to html
-  ----- ( ) Site assets
+  ----- (x) Site assets
+  -- ( ) `build`
