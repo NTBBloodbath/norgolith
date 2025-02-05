@@ -427,6 +427,12 @@ impl NorgToHtml for NorgAST {
                         image_tag.push("/>".to_string());
                         verbatim_tag = image_tag.join(" ");
                     }
+                    "embed" => {
+                        // XXX: only works for embedding HTML code for now
+                        if !parameters.is_empty() && parameters[0] == "html" {
+                            verbatim_tag = content.to_string()
+                        }
+                    }
                     // TODO: support other verbatim ranged tags like '@math'
                     _ => {
                         if name[0] != "document" {
