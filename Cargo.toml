@@ -35,6 +35,9 @@ serde = { version = "1.0.217", features = ["derive"] }
 mime_guess = "2.0.5"
 tokio-tungstenite = "0.26.1"
 futures-util = { version = "0.3.31", features = ["sink"] }
+walkdir = "2.5.0"
+minify-html = "0.15.0"
+num_cpus = "1.16.0"
 
 [dev-dependencies]
 mockall = "0.13.1"

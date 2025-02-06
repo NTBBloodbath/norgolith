@@ -3,10 +3,10 @@
 <head>
     {% block head %}
     <meta charset="UTF-8" />
-    {% if metadata.description %}
+    {% if metadata.description and not metadata.description == "nil" %}
     <meta name="description" content="{{ metadata.description }}" />
     {% endif %}
-    {% if metadata.author %}
+    {% if metadata.authors %}
     <meta name="author" content="{{ config.author }}" />
     {% endif %}
     {% if metadata.categories %}
