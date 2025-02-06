@@ -80,7 +80,15 @@ enum Commands {
         name: Option<String>,
     },
     /// Build a site for production
-    Build,
+    Build {
+        #[arg(
+            short = 'm',
+            long,
+            default_value_t = true,
+            help = "Minify the produced assets"
+        )]
+        minify: bool,
+    },
 }
 
 /// Asynchronously parse the command-line arguments and executes the corresponding subcommand
@@ -97,10 +105,11 @@ pub async fn start() -> Result<()> {
     match &cli.command {
         Commands::Init { name } => init_site(name.as_ref()).await?,
         Commands::Serve { port, open } => check_and_serve(*port, *open).await?,
+        Commands::Build { minify } => build_site(*minify).await?,
         Commands::New { kind, name, open } => {
             new_asset(kind.as_ref(), name.as_ref(), *open).await?
         }
-        _ => bail!("Unsupported command"),
+        // _ => bail!("Unsupported command"),
     }
 
     Ok(())
@@ -122,6 +131,17 @@ async fn init_site(name: Option<&String>) -> Result<()> {
     Ok(())
 }
 
+/// Builds a Norgolith site for production.
+///
+/// # Arguments:
+///   * minify: Whether to minify the produced artifacts. Defaults to `true`.
+///
+/// # Returns:
+///   A `Result<()>` indicating success or error.
+async fn build_site(minify: bool) -> Result<()> {
+    cmd::build(minify).await
+}
+
 /// Checks port availability and starts the development server.
 ///
 /// # Arguments:
@@ -141,8 +161,7 @@ async fn check_and_serve(port: u16, open: bool) -> Result<()> {
         bail!("Could not initialize the development server: failed to open listener, perhaps the {} is busy?", port_msg);
     }
 
-    cmd::serve(port, open).await?;
-    Ok(())
+    cmd::serve(port, open).await
 }
 
 /// Creates a new asset with the given kind and name.
@@ -180,10 +199,9 @@ async fn new_asset(kind: Option<&String>, name: Option<&String>, open: bool) -> 
     }
 
     match name {
-        Some(name) => cmd::new(&asset_type, name, open).await?,
+        Some(name) => cmd::new(&asset_type, name, open).await,
         None => bail!("Unable to create site asset: missing name for the asset"),
     }
-    Ok(())
 }
 
 #[cfg(test)]

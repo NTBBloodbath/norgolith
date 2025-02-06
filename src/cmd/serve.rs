@@ -21,9 +21,7 @@ use tokio::{
 };
 use tokio_tungstenite::accept_async;
 
-use crate::converter;
-use crate::fs;
-use crate::{config, tera_functions};
+use crate::{config, fs, shared};
 
 // Global state for reloading
 struct ServerState {
@@ -36,155 +34,6 @@ struct ServerState {
 
 // https//github.com/livereload/livereload-js dist/livereload.min.js v4.0.2
 const LIVE_RELOAD: &str = include_str!("../resources/assets/livereload.js");
-
-async fn get_content(name: &str) -> Result<(String, PathBuf)> {
-    let build_path = Path::new(".build");
-    let mut candidates: Vec<PathBuf> = Vec::new();
-
-    // Normalize path by trimming slashes
-    let clean_name = name.trim_matches('/');
-
-    if clean_name.is_empty() {
-        // Root path
-        candidates.push(build_path.join("index.html"));
-    } else {
-        // Generate potential file paths
-        candidates.push(build_path.join(format!("{}.html", clean_name))); // /docs -> docs.html
-        candidates.push(build_path.join(clean_name).join("index.html")); // /docs -> docs/index.html
-    }
-
-    // Try candidates in order
-    for path in &candidates {
-        if tokio::fs::try_exists(path).await? {
-            return Ok((tokio::fs::read_to_string(path).await?, path.to_path_buf()));
-        }
-    }
-
-    Err(eyre::eyre!("Content not found for path: {}", name))
-}
-
-/// Recursively converts all the norg files in the content directory
-async fn convert_content(content_dir: &Path) -> Result<()> {
-    async fn process_entry(entry: tokio::fs::DirEntry, content_dir: &Path) -> Result<()> {
-        let path = entry.path();
-        if path.is_dir() {
-            // Process directory recursively
-            let mut content_stream = tokio::fs::read_dir(&path).await?;
-            while let Some(entry) = content_stream.next_entry().await? {
-                Box::pin(process_entry(entry, content_dir)).await?;
-            }
-        } else {
-            convert_document(&path, content_dir).await?;
-        }
-        Ok(())
-    }
-
-    let mut content_stream = tokio::fs::read_dir(content_dir).await?;
-    while let Some(entry) = content_stream.next_entry().await? {
-        Box::pin(process_entry(entry, content_dir)).await?;
-    }
-
-    Ok(())
-}
-
-async fn convert_document(file_path: &Path, content_dir: &Path) -> Result<()> {
-    if file_path.extension().unwrap_or_default() == "norg"
-        && tokio::fs::try_exists(file_path).await?
-    {
-        let mut should_convert = true;
-        let mut should_write_meta = true;
-
-        // Preserve directory structure relative to content directory
-        let relative_path = file_path.strip_prefix(content_dir).map_err(|_| {
-            eyre!(
-                "File {:?} is not in content directory {:?}",
-                file_path,
-                content_dir
-            )
-        })?;
-
-        let html_file_path = Path::new(".build")
-            .join(relative_path)
-            .with_extension("html");
-        let meta_file_path = html_file_path.with_extension("meta.toml");
-
-        // Convert html content
-        let norg_document = tokio::fs::read_to_string(file_path).await?;
-        let norg_html = converter::html::convert(norg_document.clone());
-
-        // Convert metadata
-        let norg_meta = converter::meta::convert(&norg_document)?;
-        let meta_toml = toml::to_string_pretty(&norg_meta)?;
-
-        // Check existing metadata only if file exists
-        if tokio::fs::try_exists(&meta_file_path).await? {
-            let meta_content = tokio::fs::read_to_string(&meta_file_path).await?;
-            should_write_meta = meta_toml != meta_content;
-        }
-
-        // Check existing content only if file exists
-        if tokio::fs::try_exists(&html_file_path).await? {
-            let html_content = tokio::fs::read_to_string(&html_file_path).await?;
-            should_convert = norg_html != html_content;
-        }
-
-        if should_convert || should_write_meta {
-            // Create parent directories if needed
-            if let Some(parent) = html_file_path.parent() {
-                tokio::fs::create_dir_all(parent).await?;
-            }
-
-            // XXX: maybe these println makes stuff too verbose? Modifying a norg file already triggers two stdout messages
-            if should_convert {
-                // println!("[server] Converting norg file: {}", relative_path.display());
-                tokio::fs::write(&html_file_path, norg_html).await?;
-            }
-            if should_write_meta {
-                // println!("[server] Converting norg meta: {}", relative_path.display());
-                tokio::fs::write(&meta_file_path, meta_toml).await?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn cleanup_orphaned_build_files(content_dir: &Path) -> Result<()> {
-    let build_dir = Path::new(".build");
-    if !build_dir.exists() {
-        return Ok(());
-    }
-
-    let mut stack = vec![build_dir.to_path_buf()];
-
-    while let Some(current_dir) = stack.pop() {
-        let mut entries = tokio::fs::read_dir(&current_dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().map(|e| e == "html").unwrap_or(false) {
-                let relative_path = path.strip_prefix(build_dir)?;
-                let norg_path = content_dir.join(relative_path).with_extension("norg");
-
-                if !norg_path.exists() {
-                    // Delete HTML and meta files
-                    let meta_path = path.with_extension("meta.toml");
-
-                    tokio::fs::remove_file(&path).await?;
-                    if tokio::fs::try_exists(&meta_path).await? {
-                        tokio::fs::remove_file(&meta_path).await?;
-                    }
-
-                    println!("[server] Cleaned orphaned build file: {}", path.display());
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
 
 async fn is_template_change(event: &notify::Event) -> Result<bool> {
     let mut parent_dir = event
@@ -355,7 +204,7 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
 
     // Helper function to handle content retrieval errors
     async fn get_content_or_error(request_path: &str) -> Result<(String, PathBuf)> {
-        get_content(request_path).await.map_err(|e| {
+        shared::get_content(request_path).await.map_err(|e| {
             if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
                 if io_err.kind() == std::io::ErrorKind::NotFound {
                     eyre!("Path not found: {}", request_path)
@@ -483,18 +332,6 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
     }
 }
 
-fn get_elapsed_time(instant: std::time::Instant) -> String {
-    let duration = instant.elapsed();
-    let duration_ms = duration.subsec_millis() as f64;
-
-    if duration_ms < 1000.0 {
-        format!("Done in {}ms", duration_ms)
-    } else {
-        let duration_sec = duration_ms / 1000.0;
-        format!("Done in {:.1}s", ((duration_sec * 10.0).round() / 10.0))
-    }
-}
-
 pub async fn serve(port: u16, open: bool) -> Result<()> {
     // Try to find a 'norgolith.toml' file in the current working directory and its parents
     let mut current_dir = std::env::current_dir()?;
@@ -521,12 +358,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         let rt = Handle::current();
 
         // Initialize Tera once
-        let mut tera = match Tera::new(&(templates_dir.clone() + "/**/*.html")) {
-            Ok(t) => t,
-            Err(e) => bail!("[server] Tera parsing error(s): {}", e),
-        };
-        tera.register_function("now", tera_functions::NowFunction);
-        let tera = Arc::new(RwLock::new(tera));
+        let tera = Arc::new(RwLock::new(shared::init_tera(&templates_dir).await?));
 
         // Create reload channel
         let (reload_tx, _) = broadcast::channel(16);
@@ -666,8 +498,11 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                         if rebuild_needed {
                             let state = Arc::clone(&state_watcher);
                             tokio::task::spawn(async move {
-                                match convert_document(&rebuild_document_path, &state.content_dir)
-                                    .await
+                                match shared::convert_document(
+                                    &rebuild_document_path,
+                                    &state.content_dir,
+                                )
+                                .await
                                 {
                                     Ok(_) => {
                                         let stripped_path = rebuild_document_path
@@ -728,12 +563,15 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         let uri = format!("http://localhost:{}/", port);
 
         // Convert the norg documents to html
-        convert_content(&content_dir).await?;
+        shared::convert_content(&content_dir).await?;
 
         // Clean up orphaned files before starting server
-        cleanup_orphaned_build_files(&content_dir).await?;
+        shared::cleanup_orphaned_build_files(&content_dir).await?;
 
-        println!("[server] Serving site... {}", get_elapsed_time(server_start));
+        println!(
+            "[server] Serving site... Done in {}",
+            shared::get_elapsed_time(server_start)
+        );
         println!("[server] Web server is available at {}", uri);
         if open {
             match open::that_detached(uri) {
