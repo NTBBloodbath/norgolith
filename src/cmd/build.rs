@@ -129,30 +129,35 @@ async fn copy_assets(assets_dir: &Path, root_path: &Path, minify: bool) -> Resul
             }
         } else if minify {
             let file_ext = src_path.extension().unwrap().to_str().unwrap();
-            let asset_content = tokio::fs::read_to_string(src_path).await?;
 
             if file_ext == "js" {
+                let content = tokio::fs::read(src_path).await?;
                 let mut minified = Vec::new();
                 let session = minify_js::Session::new();
                 minify_js::minify(
                     &session,
                     minify_js::TopLevelMode::Global,
-                    asset_content.as_bytes(),
+                    &content,
                     &mut minified,
                 )
                 .unwrap();
-                tokio::fs::write(dest_path, asset_content).await?;
+                tokio::fs::write(dest_path, content).await?;
             } else if file_ext == "css" {
+                let content = tokio::fs::read_to_string(src_path).await?;
                 // See https://docs.rs/css-minify/0.5.2/css_minify/optimizations/enum.Level.html#variants
                 let minified = css_minify::optimizations::Minifier::default()
-                    .minify(&asset_content, css_minify::optimizations::Level::Two)
+                    .minify(&content, css_minify::optimizations::Level::Two)
                     .unwrap();
                 tokio::fs::write(dest_path, minified).await?;
             } else {
-                tokio::fs::copy(src_path, dest_path).await?;
+                // Copy file as binary, this lets us write images and some other formats as well instead of only text files
+                let content = tokio::fs::read(&src_path).await?;
+                tokio::fs::write(&dest_path, content).await?;
             }
         } else {
-            tokio::fs::copy(src_path, dest_path).await?;
+            // Copy file as binary, this lets us write images and some other formats as well instead of only text files
+            let content = tokio::fs::read(&src_path).await?;
+            tokio::fs::write(&dest_path, content).await?;
         }
         Ok(())
     }
