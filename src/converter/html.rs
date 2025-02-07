@@ -331,7 +331,11 @@ impl NorgToHtml for NorgAST {
             } => {
                 // HACK: 'text' is actually a 'Box<NorgASTFlat>' value. It should be converted into a `ParagraphSegment` later in the rust-norg parser
                 let mod_text = if let NorgASTFlat::Paragraph(s) = *text.clone() {
-                    paragraph_to_string(&s, &strong_carry, &mut weak_carry)
+                    let strong = Vec::<CarryOverTag>::new();
+                    let mut weak = Vec::<CarryOverTag>::new();
+                    // HACK: we are passing empty carryover vectors here because otherwise
+                    // the HTML carryovers meant for the lists are used for its internal content instead
+                    paragraph_to_string(&s, &strong, &mut weak)
                 } else {
                     unreachable!();
                 };
