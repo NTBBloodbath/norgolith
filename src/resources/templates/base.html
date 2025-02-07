@@ -43,6 +43,8 @@
         </script>
       {% endif %}
     {% endif %}
+    {# Tailwind CDN, replace with the Tailwind standalone CLI for production! #}
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
     {# User-defined styling #}
     <link rel="stylesheet" href="/assets/style.css" />
     <title>{% block title %}{% endblock title %} - {{ config.title | title }}</title>
