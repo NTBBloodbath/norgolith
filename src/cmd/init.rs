@@ -71,9 +71,12 @@ async fn create_html_templates(root: &str) -> Result<()> {
     Ok(())
 }
 
-async fn create_css(root: &str) -> Result<()> {
+async fn create_assets(root: &str) -> Result<()> {
     let base_style = include_str!("../resources/assets/style.css");
     fs::write(root.to_owned() + "/assets/style.css", base_style).await?;
+
+    let norgolith_logo = include_str!("../../res/norgolith.svg");
+    fs::write(root.to_owned() + "/assets/norgolith.svg", norgolith_logo).await?;
 
     Ok(())
 }
@@ -108,7 +111,7 @@ pub async fn init(name: &str) -> Result<()> {
         create_config(name).await?;
         create_index_norg(name).await?;
         create_html_templates(name).await?;
-        create_css(name).await?;
+        create_assets(name).await?;
 
         // Get the canonical (absolute) path to the new site root
         let path = fs::canonicalize(name).await?;
