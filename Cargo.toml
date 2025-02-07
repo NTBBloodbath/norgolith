@@ -38,6 +38,8 @@ futures-util = { version = "0.3.31", features = ["sink"] }
 walkdir = "2.5.0"
 minify-html = "0.15.0"
 num_cpus = "1.16.0"
+minify-js = "0.6.0"
+css-minify = "0.5.2"
 
 [dev-dependencies]
 mockall = "0.13.1"
