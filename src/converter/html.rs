@@ -8,7 +8,7 @@
 
 use html_escape::encode_text_minimal_to_string;
 use rust_norg::{
-    parse_tree, CarryoverTag, LinkTarget, NestableDetachedModifier, NorgAST, NorgASTFlat,
+    parse_tree, CarryoverTag, DelimitingModifier, LinkTarget, NestableDetachedModifier, NorgAST, NorgASTFlat,
     ParagraphSegment, ParagraphSegmentToken,
 };
 
@@ -491,6 +491,27 @@ impl NorgToHtml for NorgAST {
                         println!("[converter] InfirmTag: {:#?}", self);
                         todo!()
                     }
+                }
+            }
+            NorgAST::DelimitingModifier(t) => {
+                if *t == DelimitingModifier::HorizontalRule {
+                    let mut hr_tag = Vec::<String>::new();
+                    hr_tag.push("<hr".to_string());
+                    if !weak_carry.is_empty() {
+                        for weak_carryover in weak_carry.clone() {
+                            hr_tag.push(weak_carryover_attribute(weak_carryover));
+                            // Remove the carryover tag after using it because its lifetime
+                            // ended after invocating it
+                            weak_carry.remove(0);
+                        }
+                    }
+
+                    hr_tag.push("/>".to_string());
+                    hr_tag.join(" ")
+                } else {
+                    // XXX: support weak and strong delimiting modifiers?
+                    eprintln!("[converter] {:#?}", self);
+                    todo!()
                 }
             }
             _ => {
