@@ -23,7 +23,7 @@ version: 1.1.1
 
   +html.class px-4 font-mono
   +html.id desc
-  Norgolith is a monolithic static site generator for {https://github.com/nvim-neorg/neorg}[Neorg]
+  Norgolith is a monolithic static site generator for {{https://github.com/nvim-neorg/neorg}}[Neorg]
   built with Rust. It caters to both developers and content creators seeking a powerful and
   user-friendly solution for creating static websites from Norg content.
   @embed html
@@ -58,10 +58,10 @@ version: 1.1.1
 ** Support
    +html.class list-disc mx-4
    +html.id discord-link
-   - Need help? {https://discord.gg/T6EgTAX7ht}[Join our Discord]!
+   - Need help? {{https://discord.gg/T6EgTAX7ht}}[Join our Discord]!
    +html.class list-disc mx-4
    +html.id github-issues
-   - Found an issue? {https://github.com/NTBBloodbath/norgolith/issues/new}[Report it on GitHub].
+   - Found an issue? {{https://github.com/NTBBloodbath/norgolith/issues/new}}[Report it on GitHub].
 
 +html.class text-2xl font-bold mt-4
 ** Next steps
@@ -77,4 +77,4 @@ version: 1.1.1
    - Build your site for production: `lith build`.
    +html.class list-disc mx-4
    +html.id github-pages
-   - Deploy the produced `public/` directory to {https://pages.github.com}[GitHub Pages].
+   - Deploy the produced `public/` directory to {{https://pages.github.com}}[GitHub Pages].
