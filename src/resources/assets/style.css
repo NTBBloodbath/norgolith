@@ -101,7 +101,10 @@ pre[class*="language-"].line-numbers > code {
 #github-pages > a,
 #github-issues > a {
   color: var(--color-blue-400);
-  &:hover {
-    text-decoration: underline;
-  }
+}
+#desc > a:hover,
+#discord-link > a:hover,
+#github-pages > a:hover,
+#github-issues > a:hover {
+  text-decoration: underline;
 }
