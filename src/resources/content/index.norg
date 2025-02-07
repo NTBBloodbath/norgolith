@@ -12,6 +12,7 @@ draft: true
 version: 1.1.1
 @end
 
++html.class text-3xl font-bold
 * Welcome to Norgolith
   Lorem ipsum dolor sitamet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
   labore et dolore magna aliqua. Lobortis scelerisque fermentum dui faucibus in ornare.
