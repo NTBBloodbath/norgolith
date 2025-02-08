@@ -1354,6 +1354,7 @@ dependencies = [
  "notify-debouncer-full",
  "num_cpus",
  "open",
+ "regex",
  "rust-norg",
  "serde",
  "tera",

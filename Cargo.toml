@@ -40,6 +40,7 @@ minify-html = "0.15.0"
 num_cpus = "1.16.0"
 minify-js = "0.6.0"
 css-minify = "0.5.2"
+regex = "1.11.1"
 
 [dev-dependencies]
 mockall = "0.13.1"
