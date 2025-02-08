@@ -28,6 +28,7 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: DeterminateSystems/magic-nix-cache-action@v9
       - uses: dorny/paths-filter@v3
         id: flake_changes
         with:
@@ -37,6 +38,10 @@ jobs:
       - name: Run nix flake check
         if: steps.flake_changes.outputs.flake_files == 'true'
         run: nix flake check
+      - uses: cachix/cachix-action@v15
+        with:
+          name: ntbbloodbath
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: nix develop . -c cargo build --release
@@ -52,6 +57,7 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: DeterminateSystems/magic-nix-cache-action@v9
       - uses: dorny/paths-filter@v3
         id: flake_changes
         with:
@@ -61,6 +67,10 @@ jobs:
       - name: Run nix flake check
         if: steps.flake_changes.outputs.flake_files == 'true'
         run: nix flake check
+      - uses: cachix/cachix-action@v15
+        with:
+          name: ntbbloodbath
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: nix develop . -c cargo build --release
