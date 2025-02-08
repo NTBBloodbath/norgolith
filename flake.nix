@@ -63,4 +63,9 @@
           RUST_SRC_PATH = "${toolchain.rustLibSrc}";
         };
       });
+
+    nixConfig = {
+      extra-substituters = ["https://ntbbloodbath.cachix.org"];
+      extra-trusted-public-keys = ["ntbbloodbath.cachix.org-1:L4DjjGwDB6O3BJ4SmtYTZbvWKLi+1v/hRlLWKOtq+f0="];
+    };
 }
