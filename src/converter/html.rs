@@ -7,6 +7,7 @@
 // so we are going to omit them for now until it's fixed.
 
 use html_escape::encode_text_minimal_to_string;
+use regex::Regex;
 use rust_norg::{
     parse_tree, CarryoverTag, DelimitingModifier, LinkTarget, NestableDetachedModifier, NorgAST, NorgASTFlat,
     ParagraphSegment, ParagraphSegmentToken,
@@ -285,15 +286,22 @@ impl NorgToHtml for NorgAST {
                 ..
             } => {
                 let mut section = Vec::<String>::new();
-                let heading_title = paragraph_to_string(title, &strong_carry, &mut weak_carry);
+                // HACK: we are passing empty carryover vectors here because otherwise
+                // the HTML carryovers meant for the heading are used for its internal content instead
+                let strong = Vec::<CarryOverTag>::new();
+                let mut weak = Vec::<CarryOverTag>::new();
+                let heading_title = paragraph_to_string(title, &strong, &mut weak);
+
+                // Regex to remove possible links from heading title ids
+                let re = Regex::new(r"-<.*>").unwrap();
 
                 match level {
                     1..=6 => {
                         section.push(format!(
                             "<h{} id=\"{}\"",
                             level,
-                            heading_title.replace(" ", "-")
-                        ));
+                        re.replace(&heading_title.replace(" ", "-"), "")
+                    ));
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
                                 section.push(weak_carryover_attribute(weak_carryover));
