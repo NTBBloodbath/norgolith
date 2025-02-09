@@ -314,7 +314,7 @@ impl NorgToHtml for NorgAST {
                     }
                     // XXX: fallback to h6 if the header level is higher than 6
                     _ => {
-                        section.push(format!("<h6 id=\"{}\"", heading_title.replace(" ", "-")));
+                        section.push(format!("<h6 id=\"{}\"", re.replace(&heading_title.replace(" ", "-"), "")));
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
                                 section.push(weak_carryover_attribute(weak_carryover));
