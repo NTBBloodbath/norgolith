@@ -76,6 +76,11 @@ Run `cargo install --release --path .` to compile and install Norgolith in your 
 The Norgolith repository includes a Nix flake for development and testing purposes in the root directory. This section outlines how to
 use the Nix flake for these workflows.
 
+> [!IMPORTANT]
+>
+> I've set up a Cachix cache, which has `x86_64-linux` binaries for the Norgolith releases, so it
+> should be faster to get it working on Nix systems. Make sure to accept the flake `nixConfig` inputs.
+
 <details>
 <summary>Usage</summary>
 
