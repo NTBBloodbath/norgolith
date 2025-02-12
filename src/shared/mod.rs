@@ -33,30 +33,38 @@ pub async fn get_content(name: &str) -> Result<(String, PathBuf)> {
 }
 
 /// Recursively converts all the norg files in the content directory
-pub async fn convert_content(content_dir: &Path) -> Result<()> {
-    async fn process_entry(entry: tokio::fs::DirEntry, content_dir: &Path) -> Result<()> {
+pub async fn convert_content(content_dir: &Path, convert_drafts: bool) -> Result<()> {
+    async fn process_entry(
+        entry: tokio::fs::DirEntry,
+        content_dir: &Path,
+        convert_drafts: bool,
+    ) -> Result<()> {
         let path = entry.path();
         if path.is_dir() {
             // Process directory recursively
             let mut content_stream = tokio::fs::read_dir(&path).await?;
             while let Some(entry) = content_stream.next_entry().await? {
-                Box::pin(process_entry(entry, content_dir)).await?;
+                Box::pin(process_entry(entry, content_dir, convert_drafts)).await?;
             }
         } else {
-            convert_document(&path, content_dir).await?;
+            convert_document(&path, content_dir, convert_drafts).await?;
         }
         Ok(())
     }
 
     let mut content_stream = tokio::fs::read_dir(content_dir).await?;
     while let Some(entry) = content_stream.next_entry().await? {
-        Box::pin(process_entry(entry, content_dir)).await?;
+        Box::pin(process_entry(entry, content_dir, convert_drafts)).await?;
     }
 
     Ok(())
 }
 
-pub async fn convert_document(file_path: &Path, content_dir: &Path) -> Result<()> {
+pub async fn convert_document(
+    file_path: &Path,
+    content_dir: &Path,
+    convert_drafts: bool,
+) -> Result<()> {
     if file_path.extension().unwrap_or_default() == "norg"
         && tokio::fs::try_exists(file_path).await?
     {
@@ -84,6 +92,14 @@ pub async fn convert_document(file_path: &Path, content_dir: &Path) -> Result<()
         // Convert metadata
         let norg_meta = converter::meta::convert(&norg_document)?;
         let meta_toml = toml::to_string_pretty(&norg_meta)?;
+
+        // Check if the current document is a draft post and also whether we should finish the conversion
+        // NOTE: content is not marked as draft by default
+        if toml::Value::as_bool(norg_meta.get("draft").unwrap_or(&toml::Value::from(false)))
+            .expect("draft metadata field should be a boolean") && !convert_drafts
+        {
+            return Ok(());
+        }
 
         // Check existing metadata only if file exists
         if tokio::fs::try_exists(&meta_file_path).await? {

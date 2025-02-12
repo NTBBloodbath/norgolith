@@ -332,7 +332,7 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
     }
 }
 
-pub async fn serve(port: u16, open: bool) -> Result<()> {
+pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
     // Try to find a 'norgolith.toml' file in the current working directory and its parents
     let mut current_dir = std::env::current_dir()?;
     let found_site_root =
@@ -501,6 +501,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
                                 match shared::convert_document(
                                     &rebuild_document_path,
                                     &state.content_dir,
+                                    drafts
                                 )
                                 .await
                                 {
@@ -563,7 +564,7 @@ pub async fn serve(port: u16, open: bool) -> Result<()> {
         let uri = format!("http://localhost:{}/", port);
 
         // Convert the norg documents to html
-        shared::convert_content(&content_dir).await?;
+        shared::convert_content(&content_dir, drafts).await?;
 
         // Clean up orphaned files before starting server
         shared::cleanup_orphaned_build_files(&content_dir).await?;

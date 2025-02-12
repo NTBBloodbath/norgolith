@@ -44,6 +44,12 @@ enum Commands {
         #[arg(short = 'p', long, default_value_t = 3030, help = "Port to be used")]
         port: u16,
 
+        #[arg(long, default_value_t = true, overrides_with = "_no_drafts", help = "Whether to serve draft content")]
+        drafts: bool,
+
+        #[arg(long = "no-drafts")]
+        _no_drafts: bool,
+
         #[arg(
             short = 'o',
             long,
@@ -104,7 +110,7 @@ pub async fn start() -> Result<()> {
 
     match &cli.command {
         Commands::Init { name } => init_site(name.as_ref()).await?,
-        Commands::Serve { port, open } => check_and_serve(*port, *open).await?,
+        Commands::Serve { port, drafts: _, _no_drafts, open } => check_and_serve(*port, !_no_drafts, *open).await?,
         Commands::Build { minify } => build_site(*minify).await?,
         Commands::New { kind, name, open } => {
             new_asset(kind.as_ref(), name.as_ref(), *open).await?
@@ -146,11 +152,12 @@ async fn build_site(minify: bool) -> Result<()> {
 ///
 /// # Arguments:
 ///   * port: The port number to use for the server.
+///   * drafts: Whether to serve draft content
 ///   * open: Whether to open the development server in the system web browser.
 ///
 /// # Returns:
 ///   A `Result<()>` indicating success or error. On error, the context message will provide information on why the development server could not be initialized.
-async fn check_and_serve(port: u16, open: bool) -> Result<()> {
+async fn check_and_serve(port: u16, drafts: bool, open: bool) -> Result<()> {
     if !net::is_port_available(port) {
         let port_msg = if port == 3030 {
             "default Norgolith port (3030)".to_string()
@@ -161,7 +168,7 @@ async fn check_and_serve(port: u16, open: bool) -> Result<()> {
         bail!("Could not initialize the development server: failed to open listener, perhaps the {} is busy?", port_msg);
     }
 
-    cmd::serve(port, open).await
+    cmd::serve(port, drafts, open).await
 }
 
 /// Creates a new asset with the given kind and name.
@@ -265,7 +272,7 @@ mod tests {
         // Enter the test directory
         std::env::set_current_dir(canonicalize(test_site_dir.clone()).await?)?;
 
-        let result = check_and_serve(port, false).await;
+        let result = check_and_serve(port, false, false).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()

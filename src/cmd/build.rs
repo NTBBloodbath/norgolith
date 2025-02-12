@@ -67,6 +67,15 @@ async fn generate_public_build(
                             }
                         };
 
+                    // Do not try to build draft content for production builds
+                    if toml::Value::as_bool(
+                        metadata.get("draft").unwrap_or(&toml::Value::from(false)),
+                    )
+                    .expect("draft metadata field should be a boolean")
+                    {
+                        return;
+                    }
+
                     // Get the layout (template) to render the content, fallback to default if the metadata field was not found.
                     let layout = metadata
                         .get("layout")
@@ -196,7 +205,7 @@ pub async fn build(minify: bool) -> Result<()> {
         prepare_build_directory(Path::new(&root_dir)).await?;
 
         // Convert the norg documents to html
-        shared::convert_content(&content_dir).await?;
+        shared::convert_content(&content_dir, false).await?;
 
         // Clean up orphaned files before building the site
         shared::cleanup_orphaned_build_files(&content_dir).await?;
