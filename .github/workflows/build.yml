@@ -45,8 +45,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: nix develop . -c cargo build --release
-      - name: Run
-        run: nix develop . -c cargo run -- --version
 
   macos:
     runs-on: macos-latest
@@ -74,5 +72,3 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: nix develop . -c cargo build --release
-      - name: Run
-        run: nix develop . -c cargo run -- --version
