@@ -71,6 +71,35 @@ Options:
 
 Run `cargo install --release --path .` to compile and install Norgolith in your `~/.cargo/bin` directory.
 
+### Nix Package
+
+You can build package yourself with the flake.
+
+Example for NixOS flake:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    norgolith.url = "github:NTBBloodbath/norgolith";
+  };
+  outputs =
+    { nixpkgs, norgolith, ... }:
+    {
+      nixosConfigurations.mysystem = nixpkgs.lib.nixosSystem {
+        modules = [
+          {
+          # add norgolith as a package
+            environment.systemPackages = [
+              norgolith.packages.x86_64-linux.default
+            ];
+          }
+        ];
+      };
+    };
+}
+```
 ## ❄️ Developing and testing with Nix
 
 The Norgolith repository includes a Nix flake for development and testing purposes in the root directory. This section outlines how to
