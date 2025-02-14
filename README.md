@@ -77,6 +77,7 @@ You can add norgolith to your NixOS configuration with flakes
 
 <details>
 <summary>Minimal flake.nix for a NixOS configuration:</summary>
+
 ```nix
 {
   inputs = {
@@ -100,6 +101,7 @@ You can add norgolith to your NixOS configuration with flakes
     };
 }
 ```
+
 </details>
 ## ❄️ Developing and testing with Nix
 
