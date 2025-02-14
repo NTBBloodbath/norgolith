@@ -101,8 +101,8 @@ You can add norgolith to your NixOS configuration with flakes
     };
 }
 ```
-
 </details>
+
 ## ❄️ Developing and testing with Nix
 
 The Norgolith repository includes a Nix flake for development and testing purposes in the root directory. This section outlines how to
