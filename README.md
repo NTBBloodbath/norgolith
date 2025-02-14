@@ -73,9 +73,9 @@ Run `cargo install --release --path .` to compile and install Norgolith in your 
 
 ### Nix Package
 
-You can build package yourself with the flake.
+You can add norgolith to your NixOS configuration with flakes
 
-Example for NixOS flake:
+Minimal flake.nix for a NixOS configuration:
 
 ```nix
 {
