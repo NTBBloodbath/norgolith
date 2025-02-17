@@ -381,6 +381,7 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
             content_dir: content_dir.clone(),
             assets_dir: assets_dir.clone(),
         });
+        let root_url = state.config.root_url.clone();
 
         // Create debouncer with 200ms delay, this should be enough to handle both the
         // (Neo)vim swap files and also the VSCode atomic saves
@@ -497,11 +498,13 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
 
                         if rebuild_needed {
                             let state = Arc::clone(&state_watcher);
+                            let root_url = state.config.root_url.clone();
                             tokio::task::spawn(async move {
                                 match shared::convert_document(
                                     &rebuild_document_path,
                                     &state.content_dir,
-                                    drafts
+                                    drafts,
+                                    &root_url,
                                 )
                                 .await
                                 {
@@ -564,7 +567,7 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
         let uri = format!("http://localhost:{}/", port);
 
         // Convert the norg documents to html
-        shared::convert_content(&content_dir, drafts).await?;
+        shared::convert_content(&content_dir, drafts, &root_url).await?;
 
         // Clean up orphaned files before starting server
         shared::cleanup_orphaned_build_files(&content_dir).await?;

@@ -33,28 +33,29 @@ pub async fn get_content(name: &str) -> Result<(String, PathBuf)> {
 }
 
 /// Recursively converts all the norg files in the content directory
-pub async fn convert_content(content_dir: &Path, convert_drafts: bool) -> Result<()> {
+pub async fn convert_content(content_dir: &Path, convert_drafts: bool, root_url: &str) -> Result<()> {
     async fn process_entry(
         entry: tokio::fs::DirEntry,
         content_dir: &Path,
         convert_drafts: bool,
+        root_url: &str
     ) -> Result<()> {
         let path = entry.path();
         if path.is_dir() {
             // Process directory recursively
             let mut content_stream = tokio::fs::read_dir(&path).await?;
             while let Some(entry) = content_stream.next_entry().await? {
-                Box::pin(process_entry(entry, content_dir, convert_drafts)).await?;
+                Box::pin(process_entry(entry, content_dir, convert_drafts, root_url)).await?;
             }
         } else {
-            convert_document(&path, content_dir, convert_drafts).await?;
+            convert_document(&path, content_dir, convert_drafts, root_url).await?;
         }
         Ok(())
     }
 
     let mut content_stream = tokio::fs::read_dir(content_dir).await?;
     while let Some(entry) = content_stream.next_entry().await? {
-        Box::pin(process_entry(entry, content_dir, convert_drafts)).await?;
+        Box::pin(process_entry(entry, content_dir, convert_drafts, root_url)).await?;
     }
 
     Ok(())
@@ -64,6 +65,7 @@ pub async fn convert_document(
     file_path: &Path,
     content_dir: &Path,
     convert_drafts: bool,
+    root_url: &str
 ) -> Result<()> {
     if file_path.extension().unwrap_or_default() == "norg"
         && tokio::fs::try_exists(file_path).await?
@@ -87,7 +89,7 @@ pub async fn convert_document(
 
         // Convert html content
         let norg_document = tokio::fs::read_to_string(file_path).await?;
-        let norg_html = converter::html::convert(norg_document.clone());
+        let norg_html = converter::html::convert(norg_document.clone(), root_url);
 
         // Convert metadata
         let norg_meta = converter::meta::convert(&norg_document)?;

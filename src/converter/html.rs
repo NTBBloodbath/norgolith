@@ -45,6 +45,7 @@ fn paragraph_to_string(
     segment: &[ParagraphSegment],
     _strong_carry: &Vec<CarryOverTag>,
     weak_carry: &mut Vec<CarryOverTag>,
+    root_url: &str
 ) -> String {
     let mut paragraph = String::new();
     segment.iter().for_each(|node| match node {
@@ -62,7 +63,7 @@ fn paragraph_to_string(
             let mut tag = |name: &str| {
                 paragraph.push_str(&format!(
                     "<{name}>{}</{name}>",
-                    &paragraph_to_string(content, _strong_carry, weak_carry)
+                    &paragraph_to_string(content, _strong_carry, weak_carry, root_url)
                 ))
             };
             match modifier_type {
@@ -74,7 +75,7 @@ fn paragraph_to_string(
                 ',' => tag("sub"),
                 '!' => paragraph.push_str(&format!(
                     "<span class='spoiler'>{}</span>",
-                    &paragraph_to_string(content, _strong_carry, weak_carry)
+                    &paragraph_to_string(content, _strong_carry, weak_carry, root_url)
                 )),
                 '$' => tag("code"), // TODO: Real Math Rendering?
                 '%' => {}           // ignore comments
@@ -119,7 +120,7 @@ fn paragraph_to_string(
                     LinkTarget::Heading { level: _, title } => {
                         a_tag.push(format!(
                             "href=\"#{}\"",
-                            paragraph_to_string(title, _strong_carry, weak_carry).replace(" ", "-")
+                            paragraph_to_string(title, _strong_carry, weak_carry, root_url).replace(" ", "-")
                         ));
                     }
                     // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
@@ -140,7 +141,7 @@ fn paragraph_to_string(
             // TODO: description is an option, should we handle it or YAGNI?
             a_tag.push(format!(
                 ">{}</a>",
-                paragraph_to_string(&description.clone().unwrap(), _strong_carry, weak_carry)
+                paragraph_to_string(&description.clone().unwrap(), _strong_carry, weak_carry, root_url)
             ));
             paragraph.push_str(a_tag.join(" ").as_str());
         }
@@ -157,12 +158,19 @@ fn paragraph_to_string(
                 match &targets[0] {
                     // link to external URLs
                     LinkTarget::Url(path) | LinkTarget::Path(path) => {
-                        a_tag.push(format!("href=\"{}\"", path));
+                        let href_path = if path.starts_with('/') {
+                            format!("{}{}", root_url, path)
+                        } else {
+                            path.clone()
+                        };
+                        a_tag.push(format!("href=\"{}\"", href_path));
                     }
                     LinkTarget::Heading { level: _, title } => {
+                        // BUG: if a heading contains a link, the title will be buggy.
+                        // we should apply the same regex remove solution from the headings
                         a_tag.push(format!(
                             "href=\"#{}\"",
-                            paragraph_to_string(title, _strong_carry, weak_carry).replace(" ", "-")
+                            paragraph_to_string(title, _strong_carry, weak_carry, root_url).replace(" ", "-")
                         ));
                     }
                     // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
@@ -182,7 +190,7 @@ fn paragraph_to_string(
             }
             a_tag.push(format!(
                 ">{}</a>",
-                paragraph_to_string(&content.clone(), _strong_carry, weak_carry)
+                paragraph_to_string(&content.clone(), _strong_carry, weak_carry, root_url)
             ));
             paragraph.push_str(a_tag.join(" ").as_str());
         }
@@ -251,7 +259,7 @@ fn weak_carryover_attribute(weak_carryover: CarryOverTag) -> String {
 }
 
 trait NorgToHtml {
-    fn to_html(&self, strong_carry: Vec<CarryOverTag>, weak_carry: Vec<CarryOverTag>) -> String;
+    fn to_html(&self, strong_carry: Vec<CarryOverTag>, weak_carry: Vec<CarryOverTag>, root_url: &str) -> String;
 }
 
 impl NorgToHtml for NorgAST {
@@ -260,6 +268,7 @@ impl NorgToHtml for NorgAST {
         &self,
         strong_carry: Vec<CarryOverTag>,
         mut weak_carry: Vec<CarryOverTag>,
+        root_url: &str
     ) -> String {
         match self {
             NorgAST::Paragraph(s) => {
@@ -275,7 +284,7 @@ impl NorgToHtml for NorgAST {
                 }
                 paragraph.push(format!(
                     ">{}</p>",
-                    paragraph_to_string(s, &strong_carry, &mut weak_carry)
+                    paragraph_to_string(s, &strong_carry, &mut weak_carry, root_url)
                 ));
                 paragraph.join(" ")
             }
@@ -290,7 +299,7 @@ impl NorgToHtml for NorgAST {
                 // the HTML carryovers meant for the heading are used for its internal content instead
                 let strong = Vec::<CarryOverTag>::new();
                 let mut weak = Vec::<CarryOverTag>::new();
-                let heading_title = paragraph_to_string(title, &strong, &mut weak);
+                let heading_title = paragraph_to_string(title, &strong, &mut weak, root_url);
 
                 // Regex to remove possible links from heading title ids
                 let re = Regex::new(r"-<.*>").unwrap();
@@ -326,7 +335,7 @@ impl NorgToHtml for NorgAST {
                         section.push(format!(">{}</h6>", heading_title));
                     }
                 }
-                section.push(to_html(content, &strong_carry, &weak_carry));
+                section.push(to_html(content, &strong_carry, &weak_carry, root_url));
 
                 section.join(" ")
             }
@@ -343,7 +352,7 @@ impl NorgToHtml for NorgAST {
                     let mut weak = Vec::<CarryOverTag>::new();
                     // HACK: we are passing empty carryover vectors here because otherwise
                     // the HTML carryovers meant for the lists are used for its internal content instead
-                    paragraph_to_string(&s, &strong, &mut weak)
+                    paragraph_to_string(&s, &strong, &mut weak, root_url)
                 } else {
                     unreachable!();
                 };
@@ -368,7 +377,7 @@ impl NorgToHtml for NorgAST {
                         list.push("</li>".to_string());
                         if !content.is_empty() {
                             list.push(get_list_tag(modifier_type.clone(), true));
-                            list.push(to_html(content, &strong_carry, &weak_carry));
+                            list.push(to_html(content, &strong_carry, &weak_carry, root_url));
                             list.push(get_list_tag(modifier_type.clone(), false));
                         }
                         if *level == 1 {
@@ -389,7 +398,7 @@ impl NorgToHtml for NorgAST {
                         }
                         quote.push(mod_text);
                         if !content.is_empty() {
-                            quote.push(to_html(content, &strong_carry, &weak_carry));
+                            quote.push(to_html(content, &strong_carry, &weak_carry, root_url));
                         }
                         quote.push("</blockquote>".to_string());
                         quote.join(" ")
@@ -468,7 +477,7 @@ impl NorgToHtml for NorgAST {
                         parameters: parameters.clone(),
                     };
                     weak_carry.push(tag);
-                    to_html(&[*next_object.clone()], &strong_carry, &weak_carry)
+                    to_html(&[*next_object.clone()], &strong_carry, &weak_carry, root_url)
                 }
                 CarryoverTag::Macro => {
                     eprintln!("[converter] Carryover tag macros are unsupported right now");
@@ -481,7 +490,12 @@ impl NorgToHtml for NorgAST {
                     "image" => {
                         let mut image_tag = Vec::<String>::new();
 
-                        image_tag.push(format!("<img src=\"{}\"", parameters[0]));
+                        let src_path = if parameters[0].starts_with('/') {
+                            format!("{}{}", root_url, parameters[0])
+                        } else {
+                            parameters[0].clone()
+                        };
+                        image_tag.push(format!("<img src=\"{}\"", src_path));
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
                                 image_tag.push(weak_carryover_attribute(weak_carryover));
@@ -530,17 +544,17 @@ impl NorgToHtml for NorgAST {
     }
 }
 
-fn to_html(ast: &[NorgAST], strong_carry: &[CarryOverTag], weak_carry: &[CarryOverTag]) -> String {
+fn to_html(ast: &[NorgAST], strong_carry: &[CarryOverTag], weak_carry: &[CarryOverTag], root_url: &str) -> String {
     let mut res = String::new();
     for node in ast {
-        res.push_str(&node.to_html(strong_carry.to_vec(), weak_carry.to_vec()));
+        res.push_str(&node.to_html(strong_carry.to_vec(), weak_carry.to_vec(), root_url));
     }
 
     res
 }
 
-pub fn convert(document: String) -> String {
+pub fn convert(document: String, root_url: &str) -> String {
     let ast = parse_tree(&document).unwrap();
     // We do not have any carryover tag when starting to convert the document
-    to_html(&ast, &[], &[])
+    to_html(&ast, &[], &[], root_url)
 }

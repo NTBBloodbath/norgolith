@@ -1,17 +1,17 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-struct SiteConfigHighlighter {
-    enable: bool,
-    engine: Option<String>, // fallbacks to prism if not defined
+pub struct SiteConfigHighlighter {
+    pub enable: bool,
+    pub engine: Option<String>, // fallbacks to prism if not defined
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SiteConfig {
     #[serde(rename = "rootUrl")]
-    root_url: String,
-    language: String,
-    title: String,
-    author: String,
-    highlighter: Option<SiteConfigHighlighter>,
+    pub root_url: String,
+    pub language: String,
+    pub title: String,
+    pub author: String,
+    pub highlighter: Option<SiteConfigHighlighter>,
 }

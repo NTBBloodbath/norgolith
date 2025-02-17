@@ -205,7 +205,7 @@ pub async fn build(minify: bool) -> Result<()> {
         prepare_build_directory(Path::new(&root_dir)).await?;
 
         // Convert the norg documents to html
-        shared::convert_content(&content_dir, false).await?;
+        shared::convert_content(&content_dir, false, &site_config.root_url).await?;
 
         // Clean up orphaned files before building the site
         shared::cleanup_orphaned_build_files(&content_dir).await?;
