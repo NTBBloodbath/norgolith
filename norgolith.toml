@@ -1,0 +1,9 @@
+rootUrl = 'https://ntbbloodbath.github.io/norgolith'
+language = 'en-us'
+title = 'Norgolith'
+author = 'NTBBloodbath'
+
+# Code blocks highlighting
+[highlighter]
+enable = true
+engine = 'prism'

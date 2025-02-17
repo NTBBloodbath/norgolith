@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ metadata.title | title }}{% endblock title %}
+{% block content %}
+<div class="container mx-auto min-h-screen mt-12">
+{{ content | safe }}
+</div>
+{% endblock content %}
+{% block footer %}
+<footer class="bg-[#303040] mt-12 py-4 px-6 w-full font-mono">
+  <div
+    class="flex justify-between items-center font-medium text-xs md:text-sm text-grey"
+  >
+    <span
+        >Copyright &copy; {{ now(format="%Y") }}
+      <a
+        href="https://github.com/NTBBloodbath"
+        class="text-blue-400 hover:underline">NTBBloodbath</a
+      >. Licensed under GPLv2.</span
+    >
+    <a
+      href="https://github.com/NTBBloodbath/norgolith"
+      class="hover:text-blue-400"
+    >
+      <span>GitHub</span>
+    </a>
+  </div>
+</footer>
+{% endblock footer %}
