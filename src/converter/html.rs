@@ -166,11 +166,11 @@ fn paragraph_to_string(
                         a_tag.push(format!("href=\"{}\"", href_path));
                     }
                     LinkTarget::Heading { level: _, title } => {
-                        // BUG: if a heading contains a link, the title will be buggy.
-                        // we should apply the same regex remove solution from the headings
+                        // Regex to remove possible links from heading title ids during href
+                        let re = Regex::new(r"-?<.*>").unwrap();
                         a_tag.push(format!(
                             "href=\"#{}\"",
-                            paragraph_to_string(title, _strong_carry, weak_carry, root_url).replace(" ", "-")
+                            re.replace(&paragraph_to_string(title, _strong_carry, weak_carry, root_url).replace(" ", "-"), "")
                         ));
                     }
                     // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
@@ -302,15 +302,15 @@ impl NorgToHtml for NorgAST {
                 let heading_title = paragraph_to_string(title, &strong, &mut weak, root_url);
 
                 // Regex to remove possible links from heading title ids
-                let re = Regex::new(r"-<.*>").unwrap();
+                let re = Regex::new(r"-?<.*>").unwrap();
 
                 match level {
                     1..=6 => {
                         section.push(format!(
                             "<h{} id=\"{}\"",
                             level,
-                        re.replace(&heading_title.replace(" ", "-"), "")
-                    ));
+                            re.replace(&heading_title.replace(" ", "-"), "")
+                        ));
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
                                 section.push(weak_carryover_attribute(weak_carryover));
