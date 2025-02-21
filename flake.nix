@@ -57,10 +57,14 @@
             cargo-edit
             cargo-nextest
             rust-analyzer
+            pkg-config # Required by git2 crate
+            openssl # Required by git2 crate
           ];
 
           # Many editors rely on this rust-src PATH variable
           RUST_SRC_PATH = "${toolchain.rustLibSrc}";
+
+          PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
         };
       });
 

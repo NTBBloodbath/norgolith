@@ -4,6 +4,7 @@ mod config;
 mod converter;
 mod fs;
 mod net;
+mod theme;
 mod shared;
 mod tera_functions;
 

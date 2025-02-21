@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use eyre::{bail, eyre, Result};
+use eyre::{bail, eyre, Context, Result};
 use tera::Tera;
 
 use crate::converter;
@@ -184,11 +184,32 @@ pub fn get_elapsed_time(instant: Instant) -> String {
     }
 }
 
-pub async fn init_tera(templates_dir: &str) -> Result<Tera> {
+pub async fn init_tera(templates_dir: &str, theme_dir: &Path) -> Result<Tera> {
+    // Initialize Tera with the user-defined templates first
     let mut tera = match Tera::new(&(templates_dir.to_owned() + "/**/*.html")) {
         Ok(t) => t,
         Err(e) => bail!("Tera parsing error(s): {}", e),
     };
+
+    // Theme templates will override the user-defined templates by design if they are named exactly
+    // the same in both the user's templates directory and the theme templates directory
+    if tokio::fs::try_exists(theme_dir.join("templates")).await? {
+        let mut theme_templates: Vec<(String, Option<String>)> = Vec::new();
+
+        let mut entries = tokio::fs::read_dir(&theme_dir.join("templates")).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+
+            if path.is_file() && path.extension().map(|e| e == "html").unwrap_or(false) {
+                theme_templates.push((path.into_os_string().into_string().unwrap(), Some(entry.file_name().into_string().unwrap())))
+            }
+        }
+        tera.add_template_files(theme_templates)
+            .wrap_err("Failed to load theme templates")?;
+    }
+
+    // Register functions
     tera.register_function("now", crate::tera_functions::NowFunction);
+
     Ok(tera)
 }

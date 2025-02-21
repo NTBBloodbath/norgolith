@@ -197,9 +197,10 @@ pub async fn build(minify: bool) -> Result<()> {
         let templates_dir = root_dir.clone() + "/templates";
         let content_dir = Path::new(&root_dir.clone()).join("content");
         let assets_dir = Path::new(&root_dir.clone()).join("assets");
+        let theme_dir = Path::new(&root_dir.clone()).join("theme");
 
         // Initialize Tera once
-        let tera = shared::init_tera(&templates_dir).await?;
+        let tera = shared::init_tera(&templates_dir, &theme_dir).await?;
 
         // Prepare the public build directory
         prepare_build_directory(Path::new(&root_dir)).await?;
