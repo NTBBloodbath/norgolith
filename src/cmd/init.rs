@@ -6,10 +6,11 @@ use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, ContentArrangement, Table};
 use eyre::{bail, Result};
 use indoc::formatdoc;
+use inquire::Text;
 use tokio::fs;
 
 /// Create basic site configuration TOML
-async fn create_config(root: &str) -> Result<()> {
+async fn create_config(root: &str, root_url: &str, language: &str, title: &str) -> Result<()> {
     let site_config = formatdoc!(
         r#"
         rootUrl = '{}'
@@ -21,9 +22,9 @@ async fn create_config(root: &str) -> Result<()> {
         [highlighter]
         enable = false
         # engine = 'prism' # Can be 'prism' or 'hljs'. Defaults to 'prism'"#,
-        "http://localhost:3030", // this is the default port
-        "en-us",
-        root.to_owned(),
+        root_url, // this is the default port
+        language,
+        title,
         whoami::username()
     );
     // TBD: add Windows separator support
@@ -92,7 +93,7 @@ async fn create_directories(path: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn init(name: &str) -> Result<()> {
+pub async fn init(name: &str, prompt: bool) -> Result<()> {
     let path_exists = fs::try_exists(name).await?;
 
     if path_exists {
@@ -103,12 +104,38 @@ pub async fn init(name: &str) -> Result<()> {
             path.display()
         );
     } else {
+        // Prompt site configuration if wanted, otherwise fallback to sane default values
+        let root_url = if prompt {
+            Text::new("Site URL:")
+                .with_default("http://localhost:3030")
+                .with_help_message("URL to your production site")
+                .prompt()?
+        } else {
+            String::from("http://localhost:3030")
+        };
+        let language = if prompt {
+            Text::new("Site language:")
+                .with_default("en-US")
+                .with_help_message("Your site language")
+                .prompt()?
+        } else {
+            String::from("en-US")
+        };
+        let title = if prompt {
+            Text::new("Site title:")
+                .with_default(name)
+                .with_help_message("Site title")
+                .prompt()?
+        } else {
+            String::from(name)
+        };
+
         // Create site directories
         create_directories(name).await?;
 
         // Create initial files
         // TBD: Basic HTML templates
-        create_config(name).await?;
+        create_config(name, &root_url, &language, &title).await?;
         create_index_norg(name).await?;
         create_html_templates(name).await?;
         create_assets(name).await?;
@@ -131,7 +158,7 @@ pub async fn init(name: &str) -> Result<()> {
             .add_row(vec![Cell::new("templates"), Cell::new("HTML templates")])
             .add_row(vec![
                 Cell::new("assets"),
-                Cell::new("Site assets (JS, CSS, favicon, etc)"),
+                Cell::new("Site assets (JS, CSS, images, etc)"),
             ])
             .add_row(vec![Cell::new("theme"), Cell::new("Site theme files")])
             .add_row(vec![Cell::new(".build"), Cell::new("Dev server artifacts")]);
