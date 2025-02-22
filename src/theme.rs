@@ -26,7 +26,6 @@ pub struct ThemeMetadata {
     pub description: String,
     pub version: String,
     pub license: String,
-    pub repository: Option<String>,
 }
 
 // .metadata.toml file contents
@@ -243,7 +242,7 @@ impl ThemeManager {
             pin: self.pin,
         };
 
-        sp.update_after_time("Writing theme metadata file ...", std::time::Duration::from_millis(200));
+        sp.update_after_time("Writing theme metadata file...", std::time::Duration::from_millis(200));
         fs::write(metadata_path, toml::to_string_pretty(&metadata)?)
             .await
             .context("Failed to write metadata file")

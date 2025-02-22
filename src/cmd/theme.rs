@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use indoc::formatdoc;
 use inquire::{validator::Validation, Confirm, Select, Text};
-use eyre::{bail, Context, Result};
+use eyre::{bail, eyre, Context, Result};
 use spinoff::{Spinner, spinners};
 use clap::Subcommand;
 
@@ -27,6 +27,8 @@ pub enum ThemeCommands {
     },
     /// Update the current theme
     Update,
+    /// Restore previous theme version from backup
+    Rollback,
     /// Initialize theme structure (WIP)
     Init,
     /// Show theme information
@@ -55,7 +57,7 @@ async fn pull_theme(repo: &str, version: &Option<String>, pin: bool) -> Result<(
                 semver::Version::parse(version).context("No valid semantic version provided")?;
         }
 
-        let mut sp = Spinner::new(spinners::Dots2, format!("Pulling theme from '{}' ...", theme::resolve_repo_shorthand(repo).await?), None);
+        let mut sp = Spinner::new(spinners::Dots2, format!("Pulling theme from '{}'...", theme::resolve_repo_shorthand(repo).await?), None);
         theme.pull(&mut sp).await?;
         sp.stop_and_persist("✓", "Successfully pulled theme");
     } else {
@@ -90,7 +92,7 @@ async fn update_theme() -> Result<()> {
                 theme_dir,
             };
 
-            let mut sp = Spinner::new(spinners::Dots2, "Updating theme ...", None);
+            let mut sp = Spinner::new(spinners::Dots2, "Updating theme...", None);
             theme.update(&mut sp).await?;
             sp.stop_and_persist("✓", "Finished updating theme");
         } else {
@@ -99,6 +101,48 @@ async fn update_theme() -> Result<()> {
     } else {
         bail!("[theme] Could not update the theme: not in a Norgolith site directory");
     }
+    Ok(())
+}
+
+async fn rollback_theme() -> Result<()> {
+    // Try to find a 'norgolith.toml' file in the current working directory and its parents
+    let mut current_dir = std::env::current_dir()?;
+    let found_site_root =
+        fs::find_in_previous_dirs("file", "norgolith.toml", &mut current_dir).await?;
+
+    if let Some(mut root) = found_site_root {
+        let mut sp = Spinner::new(spinners::Dots2, "Rolling back to previous state...", None);
+
+        // Remove `norgolith.toml` from the root path
+        root.pop();
+        let theme_dir = root.join("theme");
+
+        let backup_dir = theme_dir.parent()
+            .ok_or_else(|| eyre!("Invalid theme directory"))?
+            .join(".theme_backup");
+
+        if !backup_dir.exists() {
+            sp.stop_and_persist("✖", "No previous state backup found");
+            return Ok(());
+        }
+
+        // Remove existing theme
+        if theme_dir.exists() && theme_dir.join("theme.toml").exists() {
+            tokio::fs::remove_dir_all(theme_dir.clone())
+                .await
+                .context("Failed to remove current theme")?;
+        }
+
+        // Restore backup
+        fs::copy_dir_all(backup_dir, theme_dir)
+            .await
+            .context("Failed to restore backup")?;
+
+        sp.stop_and_persist("✓", "Successfully restored previous theme state");
+    } else {
+        bail!("[theme] Could not rollback the theme: not in a Norgolith site directory");
+    }
+
     Ok(())
 }
 
@@ -167,7 +211,6 @@ async fn init_theme() -> Result<()> {
             description,
             version,
             license: license.to_string(),
-            repository: Some(repository),
         };
 
         // Theme directory structure
@@ -197,7 +240,7 @@ async fn init_theme() -> Result<()> {
         }
 
         // Write README
-        let repo = theme_config.repository.clone().unwrap();
+        let repo = repository.clone();
         let readme_pull_repo = if !repo.is_empty() {
             repo
         } else {
@@ -285,6 +328,7 @@ pub async fn handle(subcommand: &ThemeCommands) -> Result<()> {
     match subcommand {
         ThemeCommands::Pull { repo, version, pin } => pull_theme(repo, version, *pin).await,
         ThemeCommands::Update => update_theme().await,
+        ThemeCommands::Rollback => rollback_theme().await,
         ThemeCommands::Init => init_theme().await,
         ThemeCommands::Info => show_theme_info().await,
     }
