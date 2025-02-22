@@ -36,6 +36,12 @@ struct Cli {
 enum Commands {
     /// Initialize a new Norgolith site
     Init {
+        #[arg(long, default_value_t = true, overrides_with = "_no_prompt", help = "Whether to prompt for site info")]
+        prompt: bool,
+
+        #[arg(long = "no-prompt")]
+        _no_prompt: bool,
+
         /// Site name
         name: Option<String>,
     },
@@ -114,7 +120,7 @@ pub async fn start() -> Result<()> {
     }
 
     match &cli.command {
-        Commands::Init { name } => init_site(name.as_ref()).await?,
+        Commands::Init { name, prompt: _, _no_prompt } => init_site(name.as_ref(), !_no_prompt).await?,
         Commands::Theme { subcommand } => theme_handle(subcommand).await?,
         Commands::Serve { port, drafts: _, _no_drafts, open } => check_and_serve(*port, !_no_drafts, *open).await?,
         Commands::Build { minify } => build_site(*minify).await?,
@@ -134,9 +140,9 @@ pub async fn start() -> Result<()> {
 ///
 /// # Returns:
 ///   A `Result<()>` indicating success or error. On error, the context message will provide information on why the site could not be initialized.
-async fn init_site(name: Option<&String>) -> Result<()> {
+async fn init_site(name: Option<&String>, prompt: bool) -> Result<()> {
     if let Some(name) = name {
-        cmd::init(name).await?;
+        cmd::init(name, prompt).await?;
     } else {
         bail!("Missing name for the site: could not initialize the new Norgolith site");
     }
@@ -229,7 +235,7 @@ mod tests {
     #[tokio::test]
     async fn test_init_site_with_name() {
         let test_name = String::from("my-site");
-        let result = init_site(Some(&test_name)).await;
+        let result = init_site(Some(&test_name), false).await;
         assert!(result.is_ok());
 
         // Cleanup
@@ -238,7 +244,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_init_site_without_name() {
-        let result = init_site(None).await;
+        let result = init_site(None, false).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -274,7 +280,7 @@ mod tests {
 
         // Create temporal site
         let test_site_dir = String::from("my-unavailable-site");
-        init_site(Some(&test_site_dir)).await?;
+        init_site(Some(&test_site_dir), false).await?;
 
         // Save current directory as the previous directory to restore it later
         let previous_dir = std::env::current_dir()?;
