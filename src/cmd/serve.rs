@@ -353,12 +353,13 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
         let templates_dir = root_dir.clone() + "/templates";
         let content_dir = Path::new(&root_dir.clone()).join("content");
         let assets_dir = Path::new(&root_dir.clone()).join("assets");
+        let theme_dir = Path::new(&root_dir.clone()).join("theme");
 
         // Async runtime handle
         let rt = Handle::current();
 
         // Initialize Tera once
-        let tera = Arc::new(RwLock::new(shared::init_tera(&templates_dir).await?));
+        let tera = Arc::new(RwLock::new(shared::init_tera(&templates_dir, &theme_dir).await?));
 
         // Create reload channel
         let (reload_tx, _) = broadcast::channel(16);

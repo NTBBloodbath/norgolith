@@ -39,6 +39,11 @@ enum Commands {
         /// Site name
         name: Option<String>,
     },
+    /// Theme management
+    Theme {
+        #[command(subcommand)]
+        subcommand: cmd::ThemeCommands,
+    },
     /// Build a site for development
     Serve {
         #[arg(short = 'p', long, default_value_t = 3030, help = "Port to be used")]
@@ -110,6 +115,7 @@ pub async fn start() -> Result<()> {
 
     match &cli.command {
         Commands::Init { name } => init_site(name.as_ref()).await?,
+        Commands::Theme { subcommand } => theme_handle(subcommand).await?,
         Commands::Serve { port, drafts: _, _no_drafts, open } => check_and_serve(*port, !_no_drafts, *open).await?,
         Commands::Build { minify } => build_site(*minify).await?,
         Commands::New { kind, name, open } => {
@@ -169,6 +175,10 @@ async fn check_and_serve(port: u16, drafts: bool, open: bool) -> Result<()> {
     }
 
     cmd::serve(port, drafts, open).await
+}
+
+async fn theme_handle(subcommand: &cmd::ThemeCommands) -> Result<()> {
+    cmd::theme(subcommand).await
 }
 
 /// Creates a new asset with the given kind and name.

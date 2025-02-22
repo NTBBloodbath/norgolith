@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use eyre::Result;
-use tokio::fs::{metadata, read_dir};
+use tokio::fs::{copy, create_dir_all, metadata, read_dir};
 
 #[cfg(test)]
 use tokio::fs::{canonicalize, create_dir, remove_dir, remove_file, File};
@@ -34,6 +34,20 @@ pub async fn find_in_previous_dirs(
     }
 
     Ok(None)
+}
+
+pub async fn copy_dir_all(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result<()> {
+    Box::pin(create_dir_all(&dest)).await?;
+    let mut entries = read_dir(&src).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let file_type = entry.file_type().await?;
+        if file_type.is_dir() {
+            Box::pin(copy_dir_all(entry.path(), dest.as_ref().join(entry.file_name()))).await?;
+        } else {
+            copy(entry.path(), dest.as_ref().join(entry.file_name())).await?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
