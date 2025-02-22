@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use indoc::formatdoc;
 use inquire::{validator::Validation, Confirm, Select, Text};
 use eyre::{bail, Context, Result};
+use spinoff::{Spinner, spinners};
 use clap::Subcommand;
 
 use crate::{
@@ -54,8 +55,9 @@ async fn pull_theme(repo: &str, version: &Option<String>, pin: bool) -> Result<(
                 semver::Version::parse(version).context("No valid semantic version provided")?;
         }
 
-        println!("[theme] Pulling theme from '{}' ...", theme::resolve_repo_shorthand(repo).await?);
-        theme.pull().await?;
+        let mut sp = Spinner::new(spinners::Dots2, format!("Pulling theme from '{}' ...", theme::resolve_repo_shorthand(repo).await?), None);
+        theme.pull(&mut sp).await?;
+        sp.stop_and_persist("✓", "Successfully pulled theme");
     } else {
         bail!("[theme] Could not pull the theme: not in a Norgolith site directory");
     }
@@ -88,8 +90,9 @@ async fn update_theme() -> Result<()> {
                 theme_dir,
             };
 
-            println!("[theme] Updating theme ...");
-            theme.update().await?;
+            let mut sp = Spinner::new(spinners::Dots2, "Updating theme ...", None);
+            theme.update(&mut sp).await?;
+            sp.stop_and_persist("✓", "Finished updating theme");
         } else {
             bail!("[theme] Could not update the theme: there is no theme installed");
         }
@@ -259,7 +262,7 @@ async fn show_theme_info() -> Result<()> {
                 tokio::fs::read_to_string(theme_dir.join("theme.toml")).await?;
             let theme_toml: ThemeMetadata = toml::from_str(&theme_toml_content)?;
 
-            println!("[theme] Current theme information:");
+            println!("Current theme information:");
             println!(
                 "• Name: {}\n• Description: {}\n• Author: {}\n• License: {}\n• Version: {}\n• Pinned: {}",
                 theme_toml.name,

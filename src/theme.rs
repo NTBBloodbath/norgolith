@@ -6,6 +6,7 @@ use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use tempfile::tempdir;
 use tokio::fs;
+use spinoff::Spinner;
 
 use crate::fs::copy_dir_all;
 
@@ -89,7 +90,7 @@ async fn checkout_version(repo: &Repository, version: &Version) -> Result<()> {
     Ok(())
 }
 
-async fn backup_theme_files(src: &Path, dest: &Path) -> Result<()> {
+async fn backup_theme_files(src: &Path, dest: &Path, sp: &mut Spinner) -> Result<()> {
     // If the theme directory is empty then early return
     if src.read_dir()?.next().is_none() {
         return Ok(());
@@ -102,13 +103,13 @@ async fn backup_theme_files(src: &Path, dest: &Path) -> Result<()> {
     }
     tokio::fs::create_dir_all(dest).await?;
 
-    println!("[theme] Backing up theme files ...");
+    sp.update_after_time("Backing up existing theme files...", std::time::Duration::from_millis(200));
     copy_dir_all(src, dest).await?;
 
     Ok(())
 }
 
-async fn copy_theme_files(src: &Path, dest: &Path) -> Result<()> {
+async fn copy_theme_files(src: &Path, dest: &Path, sp: &mut Spinner) -> Result<()> {
     let allowed_dirs = ["templates", "assets"];
     let allowed_files = ["README.md", "LICENSE", "theme.toml"];
 
@@ -118,7 +119,7 @@ async fn copy_theme_files(src: &Path, dest: &Path) -> Result<()> {
     }
     fs::create_dir_all(dest).await?;
 
-    println!("[theme] Copying theme files ...");
+    sp.update_after_time("Copying theme files...", std::time::Duration::from_millis(200));
     let mut entries = fs::read_dir(src).await?;
     while let Some(entry) = entries.next_entry().await? {
         let file_name = entry.file_name();
@@ -135,7 +136,7 @@ async fn copy_theme_files(src: &Path, dest: &Path) -> Result<()> {
 }
 
 impl ThemeManager {
-    pub async fn pull(&mut self) -> Result<Self> {
+    pub async fn pull(&mut self, sp: &mut Spinner) -> Result<Self> {
         let repo_url = resolve_repo_shorthand(&self.repo).await?;
         let temp_dir = tempdir().context("Failed to create temporary directory")?;
 
@@ -157,25 +158,25 @@ impl ThemeManager {
 
         // Backup existing theme files before installing a new one
         let backup_dir = self.theme_dir.parent().unwrap().join(".theme_backup");
-        backup_theme_files(&self.theme_dir, &backup_dir)
+        backup_theme_files(&self.theme_dir, &backup_dir, sp)
             .await
             .context("Failed to backup theme files")?;
 
         // Copy theme files
-        copy_theme_files(temp_dir.path(), &self.theme_dir)
+        copy_theme_files(temp_dir.path(), &self.theme_dir, sp)
             .await
             .context("Failed to copy theme files")?;
 
         // Write metadata
         self.version = version;
-        self.write_metadata()
+        self.write_metadata(sp)
             .await
             .context("Failed to write theme metadata")?;
 
         Ok(self.clone())
     }
 
-    pub async fn update(&mut self) -> Result<Self> {
+    pub async fn update(&mut self, sp: &mut Spinner) -> Result<Self> {
         // 1. Check remote tags respecting semver and pin status
         // 2. Diff existing theme files
         // 3. Apply updates if needed
@@ -206,18 +207,18 @@ impl ThemeManager {
 
             // Backup current theme files
             let backup_dir = self.theme_dir.parent().unwrap().join(".theme_backup");
-            backup_theme_files(&self.theme_dir, &backup_dir)
+            backup_theme_files(&self.theme_dir, &backup_dir, sp)
                 .await
                 .context("Failed to backup theme files")?;
 
             // Copy new theme version files
-            copy_theme_files(temp_dir.path(), &self.theme_dir)
+            copy_theme_files(temp_dir.path(), &self.theme_dir, sp)
                 .await
                 .context("Failed to update theme files")?;
 
             // Update metadata
             self.version = latest_version;
-            self.write_metadata()
+            self.write_metadata(sp)
                 .await
                 .context("Failed to update theme metadata")?;
         } else {
@@ -234,7 +235,7 @@ impl ThemeManager {
         Ok(self.clone())
     }
 
-    async fn write_metadata(&mut self) -> Result<()> {
+    async fn write_metadata(&mut self, sp: &mut Spinner) -> Result<()> {
         let metadata_path = self.theme_dir.join(".metadata.toml");
         let metadata = ThemeInstalledMetadata {
             repo: self.repo.clone(),
@@ -242,6 +243,7 @@ impl ThemeManager {
             pin: self.pin,
         };
 
+        sp.update_after_time("Writing theme metadata file ...", std::time::Duration::from_millis(200));
         fs::write(metadata_path, toml::to_string_pretty(&metadata)?)
             .await
             .context("Failed to write metadata file")
