@@ -17,8 +17,21 @@ pub struct ThemeManager {
     pub theme_dir: PathBuf,
 }
 
+// theme.toml file contents
 #[derive(Serialize, Deserialize)]
 pub struct ThemeMetadata {
+    pub name: String,
+    pub author: String,
+    pub description: String,
+    pub version: String,
+    pub license: String,
+    pub repository: Option<String>,
+}
+
+// .metadata.toml file contents
+// used for update/backup/rollback mechanisms
+#[derive(Serialize, Deserialize)]
+pub struct ThemeInstalledMetadata {
     pub repo: String,
     pub version: Version,
     pub pin: bool,
@@ -97,7 +110,7 @@ async fn backup_theme_files(src: &Path, dest: &Path) -> Result<()> {
 
 async fn copy_theme_files(src: &Path, dest: &Path) -> Result<()> {
     let allowed_dirs = ["templates", "assets"];
-    let allowed_files = ["README.md", "LICENSE"];
+    let allowed_files = ["README.md", "LICENSE", "theme.toml"];
 
     // Clean existing theme directory
     if dest.exists() {
@@ -222,8 +235,8 @@ impl ThemeManager {
     }
 
     async fn write_metadata(&mut self) -> Result<()> {
-        let metadata_path = self.theme_dir.join("metadata.toml");
-        let metadata = ThemeMetadata {
+        let metadata_path = self.theme_dir.join(".metadata.toml");
+        let metadata = ThemeInstalledMetadata {
             repo: self.repo.clone(),
             version: self.version.clone(),
             pin: self.pin,

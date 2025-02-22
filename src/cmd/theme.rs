@@ -1,10 +1,13 @@
-use eyre::{bail, Context, Result};
+use std::collections::HashMap;
 
+use indoc::formatdoc;
+use inquire::{validator::Validation, Confirm, Select, Text};
+use eyre::{bail, Context, Result};
 use clap::Subcommand;
 
 use crate::{
     fs,
-    theme::{self, ThemeManager, ThemeMetadata},
+    theme::{self, ThemeInstalledMetadata, ThemeManager, ThemeMetadata},
 };
 
 #[derive(Subcommand, Clone)]
@@ -71,12 +74,12 @@ async fn update_theme() -> Result<()> {
         root.pop();
         let theme_dir = root.join("theme");
 
-        // Check if there is a 'metadata.toml' in the theme directory before proceeding
-        if theme_dir.join("metadata.toml").exists() {
+        // Check if there is a '.metadata.toml' in the theme directory before proceeding
+        if theme_dir.join(".metadata.toml").exists() {
             // Load the current theme metadata
             let metadata_content =
-                tokio::fs::read_to_string(theme_dir.join("metadata.toml")).await?;
-            let theme_metadata: ThemeMetadata = toml::from_str(&metadata_content)?;
+                tokio::fs::read_to_string(theme_dir.join(".metadata.toml")).await?;
+            let theme_metadata: ThemeInstalledMetadata = toml::from_str(&metadata_content)?;
 
             let mut theme = ThemeManager {
                 repo: theme_metadata.repo.clone(),
@@ -97,7 +100,142 @@ async fn update_theme() -> Result<()> {
 }
 
 async fn init_theme() -> Result<()> {
-    println!("Initializing theme structure... WIP");
+    // NOTE: perhaps we should allow to create a new theme outside of an existing site?
+    // Try to find a 'norgolith.toml' file in the current working directory and its parents
+    let mut current_dir = std::env::current_dir()?;
+    let found_site_root =
+        fs::find_in_previous_dirs("file", "norgolith.toml", &mut current_dir).await?;
+
+    if let Some(mut root) = found_site_root {
+        // Remove `norgolith.toml` from the root path
+        root.pop();
+        let theme_dir = root.join("theme");
+        let theme_metadata = theme_dir.join(".metadata.toml");
+
+        // Check for existing .metadata.toml
+        if theme_metadata.exists() {
+            let overwrite = Confirm::new("A theme already exists. Overwrite it?")
+                .with_default(false)
+                .prompt()?;
+
+            if !overwrite {
+                println!("[theme] Theme initialization canceled");
+                return Ok(());
+            }
+        }
+
+        // Collect theme metadata
+        let name = Text::new("Theme name:")
+            .with_help_message("e.g. 'Norgolith Pico'")
+            .prompt()?;
+        let author = Text::new("Author:")
+            .with_help_message("Your name or organization")
+            .prompt()?;
+        let description = Text::new("Description:")
+            .with_help_message("Short description of your theme")
+            .prompt()?;
+        let version = Text::new("Version:")
+            .with_default("0.1.0")
+            .with_validator(|v: &str| match semver::Version::parse(v) {
+                Ok(_) => Ok(Validation::Valid),
+                Err(_) => Ok(Validation::Invalid("Invalid semantic version format".into())),
+            })
+            .prompt()?;
+        let license = Select::new("License:", vec![
+            "MIT",
+            "Apache-2.0",
+            "GPL-2.0",
+            "GPL-3.0",
+            "BSD-3-Clause",
+            "Unlicense",
+            "Other",
+        ])
+            // .with_starting_cursor(0)
+            .with_help_message("Choose a license for your theme")
+            .prompt()?;
+
+        let repository = Text::new("Repository URL (optional):")
+            .with_help_message("Format: 'github:user/repo', 'codeberg:user/repo' or 'sourcehut:user/repo'")
+            .prompt()?;
+
+        let theme_config = theme::ThemeMetadata {
+            name,
+            author,
+            description,
+            version,
+            license: license.to_string(),
+            repository: Some(repository),
+        };
+
+        // Theme directory structure
+        let theme_templates = theme_dir.join("templates");
+        let theme_directories = vec![
+            theme_templates.clone(),
+            theme_dir.join("assets/js"),
+            theme_dir.join("assets/css"),
+            theme_dir.join("assets/images"),
+        ];
+        for dir in theme_directories {
+            tokio::fs::create_dir_all(dir).await?;
+        }
+
+        // Write default html templates
+        // TODO: add 'head.html', 'footer.html' for more granular content?
+        let templates = HashMap::from([
+            ("base", include_str!("../resources/templates/base.html")),
+            (
+                "default",
+                include_str!("../resources/templates/default.html"),
+            ),
+        ]);
+        for (&name, &contents) in templates.iter() {
+            let template_path = theme_templates.join(name.to_owned() + ".html");
+            tokio::fs::write(template_path, contents).await?;
+        }
+
+        // Write README
+        let repo = theme_config.repository.clone().unwrap();
+        let readme_pull_repo = if !repo.is_empty() {
+            repo
+        } else {
+            String::from("# TODO: add your 'user/repo' here")
+        };
+        let readme = formatdoc!(
+            r#"
+            # {}
+            {}
+
+            ## Installation
+            ```bash
+            lith theme pull {}
+            ```
+
+            ## License
+            {} is licensed under {} license.
+            "#,
+            theme_config.name,
+            theme_config.description,
+            readme_pull_repo,
+            theme_config.name,
+            theme_config.license,
+        );
+        tokio::fs::write(theme_dir.join("README.md"), readme)
+            .await
+            .context("Failed to write README.md")?;
+
+        // Write theme.toml
+        tokio::fs::write(theme_dir.join("theme.toml"), toml::to_string_pretty(&theme_config)?)
+            .await
+            .context("Failed to write theme.toml")?;
+
+        println!("\nTheme initialized successfully!");
+        println!("Next steps:");
+        println!("1. Edit templates in the 'templates/' directory");
+        println!("2. Add scripts to 'assets/js/'");
+        println!("3. Add styles to 'assets/css/'");
+    } else {
+        bail!("[theme] Could not initialize the theme: not in a Norgolith site directory");
+    }
     Ok(())
 }
 
@@ -112,15 +250,22 @@ async fn show_theme_info() -> Result<()> {
         root.pop();
         let theme_dir = root.join("theme");
 
-        // Check if there is a 'metadata.toml' in the theme directory before proceeding
-        if theme_dir.join("metadata.toml").exists() {
+        // Check if there is a '.metadata.toml' in the theme directory before proceeding
+        if theme_dir.join(".metadata.toml").exists() {
             let metadata_content =
-                tokio::fs::read_to_string(theme_dir.join("metadata.toml")).await?;
-            let theme_metadata: ThemeMetadata = toml::from_str(&metadata_content)?;
+                tokio::fs::read_to_string(theme_dir.join(".metadata.toml")).await?;
+            let theme_metadata: ThemeInstalledMetadata = toml::from_str(&metadata_content)?;
+            let theme_toml_content =
+                tokio::fs::read_to_string(theme_dir.join("theme.toml")).await?;
+            let theme_toml: ThemeMetadata = toml::from_str(&theme_toml_content)?;
 
+            println!("[theme] Current theme information:");
             println!(
-                "[theme] Current theme information:\n→ Repository: {}\n→ Version: {}\n→ Pinned: {}",
-                theme_metadata.repo,
+                "• Name: {}\n• Description: {}\n• Author: {}\n• License: {}\n• Version: {}\n• Pinned: {}",
+                theme_toml.name,
+                theme_toml.description,
+                theme_toml.author,
+                theme_toml.license,
                 theme_metadata.version,
                 if theme_metadata.pin { "yes" } else { "no" },
             );
