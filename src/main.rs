@@ -5,6 +5,7 @@ mod converter;
 mod fs;
 mod net;
 mod theme;
+mod schema;
 mod shared;
 mod tera_functions;
 
@@ -19,7 +20,7 @@ async fn main() -> Result<()> {
     //println!("HTML code:\n{}", norg_html);
 
     if let Err(e) = cli::start().await {
-        eprintln!("Something went wrong: {:?}", e);
+        eprintln!("Something went wrong:\n{:?}", e);
         std::process::exit(1);
     }
 

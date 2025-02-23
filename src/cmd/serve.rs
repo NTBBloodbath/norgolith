@@ -21,7 +21,7 @@ use tokio::{
 };
 use tokio_tungstenite::accept_async;
 
-use crate::{config, fs, shared};
+use crate::{config, fs, shared, schema::{ContentSchema, format_errors, validate_metadata}};
 
 // Global state for reloading
 struct ServerState {
@@ -500,6 +500,7 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
                         if rebuild_needed {
                             let state = Arc::clone(&state_watcher);
                             let root_url = state.config.root_url.clone();
+                            let content_schema = state.config.content_schema.clone();
                             tokio::task::spawn(async move {
                                 match shared::convert_document(
                                     &rebuild_document_path,
@@ -513,6 +514,49 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
                                         let stripped_path = rebuild_document_path
                                             .strip_prefix(&state.content_dir)
                                             .unwrap();
+
+                                        if let Some(schema) = &content_schema {
+                                            let content_path = stripped_path
+                                                .to_str()
+                                                .unwrap()
+                                                .replace('\\', "/")
+                                                .trim_end_matches(".norg")
+                                                .to_string();
+
+                                            // Read generated metadata
+                                            let build_dir = state.content_dir.parent().unwrap().join(".build");
+                                            let meta_path = build_dir
+                                                .join(stripped_path)
+                                                .with_extension("meta.toml");
+
+                                            if let Ok(metadata_content) = tokio::fs::read_to_string(&meta_path).await {
+                                                let metadata: toml::Value = toml::from_str(&metadata_content).unwrap_or_else(|e| {
+                                                    // Fallback to empty table on parse errors
+                                                    eprintln!("[server] Failed to parse metadata: {}", e);
+                                                    toml::Value::Table(toml::map::Map::new())
+                                                });
+                                                let metadata_map = metadata.as_table().unwrap().iter()
+                                                    .map(|(k, v)| (k.clone(), v.clone()))
+                                                    .collect();
+
+                                                // Resolve schema
+                                                let schema_nodes = schema.resolve_path(&content_path);
+                                                let merged_schema = ContentSchema::merge_hierarchy(&schema_nodes);
+
+                                                // Validate and report warnings
+                                                let errors = validate_metadata(&metadata_map, &merged_schema);
+                                                if !errors.is_empty() {
+                                                    let error_output = format_errors(
+                                                        &rebuild_document_path,
+                                                        &content_path,
+                                                        &errors,
+                                                        true
+                                                    );
+                                                    eprintln!("[server] {}", error_output);
+                                                }
+                                            }
+                                        }
+
                                         println!(
                                             "[server] Content successfully regenerated: {}",
                                             stripped_path.display()
