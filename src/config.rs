@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::schema::ContentSchema;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SiteConfigHighlighter {
     pub enable: bool,
@@ -13,5 +15,7 @@ pub struct SiteConfig {
     pub language: String,
     pub title: String,
     pub author: String,
+    #[serde(default)]
+    pub content_schema: Option<ContentSchema>,
     pub highlighter: Option<SiteConfigHighlighter>,
 }

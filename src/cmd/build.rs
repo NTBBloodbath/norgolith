@@ -1,11 +1,18 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use eyre::{bail, Result};
 use futures_util::{self, StreamExt};
 use tera::{Context, Tera};
 use walkdir::WalkDir;
+use tokio::sync::Mutex;
 
-use crate::{config, fs, shared};
+use crate::{
+    config,
+    fs,
+    shared,
+    schema::{ContentSchema, format_errors, validate_metadata},
+};
 
 async fn prepare_build_directory(root_path: &Path) -> Result<()> {
     let public_dir = root_path.join("public");
@@ -24,14 +31,21 @@ async fn generate_public_build(
 ) -> Result<()> {
     let build_dir = root_path.join(".build");
     let public_dir = root_path.join("public");
+    let content_dir = root_path.join("content");
     let entries = WalkDir::new(&build_dir).into_iter().filter_map(|e| e.ok());
+
+    // Shared error state for concurrent validation
+    let validation_errors = Arc::new(Mutex::new(Vec::new()));
 
     // Parallel processing
     futures_util::stream::iter(entries)
         .for_each_concurrent(num_cpus::get(), |entry| {
             let build_dir = build_dir.clone();
             let public_dir = public_dir.clone();
+            let content_dir = content_dir.clone();
             let site_config = site_config.clone();
+            let validation_errors = Arc::clone(&validation_errors);
+
             async move {
                 let path = entry.path();
                 if path.is_file() && path.extension().map(|e| e == "html").unwrap_or(false) {
@@ -66,6 +80,47 @@ async fn generate_public_build(
                                 toml::Value::Table(toml::map::Map::new())
                             }
                         };
+
+                    // Metadata schema validation
+                    if let Some(schema) = &site_config.content_schema {
+                        // Get relative content path
+                        let content_path = path.strip_prefix(&build_dir)
+                            .unwrap()
+                            .with_extension("")
+                            .to_str()
+                            .unwrap()
+                            .replace('\\', "/");
+
+                        // Resolve schema hierarchy
+                        let schema_nodes = schema.resolve_path(&content_path);
+                        let merged_schema = ContentSchema::merge_hierarchy(&schema_nodes);
+
+                        // Convert metadata to hashmap for validation
+                        let metadata_map = metadata.as_table()
+                            .unwrap()
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
+
+                        // Perform validation
+                        let errors = validate_metadata(&metadata_map, &merged_schema);
+
+                        // Collect errors
+                        if !errors.is_empty() {
+                            let norg_path = content_dir.join(content_path.clone()).strip_prefix(root_path).unwrap().with_extension("norg");
+                            let error_output = format!(
+                                "[build] {}",
+                                format_errors(
+                                    &norg_path,
+                                    &content_path,
+                                    &errors,
+                                    false
+                                )
+                            );
+
+                            validation_errors.lock().await.push(error_output);
+                        }
+                    }
 
                     // Do not try to build draft content for production builds
                     if toml::Value::as_bool(
@@ -114,6 +169,12 @@ async fn generate_public_build(
             }
         })
         .await;
+
+    // Check collected errors
+    let errors = validation_errors.lock().await;
+    if !errors.is_empty() {
+        bail!(errors.join("\n"));
+    }
 
     Ok(())
 }
