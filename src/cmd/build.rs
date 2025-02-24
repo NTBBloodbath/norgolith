@@ -179,6 +179,23 @@ async fn generate_public_build(
     Ok(())
 }
 
+async fn copy_all_assets(
+    site_assets_dir: &Path,
+    theme_assets_dir: &Path,
+    root_path: &Path,
+    minify: bool,
+) -> Result<()> {
+    // Copy theme assets first
+    if theme_assets_dir.exists() {
+        copy_assets(theme_assets_dir, root_path, minify).await?;
+    }
+
+    // Copy site assets (overrides theme assets)
+    copy_assets(site_assets_dir, root_path, minify).await?;
+
+    Ok(())
+}
+
 async fn copy_assets(assets_dir: &Path, root_path: &Path, minify: bool) -> Result<()> {
     let public_dir = root_path.join("public");
     let public_assets = public_dir.join("assets");
@@ -198,9 +215,15 @@ async fn copy_assets(assets_dir: &Path, root_path: &Path, minify: bool) -> Resul
                 Box::pin(process_entry(&entry_path, &new_dest, minify)).await?;
             }
         } else if minify {
+            // With file_stem we avoid trying to minify content that is already minified, e.g. bundled css frameworks
+            let file_stem = Path::new(src_path.file_stem().unwrap())
+                .extension()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap();
             let file_ext = src_path.extension().unwrap().to_str().unwrap();
 
-            if file_ext == "js" {
+            if file_stem != "min" && file_ext == "js" {
                 let content = tokio::fs::read(src_path).await?;
                 let mut minified = Vec::new();
                 let session = minify_js::Session::new();
@@ -212,7 +235,7 @@ async fn copy_assets(assets_dir: &Path, root_path: &Path, minify: bool) -> Resul
                 )
                 .unwrap();
                 tokio::fs::write(dest_path, content).await?;
-            } else if file_ext == "css" {
+            } else if file_stem != "min" && file_ext == "css" {
                 let content = tokio::fs::read_to_string(src_path).await?;
                 // See https://docs.rs/css-minify/0.5.2/css_minify/optimizations/enum.Level.html#variants
                 let minified = css_minify::optimizations::Minifier::default()
@@ -259,6 +282,7 @@ pub async fn build(minify: bool) -> Result<()> {
         let content_dir = Path::new(&root_dir.clone()).join("content");
         let assets_dir = Path::new(&root_dir.clone()).join("assets");
         let theme_dir = Path::new(&root_dir.clone()).join("theme");
+        let theme_assets_dir = theme_dir.join("assets");
 
         // Initialize Tera once
         let tera = shared::init_tera(&templates_dir, &theme_dir).await?;
@@ -276,7 +300,13 @@ pub async fn build(minify: bool) -> Result<()> {
         generate_public_build(&tera, Path::new(&root_dir.clone()), site_config, minify).await?;
 
         // Copy site assets
-        copy_assets(&assets_dir, Path::new(&root_dir.clone()), minify).await?;
+        copy_all_assets(
+            &assets_dir,
+            &theme_assets_dir,
+            Path::new(&root_dir.clone()),
+            minify,
+        )
+        .await?;
 
         println!(
             "[build] Finished site build in {}",
