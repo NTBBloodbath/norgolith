@@ -105,7 +105,7 @@ impl ContentSchema {
                 node.required
                     .iter()
                     .filter(|f| !current_required.contains(f))
-                    .cloned()
+                    .cloned(),
             );
 
             // Merge fields with later nodes overriding earlier ones

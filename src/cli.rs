@@ -36,7 +36,12 @@ struct Cli {
 enum Commands {
     /// Initialize a new Norgolith site
     Init {
-        #[arg(long, default_value_t = true, overrides_with = "_no_prompt", help = "Whether to prompt for site info")]
+        #[arg(
+            long,
+            default_value_t = true,
+            overrides_with = "_no_prompt",
+            help = "Whether to prompt for site info"
+        )]
         prompt: bool,
 
         #[arg(long = "no-prompt")]
@@ -55,7 +60,12 @@ enum Commands {
         #[arg(short = 'p', long, default_value_t = 3030, help = "Port to be used")]
         port: u16,
 
-        #[arg(long, default_value_t = true, overrides_with = "_no_drafts", help = "Whether to serve draft content")]
+        #[arg(
+            long,
+            default_value_t = true,
+            overrides_with = "_no_drafts",
+            help = "Whether to serve draft content"
+        )]
         drafts: bool,
 
         #[arg(long = "no-drafts")]
@@ -120,14 +130,22 @@ pub async fn start() -> Result<()> {
     }
 
     match &cli.command {
-        Commands::Init { name, prompt: _, _no_prompt } => init_site(name.as_ref(), !_no_prompt).await?,
+        Commands::Init {
+            name,
+            prompt: _,
+            _no_prompt,
+        } => init_site(name.as_ref(), !_no_prompt).await?,
         Commands::Theme { subcommand } => theme_handle(subcommand).await?,
-        Commands::Serve { port, drafts: _, _no_drafts, open } => check_and_serve(*port, !_no_drafts, *open).await?,
+        Commands::Serve {
+            port,
+            drafts: _,
+            _no_drafts,
+            open,
+        } => check_and_serve(*port, !_no_drafts, *open).await?,
         Commands::Build { minify } => build_site(*minify).await?,
         Commands::New { kind, name, open } => {
             new_asset(kind.as_ref(), name.as_ref(), *open).await?
-        }
-        // _ => bail!("Unsupported command"),
+        } // _ => bail!("Unsupported command"),
     }
 
     Ok(())

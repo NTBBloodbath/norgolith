@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
+use clap::Subcommand;
+use eyre::{bail, eyre, Context, Result};
 use indoc::formatdoc;
 use inquire::{validator::Validation, Confirm, Select, Text};
-use eyre::{bail, eyre, Context, Result};
-use spinoff::{Spinner, spinners};
-use clap::Subcommand;
+use spinoff::{spinners, Spinner};
 
 use crate::{
     fs,
@@ -57,7 +57,14 @@ async fn pull_theme(repo: &str, version: &Option<String>, pin: bool) -> Result<(
                 semver::Version::parse(version).context("No valid semantic version provided")?;
         }
 
-        let mut sp = Spinner::new(spinners::Dots2, format!("Pulling theme from '{}'...", theme::resolve_repo_shorthand(repo).await?), None);
+        let mut sp = Spinner::new(
+            spinners::Dots2,
+            format!(
+                "Pulling theme from '{}'...",
+                theme::resolve_repo_shorthand(repo).await?
+            ),
+            None,
+        );
         theme.pull(&mut sp).await?;
         sp.stop_and_persist("✓", "Successfully pulled theme");
     } else {
@@ -117,7 +124,8 @@ async fn rollback_theme() -> Result<()> {
         root.pop();
         let theme_dir = root.join("theme");
 
-        let backup_dir = theme_dir.parent()
+        let backup_dir = theme_dir
+            .parent()
             .ok_or_else(|| eyre!("Invalid theme directory"))?
             .join(".theme_backup");
 
@@ -185,24 +193,31 @@ async fn init_theme() -> Result<()> {
             .with_default("0.1.0")
             .with_validator(|v: &str| match semver::Version::parse(v) {
                 Ok(_) => Ok(Validation::Valid),
-                Err(_) => Ok(Validation::Invalid("Invalid semantic version format".into())),
+                Err(_) => Ok(Validation::Invalid(
+                    "Invalid semantic version format".into(),
+                )),
             })
             .prompt()?;
-        let license = Select::new("License:", vec![
-            "MIT",
-            "Apache-2.0",
-            "GPL-2.0",
-            "GPL-3.0",
-            "BSD-3-Clause",
-            "Unlicense",
-            "Other",
-        ])
-            // .with_starting_cursor(0)
-            .with_help_message("Choose a license for your theme")
-            .prompt()?;
+        let license = Select::new(
+            "License:",
+            vec![
+                "MIT",
+                "Apache-2.0",
+                "GPL-2.0",
+                "GPL-3.0",
+                "BSD-3-Clause",
+                "Unlicense",
+                "Other",
+            ],
+        )
+        // .with_starting_cursor(0)
+        .with_help_message("Choose a license for your theme")
+        .prompt()?;
 
         let repository = Text::new("Repository URL (optional):")
-            .with_help_message("Format: 'github:user/repo', 'codeberg:user/repo' or 'sourcehut:user/repo'")
+            .with_help_message(
+                "Format: 'github:user/repo', 'codeberg:user/repo' or 'sourcehut:user/repo'",
+            )
             .prompt()?;
 
         let theme_config = theme::ThemeMetadata {
@@ -270,9 +285,12 @@ async fn init_theme() -> Result<()> {
             .context("Failed to write README.md")?;
 
         // Write theme.toml
-        tokio::fs::write(theme_dir.join("theme.toml"), toml::to_string_pretty(&theme_config)?)
-            .await
-            .context("Failed to write theme.toml")?;
+        tokio::fs::write(
+            theme_dir.join("theme.toml"),
+            toml::to_string_pretty(&theme_config)?,
+        )
+        .await
+        .context("Failed to write theme.toml")?;
 
         println!("\nTheme initialized successfully!");
         println!("Next steps:");

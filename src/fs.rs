@@ -42,7 +42,11 @@ pub async fn copy_dir_all(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Resu
     while let Some(entry) = entries.next_entry().await? {
         let file_type = entry.file_type().await?;
         if file_type.is_dir() {
-            Box::pin(copy_dir_all(entry.path(), dest.as_ref().join(entry.file_name()))).await?;
+            Box::pin(copy_dir_all(
+                entry.path(),
+                dest.as_ref().join(entry.file_name()),
+            ))
+            .await?;
         } else {
             copy(entry.path(), dest.as_ref().join(entry.file_name())).await?;
         }

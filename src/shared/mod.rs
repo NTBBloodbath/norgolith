@@ -33,12 +33,16 @@ pub async fn get_content(name: &str) -> Result<(String, PathBuf)> {
 }
 
 /// Recursively converts all the norg files in the content directory
-pub async fn convert_content(content_dir: &Path, convert_drafts: bool, root_url: &str) -> Result<()> {
+pub async fn convert_content(
+    content_dir: &Path,
+    convert_drafts: bool,
+    root_url: &str,
+) -> Result<()> {
     async fn process_entry(
         entry: tokio::fs::DirEntry,
         content_dir: &Path,
         convert_drafts: bool,
-        root_url: &str
+        root_url: &str,
     ) -> Result<()> {
         let path = entry.path();
         if path.is_dir() {
@@ -65,7 +69,7 @@ pub async fn convert_document(
     file_path: &Path,
     content_dir: &Path,
     convert_drafts: bool,
-    root_url: &str
+    root_url: &str,
 ) -> Result<()> {
     if file_path.extension().unwrap_or_default() == "norg"
         && tokio::fs::try_exists(file_path).await?
@@ -98,7 +102,8 @@ pub async fn convert_document(
         // Check if the current document is a draft post and also whether we should finish the conversion
         // NOTE: content is not marked as draft by default
         if toml::Value::as_bool(norg_meta.get("draft").unwrap_or(&toml::Value::from(false)))
-            .expect("draft metadata field should be a boolean") && !convert_drafts
+            .expect("draft metadata field should be a boolean")
+            && !convert_drafts
         {
             return Ok(());
         }
@@ -201,7 +206,10 @@ pub async fn init_tera(templates_dir: &str, theme_dir: &Path) -> Result<Tera> {
             let path = entry.path();
 
             if path.is_file() && path.extension().map(|e| e == "html").unwrap_or(false) {
-                theme_templates.push((path.into_os_string().into_string().unwrap(), Some(entry.file_name().into_string().unwrap())))
+                theme_templates.push((
+                    path.into_os_string().into_string().unwrap(),
+                    Some(entry.file_name().into_string().unwrap()),
+                ))
             }
         }
         tera.add_template_files(theme_templates)

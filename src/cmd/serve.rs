@@ -21,7 +21,11 @@ use tokio::{
 };
 use tokio_tungstenite::accept_async;
 
-use crate::{config, fs, shared, schema::{ContentSchema, format_errors, validate_metadata}};
+use crate::{
+    config, fs,
+    schema::{format_errors, validate_metadata, ContentSchema},
+    shared,
+};
 
 // Global state for reloading
 struct ServerState {
@@ -359,7 +363,9 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
         let rt = Handle::current();
 
         // Initialize Tera once
-        let tera = Arc::new(RwLock::new(shared::init_tera(&templates_dir, &theme_dir).await?));
+        let tera = Arc::new(RwLock::new(
+            shared::init_tera(&templates_dir, &theme_dir).await?,
+        ));
 
         // Create reload channel
         let (reload_tx, _) = broadcast::channel(16);
@@ -524,33 +530,50 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
                                                 .to_string();
 
                                             // Read generated metadata
-                                            let build_dir = state.content_dir.parent().unwrap().join(".build");
+                                            let build_dir =
+                                                state.content_dir.parent().unwrap().join(".build");
                                             let meta_path = build_dir
                                                 .join(stripped_path)
                                                 .with_extension("meta.toml");
 
-                                            if let Ok(metadata_content) = tokio::fs::read_to_string(&meta_path).await {
-                                                let metadata: toml::Value = toml::from_str(&metadata_content).unwrap_or_else(|e| {
+                                            if let Ok(metadata_content) =
+                                                tokio::fs::read_to_string(&meta_path).await
+                                            {
+                                                let metadata: toml::Value = toml::from_str(
+                                                    &metadata_content,
+                                                )
+                                                .unwrap_or_else(|e| {
                                                     // Fallback to empty table on parse errors
-                                                    eprintln!("[server] Failed to parse metadata: {}", e);
+                                                    eprintln!(
+                                                        "[server] Failed to parse metadata: {}",
+                                                        e
+                                                    );
                                                     toml::Value::Table(toml::map::Map::new())
                                                 });
-                                                let metadata_map = metadata.as_table().unwrap().iter()
+                                                let metadata_map = metadata
+                                                    .as_table()
+                                                    .unwrap()
+                                                    .iter()
                                                     .map(|(k, v)| (k.clone(), v.clone()))
                                                     .collect();
 
                                                 // Resolve schema
-                                                let schema_nodes = schema.resolve_path(&content_path);
-                                                let merged_schema = ContentSchema::merge_hierarchy(&schema_nodes);
+                                                let schema_nodes =
+                                                    schema.resolve_path(&content_path);
+                                                let merged_schema =
+                                                    ContentSchema::merge_hierarchy(&schema_nodes);
 
                                                 // Validate and report warnings
-                                                let errors = validate_metadata(&metadata_map, &merged_schema);
+                                                let errors = validate_metadata(
+                                                    &metadata_map,
+                                                    &merged_schema,
+                                                );
                                                 if !errors.is_empty() {
                                                     let error_output = format_errors(
                                                         &rebuild_document_path,
                                                         &content_path,
                                                         &errors,
-                                                        true
+                                                        true,
                                                     );
                                                     eprintln!("[server] {}", error_output);
                                                 }

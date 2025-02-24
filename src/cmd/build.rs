@@ -4,14 +4,13 @@ use std::sync::Arc;
 use eyre::{bail, Result};
 use futures_util::{self, StreamExt};
 use tera::{Context, Tera};
-use walkdir::WalkDir;
 use tokio::sync::Mutex;
+use walkdir::WalkDir;
 
 use crate::{
-    config,
-    fs,
+    config, fs,
+    schema::{format_errors, validate_metadata, ContentSchema},
     shared,
-    schema::{ContentSchema, format_errors, validate_metadata},
 };
 
 async fn prepare_build_directory(root_path: &Path) -> Result<()> {
@@ -84,7 +83,8 @@ async fn generate_public_build(
                     // Metadata schema validation
                     if let Some(schema) = &site_config.content_schema {
                         // Get relative content path
-                        let content_path = path.strip_prefix(&build_dir)
+                        let content_path = path
+                            .strip_prefix(&build_dir)
                             .unwrap()
                             .with_extension("")
                             .to_str()
@@ -96,7 +96,8 @@ async fn generate_public_build(
                         let merged_schema = ContentSchema::merge_hierarchy(&schema_nodes);
 
                         // Convert metadata to hashmap for validation
-                        let metadata_map = metadata.as_table()
+                        let metadata_map = metadata
+                            .as_table()
                             .unwrap()
                             .iter()
                             .map(|(k, v)| (k.clone(), v.clone()))
@@ -107,15 +108,14 @@ async fn generate_public_build(
 
                         // Collect errors
                         if !errors.is_empty() {
-                            let norg_path = content_dir.join(content_path.clone()).strip_prefix(root_path).unwrap().with_extension("norg");
+                            let norg_path = content_dir
+                                .join(content_path.clone())
+                                .strip_prefix(root_path)
+                                .unwrap()
+                                .with_extension("norg");
                             let error_output = format!(
                                 "[build] {}",
-                                format_errors(
-                                    &norg_path,
-                                    &content_path,
-                                    &errors,
-                                    false
-                                )
+                                format_errors(&norg_path, &content_path, &errors, false)
                             );
 
                             validation_errors.lock().await.push(error_output);

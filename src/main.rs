@@ -4,10 +4,10 @@ mod config;
 mod converter;
 mod fs;
 mod net;
-mod theme;
 mod schema;
 mod shared;
 mod tera_functions;
+mod theme;
 
 use eyre::Result;
 

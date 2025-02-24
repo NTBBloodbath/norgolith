@@ -4,9 +4,9 @@ use eyre::{bail, eyre, Context, Result};
 use git2::{build::CheckoutBuilder, Repository};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
+use spinoff::Spinner;
 use tempfile::tempdir;
 use tokio::fs;
-use spinoff::Spinner;
 
 use crate::fs::copy_dir_all;
 
@@ -102,7 +102,10 @@ async fn backup_theme_files(src: &Path, dest: &Path, sp: &mut Spinner) -> Result
     }
     tokio::fs::create_dir_all(dest).await?;
 
-    sp.update_after_time("Backing up existing theme files...", std::time::Duration::from_millis(200));
+    sp.update_after_time(
+        "Backing up existing theme files...",
+        std::time::Duration::from_millis(200),
+    );
     copy_dir_all(src, dest).await?;
 
     Ok(())
@@ -118,7 +121,10 @@ async fn copy_theme_files(src: &Path, dest: &Path, sp: &mut Spinner) -> Result<(
     }
     fs::create_dir_all(dest).await?;
 
-    sp.update_after_time("Copying theme files...", std::time::Duration::from_millis(200));
+    sp.update_after_time(
+        "Copying theme files...",
+        std::time::Duration::from_millis(200),
+    );
     let mut entries = fs::read_dir(src).await?;
     while let Some(entry) = entries.next_entry().await? {
         let file_name = entry.file_name();
@@ -242,7 +248,10 @@ impl ThemeManager {
             pin: self.pin,
         };
 
-        sp.update_after_time("Writing theme metadata file...", std::time::Duration::from_millis(200));
+        sp.update_after_time(
+            "Writing theme metadata file...",
+            std::time::Duration::from_millis(200),
+        );
         fs::write(metadata_path, toml::to_string_pretty(&metadata)?)
             .await
             .context("Failed to write metadata file")
