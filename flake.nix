@@ -30,6 +30,14 @@
           useNextest = true;
           dontUseCargoParallelTests = true;
 
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+          ];
+          buildInputs = with pkgs; [
+            openssl
+          ];
+          PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
+
           meta = {
             description = cargoPackage.description;
             homepage = cargoPackage.repository;
