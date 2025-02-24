@@ -34,6 +34,7 @@ struct ServerState {
     config: config::SiteConfig,
     content_dir: PathBuf,
     assets_dir: PathBuf,
+    theme_assets_dir: PathBuf,
 }
 
 // https//github.com/livereload/livereload-js dist/livereload.min.js v4.0.2
@@ -113,25 +114,57 @@ async fn is_asset_change(event: &notify::Event) -> Result<bool> {
     Ok(is_assets_dir && is_asset_change)
 }
 
-async fn handle_asset(request_path: &str, assets_dir: &Path) -> Result<Response<Body>> {
+async fn handle_asset(
+    request_path: &str,
+    site_assets_dir: &Path,
+    theme_assets_dir: &Path,
+) -> Result<Response<Body>> {
     let asset_path = request_path.trim_start_matches("/assets/");
-    let full_path = assets_dir.join(asset_path);
 
-    match tokio::fs::read(&full_path).await {
+    // Check site assets first
+    let site_path = site_assets_dir.join(asset_path);
+    match tokio::fs::read(&site_path).await {
         Ok(content) => {
             let mime_type = mime_guess::from_path(asset_path).first_or_octet_stream();
 
-            Response::builder()
+            Ok(Response::builder()
                 .header(CONTENT_TYPE, mime_type.as_ref())
                 .status(StatusCode::OK)
-                .body(Body::from(content))
-                .map_err(Into::into)
+                .body(Body::from(content))?)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!("[server] Asset not found: {}", asset_path);
-            Ok(Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::from("404 Asset Not Found"))?)
+            println!("Fallback to theme assets...");
+            let theme_path = theme_assets_dir.join(asset_path);
+            let mut found_theme_asset = false;
+            let theme_asset = match tokio::fs::read(&theme_path).await {
+                Ok(content) => {
+                    let mime_type = mime_guess::from_path(asset_path).first_or_octet_stream();
+                    found_theme_asset = true;
+                    Ok(Response::builder()
+                        .header(CONTENT_TYPE, mime_type.as_ref())
+                        .status(StatusCode::OK)
+                        .body(Body::from(content))?)
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    Ok(Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(Body::from("404 Asset Not Found"))?)
+                }
+                Err(e) => {
+                    eprintln!("[server] Error reading asset: {}", e);
+                    Ok(Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Body::from("500 Internal Server Error"))?)
+                }
+            };
+
+            if !found_theme_asset {
+                eprintln!("[server] Asset not found: {}", asset_path);
+                return Ok(Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Body::from("404 Asset Not Found"))?);
+            }
+            theme_asset
         }
         Err(e) => {
             eprintln!("[server] Error reading asset: {}", e);
@@ -195,7 +228,7 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
 
     // Handle assets first
     if request_path.starts_with("/assets/") {
-        return handle_asset(&request_path, &state.assets_dir).await;
+        return handle_asset(&request_path, &state.assets_dir, &state.theme_assets_dir).await;
     }
 
     // Handle reload endpoint
@@ -358,6 +391,8 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
         let content_dir = Path::new(&root_dir.clone()).join("content");
         let assets_dir = Path::new(&root_dir.clone()).join("assets");
         let theme_dir = Path::new(&root_dir.clone()).join("theme");
+        let theme_templates_dir = theme_dir.join("templates");
+        let theme_assets_dir = theme_dir.join("assets");
 
         // Async runtime handle
         let rt = Handle::current();
@@ -387,6 +422,7 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
             config: site_config,
             content_dir: content_dir.clone(),
             assets_dir: assets_dir.clone(),
+            theme_assets_dir: theme_assets_dir.clone(),
         });
         let root_url = state.config.root_url.clone();
 
@@ -411,6 +447,14 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
         debouncer.watch(Path::new(&templates_dir.clone()), RecursiveMode::Recursive)?;
         debouncer.watch(Path::new(&content_dir.clone()), RecursiveMode::Recursive)?;
         debouncer.watch(Path::new(&assets_dir.clone()), RecursiveMode::Recursive)?;
+        debouncer.watch(
+            Path::new(&theme_assets_dir.clone()),
+            RecursiveMode::Recursive,
+        )?;
+        debouncer.watch(
+            Path::new(&theme_templates_dir.clone()),
+            RecursiveMode::Recursive,
+        )?;
 
         tokio::spawn(async move {
             while let Some(result) = debouncer_rx.recv().await {
@@ -479,7 +523,10 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
                                     rebuild_document_path = file_path.to_owned();
                                 }
 
-                                if file_path.strip_prefix(&state_watcher.assets_dir).is_ok()
+                                if (file_path.strip_prefix(&state_watcher.assets_dir).is_ok()
+                                    || file_path
+                                        .strip_prefix(&state_watcher.theme_assets_dir)
+                                        .is_ok())
                                     && is_asset_change(&event).await.unwrap_or(false)
                                 {
                                     println!("[server] Detected asset change: {}", file_name);
