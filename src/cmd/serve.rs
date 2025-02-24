@@ -505,7 +505,7 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
 
                         if rebuild_needed {
                             let state = Arc::clone(&state_watcher);
-                            let root_url = state.config.root_url.clone();
+                            let root_url = format!("http://localhost:{}", port);
                             let content_schema = state.config.content_schema.clone();
                             tokio::task::spawn(async move {
                                 match shared::convert_document(
