@@ -46,8 +46,8 @@
     {# User-defined styling #}
     {# Tailwind CDN, replace with the Tailwind standalone CLI for production! #}
     <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
-    <link rel="stylesheet" href="/assets/style.css" />
-    <link rel="icon" href="/assets/norgolith.svg" />
+    <link rel="stylesheet" href="{{ config.rootUrl }}/assets/style.css" />
+    <link rel="icon" href="{{ config.rootUrl }}/assets/norgolith.svg" />
     <title>{% block title %}{% endblock title %} - {{ config.title | title }}</title>
     {% endblock head %}
 </head>
