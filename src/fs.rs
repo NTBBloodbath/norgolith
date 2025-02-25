@@ -36,6 +36,15 @@ pub async fn find_in_previous_dirs(
     Ok(None)
 }
 
+pub async fn find_config_file() -> Result<Option<PathBuf>> {
+    // Try to find a 'norgolith.toml' file in the current working directory and its parents
+    let mut current_dir = std::env::current_dir()?;
+    let found_site_root =
+        find_in_previous_dirs("file", "norgolith.toml", &mut current_dir).await?;
+
+    Ok(found_site_root)
+}
+
 pub async fn copy_dir_all(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result<()> {
     Box::pin(create_dir_all(&dest)).await?;
     let mut entries = read_dir(&src).await?;

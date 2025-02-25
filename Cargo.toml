@@ -46,6 +46,7 @@ git2 = "0.20.0"
 tempfile = "3.17.1"
 inquire = { version = "0.7.5", features = ["chrono", "date"] }
 spinoff = "0.8.0"
+tokio-stream = { version = "0.1.17", features = ["sync", "net"] }
 
 [dev-dependencies]
 mockall = "0.13.1"
