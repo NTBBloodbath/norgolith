@@ -5,6 +5,7 @@ use eyre::{bail, eyre, Context, Result};
 use tera::Tera;
 
 use crate::converter;
+use crate::schema::{ContentSchema, validate_metadata, format_errors};
 
 pub async fn get_content(name: &str) -> Result<(String, PathBuf)> {
     let build_path = Path::new(".build");
@@ -221,3 +222,70 @@ pub async fn init_tera(templates_dir: &str, theme_dir: &Path) -> Result<Tera> {
 
     Ok(tera)
 }
+
+/// Loads metadata from a TOML file.
+///
+/// This function reads metadata from a TOML file and returns it as a `toml::Value`.
+/// If the file cannot be read or parsed, it logs the error and returns an empty table.
+///
+/// # Arguments
+/// * `path` - The path to the metadata file.
+///
+/// # Returns
+/// * `toml::Value` - The parsed metadata or an empty table if an error occurs.
+pub async fn load_metadata(path: PathBuf) -> toml::Value {
+    match tokio::fs::read_to_string(&path).await {
+        Ok(content) => toml::from_str(&content).unwrap_or_else(|e| {
+            eprintln!("Metadata parse error: {}", e);
+            toml::Value::Table(toml::map::Map::new())
+        }),
+        Err(e) => {
+            eprintln!("Metadata file not found: {}", e);
+            toml::Value::Table(toml::map::Map::new())
+        }
+    }
+}
+
+/// Validates content metadata against a schema.
+///
+/// This function validates the metadata of a content file against a provided schema.
+/// If validation errors are found, they are logged in a user-friendly format.
+///
+/// # Arguments
+/// * `path` - The path to the content file.
+/// * `build_dir` - The build directory.
+/// * `content_dir` - The content directory.
+/// * `schema` - The schema to validate the metadata against.
+/// * `as_warnings` - Whether to format errors as warnings or errors.
+///
+/// # Returns
+/// * `Result<String>` - Empty String if the validation did not find any error, an String containing all the errors otherwise.
+pub async fn validate_content_metadata(path: &Path, build_dir: &Path, content_dir: &Path, schema: &ContentSchema, as_warnings: bool) -> Result<String> {
+    let relative_path = path.strip_prefix(content_dir).unwrap();
+    let meta_path = build_dir.join(relative_path).with_extension("meta.toml");
+
+    let metadata = load_metadata(meta_path).await;
+    let metadata_map = metadata
+        .as_table()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
+    let content_path = relative_path
+        .to_str()
+        .unwrap()
+        .replace('\\', "/")
+        .trim_end_matches(".norg")
+        .to_string();
+
+    let schema_nodes = schema.resolve_path(&content_path);
+    let merged_schema = ContentSchema::merge_hierarchy(&schema_nodes);
+    let errors = validate_metadata(&metadata_map, &merged_schema);
+
+    if !errors.is_empty() {
+        return Ok(format_errors(path, &content_path, &errors, as_warnings));
+    }
+    Ok(String::new())
+}
+

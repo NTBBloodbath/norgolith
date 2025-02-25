@@ -22,11 +22,7 @@ use tokio::{
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::accept_async;
 
-use crate::{
-    config, fs,
-    schema::{format_errors, validate_metadata, ContentSchema},
-    shared,
-};
+use crate::{config, fs, shared};
 
 /// Represents the directory structure of a Norgolith site.
 ///
@@ -323,7 +319,19 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
 
                     // Validate metadata if schema exists
                     if let Some(schema) = &state.config.content_schema {
-                        validate_content_metadata(&path, &state, schema).await;
+                        let build_dir = state.paths.content.parent().unwrap().join(".build");
+                        let validation_warnings = shared::validate_content_metadata(
+                            &path,
+                            &build_dir,
+                            &state.paths.content,
+                            schema,
+                            true,
+                        )
+                        .await.unwrap();
+
+                        if !validation_warnings.is_empty() {
+                            eprintln!("{validation_warnings}");
+                        }
                     }
 
                     if let Err(e) = state.send_reload() {
@@ -360,77 +368,6 @@ async fn get_content_or_error(request_path: &str) -> Result<(String, PathBuf)> {
             eyre!("Unexpected error for '{}': {}", request_path, e)
         }
     })
-}
-
-/// Loads metadata from a TOML file.
-///
-/// This function reads metadata from a TOML file and returns it as a `toml::Value`.
-/// If the file cannot be read or parsed, it logs the error and returns an empty table.
-///
-/// # Arguments
-/// * `path` - The path to the metadata file.
-///
-/// # Returns
-/// * `toml::Value` - The parsed metadata or an empty table if an error occurs.
-async fn load_metadata(path: PathBuf) -> toml::Value {
-    match tokio::fs::read_to_string(&path).await {
-        Ok(content) => toml::from_str(&content).unwrap_or_else(|e| {
-            eprintln!("Metadata parse error: {}", e);
-            toml::Value::Table(toml::map::Map::new())
-        }),
-        Err(e) => {
-            eprintln!("Metadata file not found: {}", e);
-            toml::Value::Table(toml::map::Map::new())
-        }
-    }
-}
-
-/// Validates content metadata against a schema.
-///
-/// This function validates the metadata of a content file against a provided schema.
-/// If validation errors are found, they are logged in a user-friendly format.
-///
-/// # Arguments
-/// * `path` - The path to the content file.
-/// * `state` - The shared server state.
-/// * `schema` - The schema to validate the metadata against.
-async fn validate_content_metadata(path: &Path, state: &Arc<ServerState>, schema: &ContentSchema) {
-    let build_dir = state.paths.content.parent().unwrap().join(".build");
-    let relative_path = path.strip_prefix(&state.paths.content).unwrap();
-    let meta_path = build_dir.join(relative_path).with_extension("meta.toml");
-
-    let metadata = match tokio::fs::read_to_string(&meta_path).await {
-        Ok(content) => toml::from_str(&content).unwrap_or_else(|e| {
-            eprintln!("Metadata parse error: {}", e);
-            toml::Value::Table(toml::map::Map::new())
-        }),
-        Err(e) => {
-            eprintln!("Metadata file read error: {}", e);
-            return;
-        }
-    };
-    let metadata_map = metadata
-        .as_table()
-        .unwrap()
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
-
-    let content_path = relative_path
-        .to_str()
-        .unwrap()
-        .replace('\\', "/")
-        .trim_end_matches(".norg")
-        .to_string();
-
-    let schema_nodes = schema.resolve_path(&content_path);
-    let merged_schema = ContentSchema::merge_hierarchy(&schema_nodes);
-    let errors = validate_metadata(&metadata_map, &merged_schema);
-
-    if !errors.is_empty() {
-        let error_output = format_errors(path, &content_path, &errors, true);
-        eprintln!("Metadata validation errors:\n{}", error_output);
-    }
 }
 
 /// Injects the LiveReload script into HTML content.
@@ -692,7 +629,7 @@ async fn handle_html_content(
     state: Arc<ServerState>,
 ) -> Result<Response<Body>> {
     let meta_path = path.with_extension("meta.toml");
-    let metadata = load_metadata(meta_path).await;
+    let metadata = shared::load_metadata(meta_path).await;
     let layout = metadata
         .get("layout")
         .and_then(|v| v.as_str())
