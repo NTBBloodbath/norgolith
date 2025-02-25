@@ -80,7 +80,7 @@ enum Commands {
         open: bool,
     },
     /// Create a new asset in the site and optionally open it using your preferred system editor.
-    /// e.g. 'new -k content post1.norg' -> 'content/post1.norg'
+    /// e.g. 'new -k norg post1.norg' -> 'content/post1.norg'
     New {
         #[arg(
             short = 'o',
@@ -93,10 +93,10 @@ enum Commands {
         #[arg(
             short = 'k',
             long,
-            default_value = "content",
+            default_value = "norg",
             help = "type of asset",
             value_parser = [
-                PossibleValue::new("content").help("New norg file"),
+                PossibleValue::new("norg").help("New norg file"),
                 PossibleValue::new("css").help("New CSS stylesheet"),
                 PossibleValue::new("js").help("New JS script")
             ]
@@ -232,7 +232,7 @@ async fn new_asset(kind: Option<&String>, name: Option<&String>, open: bool) -> 
     if ![
         String::from("js"),
         String::from("css"),
-        String::from("content"),
+        String::from("norg"),
     ]
     .contains(&asset_type)
     {

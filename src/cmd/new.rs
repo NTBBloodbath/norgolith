@@ -1,156 +1,183 @@
-use eyre::{bail, Result};
+use std::path::{Path, PathBuf};
+
+use chrono::{Local, SecondsFormat};
+use eyre::{bail, eyre, Context, Result};
 use indoc::formatdoc;
-use tokio::fs::{create_dir_all, metadata, write};
+use whoami::username;
 
 use crate::fs;
 
-/// Create a new norg document
-async fn create_norg_document(path: &str, name: &str) -> Result<()> {
-    // FIXME: this code is really dirty, should be re-organized or refactored later.
-    let mut title: String;
-    // Remove the '/home/foo/.../my-site/content' from the file path as it is redundant for the title generation
-    let path_offset = path.find("content").unwrap_or(path.len());
-    if path[path_offset + "content".len()..].is_empty() {
-        if name == "index.norg" {
-            title = String::from("index");
-        } else {
-            title = String::from(&name[0..name.len() - 5]);
+/// Supported asset types for creation
+#[derive(Debug, Clone, Copy)]
+enum AssetType {
+    Js,
+    Css,
+    Content,
+}
+
+impl AssetType {
+    /// Determine asset type from file extension
+    fn from_extension(ext: &str) -> Result<Self> {
+        match ext.to_lowercase().as_str() {
+            "js" => Ok(Self::Js),
+            "css" => Ok(Self::Css),
+            "norg" => Ok(Self::Content),
+            _ => bail!("Unsupported file extension: {}", ext),
         }
-    } else {
-        let doc_name = &name[0..name.len() - 5]; // 'index.norg' -> 'index'
-        let title_path = [
-            String::from(&path[path_offset + "content".len() + 1..]),
-            String::from(doc_name),
-        ]
-        .join("/");
-        title = title_path.replace(['-', '_'], " ");
-        if name == "index.norg" {
-            // 'foo/index' -> 'foo'
-            title = String::from(&title[0..title.len() - doc_name.len() - 1]);
-        }
-        title = title.replace('/', " | ");
     }
 
-    let creation_date =
-        chrono::offset::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
-    let norg_document = formatdoc!(
+    /// Get directory name for asset type
+    fn directory(&self) -> &'static str {
+        match self {
+            Self::Js | Self::Css => "assets",
+            Self::Content => "content",
+        }
+    }
+
+    /// Get subdirectory for asset type
+    fn subdirectory(&self) -> Option<&'static str> {
+        match self {
+            Self::Js => Some("js"),
+            Self::Css => Some("css"),
+            Self::Content => None,
+        }
+    }
+}
+
+/// Generate content title from file path
+fn generate_content_title(base_path: &Path, full_path: &Path) -> String {
+    let relative_path = full_path
+        .strip_prefix(base_path.join("content"))
+        .unwrap_or(full_path);
+
+    let mut components = relative_path
+        .iter()
+        .filter(|c| *c != "index.norg")
+        .map(|c| {
+            c.to_string_lossy()
+                .trim_end_matches(".norg")
+                .replace(['-', '_'], " ")
+        })
+        .collect::<Vec<_>>();
+
+    if components.is_empty() {
+        return "index".to_string();
+    }
+
+    if let Some(last) = components.last_mut() {
+        if last == "index" {
+            components.pop();
+        }
+    }
+
+    components.join(" | ")
+}
+
+/// Create a new norg document
+async fn create_norg_document(path: &Path, title: &str) -> Result<()> {
+    let creation_date = Local::now().to_rfc3339_opts(SecondsFormat::Secs, false);
+    let username = username();
+
+    let content = formatdoc!(
         r#"
         @document.meta
-        title: {}
+        title: {title}
         description:
         authors: [
-          {}
+          {username}
         ]
         categories: []
-        created: {}
-        updated: {}
+        created: {creation_date}
+        updated: {creation_date}
         draft: true
         version: 1.1.1
         @end
 
-        * {}
+        * {title}
           Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
           labore et dolore magna aliqua. Lobortis scelerisque fermentum dui faucibus in ornare."#,
-        title,
-        whoami::username(),
-        creation_date,
-        creation_date,
-        title,
     );
-    // TBD: add Windows separator support
-    write([path, name].join("/"), norg_document).await?;
+    tokio::fs::write(path, content).await?;
 
     Ok(())
 }
 
+/// Validate and parse input path
+fn parse_input_path(name: &str) -> PathBuf {
+    let path = PathBuf::from(name);
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "untitled".to_string());
+
+    PathBuf::from(file_name)
+}
+
+/// Create necessary directories for the asset
+async fn ensure_directory_exists(path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+        }
+    }
+    Ok(())
+}
+
+/// Handle file opening with system editor
+async fn open_file_editor(path: &Path) -> Result<()> {
+    open::that(path).with_context(|| format!("Failed to open file: {}", path.display()))?;
+    println!("Opened file in editor: {}", path.display());
+    Ok(())
+}
+
 pub async fn new(kind: &str, name: &str, open: bool) -> Result<()> {
-    // Save the asset name in a variable to re-use it later
-    let mut file_path = name;
-    let file_extension = name
-        .split('.')
-        .collect::<Vec<&str>>()
-        .last()
-        .unwrap()
-        .to_owned();
+    let asset_type = AssetType::from_extension(kind)?;
+    let input_path = parse_input_path(name);
 
-    // 'norgolith new' only supports writing JS, CSS and Norg files as content/assets
-    if ![
-        String::from("js"),
-        String::from("css"),
-        String::from("norg"),
-    ]
-    .contains(&String::from(file_extension))
-    {
-        bail!("Unable to create site asset: invalid asset file extension provided (an asset can be a 'js', 'css' or 'norg' file)");
-    }
-
-    // If the name contains directories then split it and create the directories if needed later
-    let mut subdirs: Vec<&str> = Vec::new();
-    if name.contains('/') {
-        subdirs = name.split('/').collect();
-        file_path = subdirs.pop().unwrap(); // Extract the filename from the path
-    }
-
-    // Find Norgolith site root directory
-    let mut current_dir = std::env::current_dir()?;
-    let found_site_root =
-        fs::find_in_previous_dirs("file", "norgolith.toml", &mut current_dir).await?;
-
-    let site_root = match found_site_root {
-        Some(mut root) => {
-            root.pop(); // Remove the 'norgolith.toml' file path from the absolute path to the site root directory
-            root.to_str().unwrap().to_string()
+    // Validate file extension
+    if let AssetType::Content = asset_type {
+        if input_path.extension().map(|e| e != "norg").unwrap_or(true) {
+            bail!("Norg documents must have .norg extension");
         }
-        None => bail!("Unable to create site asset: not in a Norgolith site directory"),
-    };
-
-    match kind {
-        "js" | "css" | "content" => {
-            let asset_dir = if kind == "js" || kind == "css" {
-                String::from("assets")
-            } else {
-                String::from("content")
-            };
-            // '/home/foo/.../my-site/content|assets'
-            let mut full_path = vec![site_root.clone(), asset_dir];
-            // '/home/foo/.../my-site/assets/js|css'
-            if kind == "js" || kind == "css" {
-                full_path.push(String::from(kind));
-            }
-            // '/home/foo/.../my-site/content/third-post' | '/home/foo/.../my-site/assets/js|css/foo'
-            if !subdirs.is_empty() {
-                full_path.push(subdirs.join("/"));
-            }
-
-            // Create the subdirectories if they don't exist yet
-            if metadata(full_path.join("/")).await.is_err() {
-                create_dir_all(full_path.join("/")).await?;
-            }
-
-            // NOTE: JS/CSS assets creation is more simple, they do not require an external function
-            if kind == "content" {
-                create_norg_document(&full_path.join("/"), file_path).await?;
-            } else {
-                tokio::fs::File::create(full_path.join("/")).await?;
-            }
-
-            // Add the filename to the mix
-            full_path.push(String::from(file_path));
-
-            // Open the file using the preferred system editor if '--open' has been passed to the command
-            if open {
-                match open::that(full_path.join("/")) {
-                    Ok(()) => println!(
-                        "Opening '{}' with your preferred system editor ...",
-                        full_path.join("/")
-                    ),
-                    Err(e) => bail!("Unable to open the asset '{}': {}", full_path.join("/"), e),
-                }
-            }
-        }
-        // XXX: it is impossible to reach an invalid asset kind because it is already filtered in the cli module
-        _ => unreachable!(),
     }
+
+    // Find site root
+    let site_root = fs::find_config_file()
+        .await?
+        .ok_or_else(|| eyre!("Unable to create site asset: not in a Norgolith site directory"))?;
+
+    // Build target path
+    let mut target_path = site_root.parent().unwrap().join(asset_type.directory());
+
+    if let Some(subdir) = asset_type.subdirectory() {
+        target_path.push(subdir);
+    }
+
+    target_path.push(&input_path);
+
+    // Create directories and file
+    ensure_directory_exists(&target_path).await?;
+
+    match asset_type {
+        AssetType::Content => {
+            let title = generate_content_title(&site_root, &target_path);
+            create_norg_document(&target_path, &title).await?;
+        }
+        AssetType::Js | AssetType::Css => {
+            tokio::fs::File::create(&target_path)
+                .await
+                .with_context(|| format!("Failed to create file: {}", target_path.display()))?;
+        }
+    }
+
+    // Open file if requested
+    if open {
+        open_file_editor(&target_path).await?;
+    }
+
+    println!("Successfully created: {}", target_path.display());
 
     Ok(())
 }
