@@ -101,6 +101,10 @@ impl ServerState {
     /// * `Result<()>` - `Ok(())` if the signal is sent successfully, otherwise
     ///   an error is returned.
     fn send_reload(&self) -> Result<()> {
+        if self.reload_tx.receiver_count() == 0 {
+            return Err(eyre!("No active receivers"));
+        }
+
         self.reload_tx
             .send(())
             .map(|_| ())
@@ -877,6 +881,10 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
         let state = setup_server_state(root, drafts, port).await?;
         let server_start = std::time::Instant::now();
         let rt = Handle::current();
+
+        // Create initial receiver to always keep channel alive, this way
+        // any "channel closed" errors are prevented from happening
+        let _guard_receiver = state.reload_tx.subscribe();
 
         // WebSocket server
         let reload_tx = state.reload_tx.clone();
