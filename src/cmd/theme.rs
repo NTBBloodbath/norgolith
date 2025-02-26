@@ -102,7 +102,6 @@ async fn update_theme() -> Result<()> {
 
             let mut sp = Spinner::new(spinners::Dots2, "Updating theme...", None);
             theme.update(&mut sp).await?;
-            sp.stop_and_persist("✓", "Finished updating theme");
         } else {
             bail!("Could not update the theme: there is no theme installed");
         }

@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
     //println!("Norg code:{}\n", norg_doc);
     //println!("HTML code:\n{}", norg_html);
 
-    let logging_timer = ChronoLocal::new(String::from("%r %F"));
+    let logging_timer = ChronoLocal::new(String::from("%I:%M %p %F"));
     let logging_env = EnvFilter::try_from_env("LITH_LOG")
         .or_else(|_| EnvFilter::try_new("info"))?;
     let subscriber = FmtSubscriber::builder()
