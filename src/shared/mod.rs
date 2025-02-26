@@ -3,9 +3,10 @@ use std::time::Instant;
 
 use eyre::{bail, eyre, Context, Result};
 use tera::Tera;
+use tracing::{error, info};
 
 use crate::converter;
-use crate::schema::{ContentSchema, validate_metadata, format_errors};
+use crate::schema::{format_errors, validate_metadata, ContentSchema};
 
 pub async fn get_content(name: &str) -> Result<(String, PathBuf)> {
     let build_path = Path::new(".build");
@@ -127,13 +128,13 @@ pub async fn convert_document(
                 tokio::fs::create_dir_all(parent).await?;
             }
 
-            // XXX: maybe these println makes stuff too verbose? Modifying a norg file already triggers two stdout messages
+            // XXX: maybe these info makes stuff too verbose? Modifying a norg file already triggers two stdout messages
             if should_convert {
-                // println!("[server] Converting norg file: {}", relative_path.display());
+                // info!("[server] Converting norg file: {}", relative_path.display());
                 tokio::fs::write(&html_file_path, norg_html).await?;
             }
             if should_write_meta {
-                // println!("[server] Converting norg meta: {}", relative_path.display());
+                // info!("[server] Converting norg meta: {}", relative_path.display());
                 tokio::fs::write(&meta_file_path, meta_toml).await?;
             }
         }
@@ -170,7 +171,7 @@ pub async fn cleanup_orphaned_build_files(content_dir: &Path) -> Result<()> {
                         tokio::fs::remove_file(&meta_path).await?;
                     }
 
-                    println!("[server] Cleaned orphaned build file: {}", path.display());
+                    info!("[server] Cleaned orphaned build file: {}", path.display());
                 }
             }
         }
@@ -236,11 +237,11 @@ pub async fn init_tera(templates_dir: &str, theme_dir: &Path) -> Result<Tera> {
 pub async fn load_metadata(path: PathBuf) -> toml::Value {
     match tokio::fs::read_to_string(&path).await {
         Ok(content) => toml::from_str(&content).unwrap_or_else(|e| {
-            eprintln!("Metadata parse error: {}", e);
+            error!("Metadata parse error: {}", e);
             toml::Value::Table(toml::map::Map::new())
         }),
         Err(e) => {
-            eprintln!("Metadata file not found: {}", e);
+            error!("Metadata file not found: {}", e);
             toml::Value::Table(toml::map::Map::new())
         }
     }
@@ -260,7 +261,13 @@ pub async fn load_metadata(path: PathBuf) -> toml::Value {
 ///
 /// # Returns
 /// * `Result<String>` - Empty String if the validation did not find any error, an String containing all the errors otherwise.
-pub async fn validate_content_metadata(path: &Path, build_dir: &Path, content_dir: &Path, schema: &ContentSchema, as_warnings: bool) -> Result<String> {
+pub async fn validate_content_metadata(
+    path: &Path,
+    build_dir: &Path,
+    content_dir: &Path,
+    schema: &ContentSchema,
+    as_warnings: bool,
+) -> Result<String> {
     let relative_path = path.strip_prefix(content_dir).unwrap();
     let meta_path = build_dir.join(relative_path).with_extension("meta.toml");
 
@@ -288,4 +295,3 @@ pub async fn validate_content_metadata(path: &Path, build_dir: &Path, content_di
     }
     Ok(String::new())
 }
-

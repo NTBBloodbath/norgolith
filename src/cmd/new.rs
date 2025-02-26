@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use chrono::{Local, SecondsFormat};
 use eyre::{bail, eyre, Context, Result};
 use indoc::formatdoc;
+use tracing::info;
 use whoami::username;
 
 use crate::fs;
@@ -128,7 +129,7 @@ async fn ensure_directory_exists(path: &Path) -> Result<()> {
 /// Handle file opening with system editor
 async fn open_file_editor(path: &Path) -> Result<()> {
     open::that(path).with_context(|| format!("Failed to open file: {}", path.display()))?;
-    println!("Opened file in editor: {}", path.display());
+    info!("Opened file in editor: {}", path.display());
     Ok(())
 }
 
@@ -177,7 +178,7 @@ pub async fn new(kind: &str, name: &str, open: bool) -> Result<()> {
         open_file_editor(&target_path).await?;
     }
 
-    println!("Successfully created: {}", target_path.display());
+    info!("Successfully created: {}", target_path.display());
 
     Ok(())
 }

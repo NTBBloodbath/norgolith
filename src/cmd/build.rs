@@ -1,9 +1,13 @@
-use std::{path::{Path, PathBuf}, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use eyre::{bail, Result, WrapErr};
 use futures_util::{self, StreamExt};
 use tera::{Context, Tera};
 use tokio::sync::Mutex;
+use tracing::{error, info};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::{config, fs, schema::ContentSchema, shared};
@@ -82,7 +86,9 @@ async fn generate_public_build(
     site_config: config::SiteConfig,
     minify: bool,
 ) -> Result<()> {
-    let entries = WalkDir::new(&paths.build).into_iter().filter_map(|e| e.ok());
+    let entries = WalkDir::new(&paths.build)
+        .into_iter()
+        .filter_map(|e| e.ok());
 
     // Shared error state for concurrent validation
     let validation_errors = Arc::new(Mutex::new(Vec::new()));
@@ -94,12 +100,21 @@ async fn generate_public_build(
             let validation_errors = Arc::clone(&validation_errors);
 
             async move {
-                if let Err(e) = process_build_entry(entry, tera, paths, &site_config, minify, &validation_errors).await {
-                    eprintln!("Error processing entry: {:?}", e);
+                if let Err(e) = process_build_entry(
+                    entry,
+                    tera,
+                    paths,
+                    &site_config,
+                    minify,
+                    &validation_errors,
+                )
+                .await
+                {
+                    error!("Error processing entry: {:?}", e);
                 }
             }
         })
-    .await;
+        .await;
 
     let errors = validation_errors.lock().await;
     if !errors.is_empty() {
@@ -124,8 +139,13 @@ async fn process_build_entry(
     let path = entry.path();
 
     if path.is_file() && path.extension().map(|e| e == "html").unwrap_or(false) {
-        let rel_path = path.strip_prefix(&paths.build).wrap_err("Failed to strip prefix")?;
-        let stem = rel_path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| eyre::eyre!("No file stem"))?;
+        let rel_path = path
+            .strip_prefix(&paths.build)
+            .wrap_err("Failed to strip prefix")?;
+        let stem = rel_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| eyre::eyre!("No file stem"))?;
 
         // Determine output path
         let public_path = determine_public_path(&paths.public, rel_path, stem);
@@ -147,14 +167,13 @@ async fn process_build_entry(
                 &paths.content,
                 schema,
                 validation_errors,
-            ).await?;
+            )
+            .await?;
         }
 
         // Do not try to build draft content for production builds
-        if toml::Value::as_bool(
-            metadata.get("draft").unwrap_or(&toml::Value::from(false)),
-        )
-        .expect("draft metadata field should be a boolean")
+        if toml::Value::as_bool(metadata.get("draft").unwrap_or(&toml::Value::from(false)))
+            .expect("draft metadata field should be a boolean")
         {
             return Ok(());
         }
@@ -210,8 +229,14 @@ async fn validate_metadata(
     let norg_content_path = content_dir.join(content_path).with_extension("norg");
 
     // Perform validation
-    let errors = shared::validate_content_metadata(&norg_content_path, build_dir, content_dir, schema, false)
-        .await?;
+    let errors = shared::validate_content_metadata(
+        &norg_content_path,
+        build_dir,
+        content_dir,
+        schema,
+        false,
+    )
+    .await?;
 
     // Collect errors
     if !errors.is_empty() {
@@ -259,10 +284,16 @@ fn determine_public_path(public_dir: &Path, rel_path: &Path, stem: &str) -> Path
 async fn write_public_file(public_path: &Path, rendered: String) -> Result<()> {
     tokio::fs::create_dir_all(public_path.parent().unwrap())
         .await
-        .wrap_err(format!("Failed to create parent directory for: {}", public_path.display()))?;
+        .wrap_err(format!(
+            "Failed to create parent directory for: {}",
+            public_path.display()
+        ))?;
     tokio::fs::write(public_path, rendered)
         .await
-        .wrap_err(format!("Failed to write to public path: {}", public_path.display()))?;
+        .wrap_err(format!(
+            "Failed to write to public path: {}",
+            public_path.display()
+        ))?;
     Ok(())
 }
 
@@ -526,7 +557,11 @@ pub async fn build(minify: bool) -> Result<()> {
         let paths = SitePaths::new(root_dir.clone());
 
         // Initialize Tera once
-        let tera = shared::init_tera(paths.templates.to_str().unwrap(), paths.theme_assets.parent().unwrap()).await?;
+        let tera = shared::init_tera(
+            paths.templates.to_str().unwrap(),
+            paths.theme_assets.parent().unwrap(),
+        )
+        .await?;
 
         // Prepare the public build directory
         prepare_build_directory(Path::new(&root_dir)).await?;
@@ -549,12 +584,12 @@ pub async fn build(minify: bool) -> Result<()> {
         )
         .await?;
 
-        println!(
-            "[build] Finished site build in {}",
+        info!(
+            "Finished site build in {}",
             shared::get_elapsed_time(build_start)
         );
     } else {
-        bail!("[build] Could not build the site: not in a Norgolith site directory");
+        bail!("Could not build the site: not in a Norgolith site directory");
     }
 
     Ok(())

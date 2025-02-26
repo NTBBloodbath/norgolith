@@ -227,8 +227,8 @@ impl ThemeManager {
                 .await
                 .context("Failed to update theme metadata")?;
         } else {
-            println!(
-                "[theme] The theme version is up-to-date{}",
+            tracing::info!(
+                "The theme version is up-to-date{}",
                 if self.pin {
                     format!(" (pinned to: {})", self.version)
                 } else {

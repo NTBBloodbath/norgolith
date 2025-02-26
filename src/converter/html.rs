@@ -12,6 +12,7 @@ use rust_norg::{
     parse_tree, CarryoverTag, DelimitingModifier, LinkTarget, NestableDetachedModifier, NorgAST,
     NorgASTFlat, ParagraphSegment, ParagraphSegmentToken,
 };
+use tracing::{error, info};
 
 /// CarryOver
 #[derive(Clone, Debug)]
@@ -80,7 +81,7 @@ fn paragraph_to_string(
                 '$' => tag("code"), // TODO: Real Math Rendering?
                 '%' => {}           // ignore comments
                 _ => {
-                    println!(
+                    info!(
                         "[converter] ParagraphSegment::AttachedModifier: {} {:#?}",
                         modifier_type, content
                     );
@@ -126,7 +127,7 @@ fn paragraph_to_string(
                     }
                     // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
                     _ => {
-                        println!("ParagraphSegment::Link: {:#?}", &node);
+                        info!("ParagraphSegment::Link: {:#?}", &node);
                         todo!()
                     }
                 }
@@ -185,7 +186,7 @@ fn paragraph_to_string(
                     }
                     // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
                     _ => {
-                        println!("ParagraphSegment::Link: {:#?}", &node);
+                        info!("ParagraphSegment::Link: {:#?}", &node);
                         todo!()
                     }
                 }
@@ -207,7 +208,7 @@ fn paragraph_to_string(
         // ParagraphSegment::Anchor { content, description } => todo!(),
         // ParagraphSegment::InlineLinkTarget(_) => todo!(),
         _ => {
-            println!("[converter] ParagraphSegment: {:#?}", node);
+            info!("[converter] ParagraphSegment: {:#?}", node);
             todo!()
         }
     });
@@ -245,9 +246,9 @@ fn weak_carryover_attribute(weak_carryover: CarryOverTag) -> String {
     // this behaviour?
     if namespace == "html" {
         if weak_carryover.name.len() < 2 {
-            eprintln!("[converter] Carryover tag with namespace 'html' is expected to have an attribute name (e.g. 'html.class')");
+            error!("[converter] Carryover tag with namespace 'html' is expected to have an attribute name (e.g. 'html.class')");
         } else if weak_carryover.name.len() >= 3 {
-            eprintln!(
+            error!(
                 "[converter] Carryover tag with namespace 'html' is expected to have only one attribute name (e.g. 'html.class'), '{}' provided",
                 weak_carryover.name.join(".")
             )
@@ -475,7 +476,7 @@ impl NorgToHtml for NorgAST {
                     // TODO: support other verbatim ranged tags like '@math'
                     _ => {
                         if name[0] != "document" {
-                            println!("[converter] VerbatimRangedTag: {:#?}", self);
+                            info!("[converter] VerbatimRangedTag: {:#?}", self);
                             todo!()
                         }
                     }
@@ -503,7 +504,7 @@ impl NorgToHtml for NorgAST {
                     )
                 }
                 CarryoverTag::Macro => {
-                    eprintln!("[converter] Carryover tag macros are unsupported right now");
+                    error!("[converter] Carryover tag macros are unsupported right now");
                     todo!()
                 }
             },
@@ -533,7 +534,7 @@ impl NorgToHtml for NorgAST {
                     }
                     _ => {
                         // FIXME: add Infirm tags support, we are currently ignoring them
-                        println!("[converter] InfirmTag: {:#?}", self);
+                        info!("[converter] InfirmTag: {:#?}", self);
                         todo!()
                     }
                 }
@@ -555,12 +556,12 @@ impl NorgToHtml for NorgAST {
                     hr_tag.join(" ")
                 } else {
                     // XXX: support weak and strong delimiting modifiers?
-                    eprintln!("[converter] {:#?}", self);
+                    error!("[converter] {:#?}", self);
                     todo!()
                 }
             }
             _ => {
-                println!("[converter] {:#?}", self);
+                info!("[converter] {:#?}", self);
                 todo!() // Fail on stuff that we cannot parse yet
             }
         }
