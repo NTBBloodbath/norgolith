@@ -21,6 +21,7 @@ use tokio::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::accept_async;
+use tracing::{error, info, warn};
 
 use crate::{config, fs, shared};
 
@@ -250,7 +251,7 @@ async fn process_debounced_events(result: DebounceEventResult, state: Arc<Server
     match result {
         DebounceEventResult::Ok(events) => handle_file_events(events, state).await,
         DebounceEventResult::Err(errors) => {
-            eprintln!("Watcher errors: {:?}", errors);
+            error!("Watcher errors: {:?}", errors);
         }
     }
 }
@@ -268,7 +269,7 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     // Handle asset reloads
     if actions.reload_assets {
         if let Err(e) = state.send_reload() {
-            eprintln!("Asset reload error: {}", e);
+            error!("Asset reload error: {}", e);
         }
     }
 
@@ -276,21 +277,21 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     if actions.reload_templates {
         match state.reload_templates().await {
             Ok(_) => {
-                println!("Templates reloaded successfully");
+                info!("Templates reloaded successfully");
                 if let Err(e) = state.send_reload() {
-                    eprintln!("Template reload signal error: {}", e);
+                    error!("Template reload signal error: {}", e);
                 }
             }
-            Err(e) => eprintln!("Template reload failed: {}", e),
+            Err(e) => error!("Template reload failed: {}", e),
         }
     }
 
     // Clean up deleted files
     for path in &actions.cleanup_paths {
         if let Err(e) = tokio::fs::remove_file(path).await {
-            eprintln!("Failed to clean up file {}: {}", path.display(), e);
+            error!("Failed to clean up file {}: {}", path.display(), e);
         } else {
-            println!("Cleaned up orphaned file: {}", path.display());
+            info!("Cleaned up orphaned file: {}", path.display());
         }
     }
 
@@ -315,7 +316,7 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
             .await
             {
                 Ok(_) => {
-                    println!(
+                    info!(
                         "Regenerated content: {} ({:.1?})",
                         content_path.display(),
                         start.elapsed()
@@ -331,18 +332,19 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
                             schema,
                             true,
                         )
-                        .await.unwrap();
+                        .await
+                        .unwrap();
 
                         if !validation_warnings.is_empty() {
-                            eprintln!("{validation_warnings}");
+                            warn!("{validation_warnings}");
                         }
                     }
 
                     if let Err(e) = state.send_reload() {
-                        eprintln!("Reload signal error: {}", e);
+                        error!("Reload signal error: {}", e);
                     }
                 }
-                Err(e) => eprintln!("Content conversion failed: {}", e),
+                Err(e) => error!("Content conversion failed: {}", e),
             }
         });
     }
@@ -466,7 +468,7 @@ async fn handle_single_event(
     if is_template_change(event).await.unwrap_or(false)
         && path.strip_prefix(&state.paths.templates).is_ok()
     {
-        println!(
+        info!(
             "Template modified: {}",
             path.strip_prefix(&state.paths.templates).unwrap().display()
         );
@@ -476,7 +478,7 @@ async fn handle_single_event(
     if is_asset_change(event).await.unwrap_or(false)
         && path.strip_prefix(&state.paths.assets).is_ok()
     {
-        println!(
+        info!(
             "Asset modified: {}",
             path.strip_prefix(&state.paths.assets).unwrap().display()
         );
@@ -493,7 +495,7 @@ async fn handle_single_event(
             {
                 // XXX: we are already sending a message when the content is regenerated
                 // do we still want to keep this one?
-                // println!(
+                // info!(
                 //     "Content modified: {}",
                 //     path.strip_prefix(&state.paths.content).unwrap().display()
                 // );
@@ -668,7 +670,7 @@ async fn handle_websocket(stream: TcpStream, reload_tx: Arc<broadcast::Sender<()
     let mut ws_stream = match accept_async(stream).await {
         Ok(ws) => ws,
         Err(e) => {
-            eprintln!("[server] WebSocket error: {}", e);
+            error!("WebSocket error: {}", e);
             return;
         }
     };
@@ -680,7 +682,7 @@ async fn handle_websocket(stream: TcpStream, reload_tx: Arc<broadcast::Sender<()
         ))
         .await
     {
-        eprintln!("[server] Failed to send hello message: {}", e);
+        error!("Failed to send hello message: {}", e);
         return;
     }
 
@@ -688,7 +690,7 @@ async fn handle_websocket(stream: TcpStream, reload_tx: Arc<broadcast::Sender<()
         tokio::select! {
             _ = rx.recv() => {
                 if let Err(e) = ws_stream.send(tokio_tungstenite::tungstenite::Message::Text(WS_RELOAD_MESSAGE.into())).await {
-                    eprintln!("WebSocket send error: {}", e);
+                    error!("WebSocket send error: {}", e);
                     break;
                 }
             }
@@ -696,7 +698,7 @@ async fn handle_websocket(stream: TcpStream, reload_tx: Arc<broadcast::Sender<()
                 match msg {
                     Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) => break,
                     Some(Err(e)) => {
-                        eprintln!("WebSocket error: {}", e);
+                        error!("WebSocket error: {}", e);
                         break;
                     }
                     _ => {}
@@ -756,7 +758,7 @@ async fn handle_server_request(
         Ok(res) => res,
         Err(_e) => {
             // XXX: this may be too verbose sometimes, do we want to keep it?
-            // eprintln!("Request handling error: {}", e);
+            // error!("Request handling error: {}", e);
             Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::from("500 Internal Server Error"))
@@ -768,7 +770,7 @@ async fn handle_server_request(
     let status = response.status();
 
     if path != "/livereload.js" {
-        println!("{} {} => {} in {:.1?}", method, path, status, duration);
+        info!("{} {} => {} in {:.1?}", method, path, status, duration);
     }
 
     Ok(response)
@@ -841,7 +843,7 @@ async fn setup_file_watcher(
             let tx = debouncer_tx.clone();
             rt.spawn(async move {
                 if let Err(e) = tx.send(result).await {
-                    eprintln!("Debouncer error: {:?}", e);
+                    error!("Debouncer error: {:?}", e);
                 }
             });
         },
@@ -928,8 +930,8 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
         shared::convert_content(&state.paths.content, drafts, &state.config.root_url).await?;
         shared::cleanup_orphaned_build_files(&state.paths.content).await?;
 
-        println!(
-            "[server] Server started in {} at http://localhost:{}/",
+        info!(
+            "Server started in {} at http://localhost:{}/",
             shared::get_elapsed_time(server_start),
             port
         );
@@ -937,17 +939,17 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
         if open {
             match open::that_detached(format!("http://localhost:{}/", port)) {
                 Ok(()) => {
-                    println!("[server] Opening the development server page using your browser ...");
+                    info!("Opening the development server page using your browser ...");
                 }
-                Err(e) => bail!("[server] Could not open the development server page: {}", e),
+                Err(e) => bail!("Could not open the development server page: {}", e),
             };
         }
 
         if let Err(e) = server.await {
-            bail!("[server] Server error: {}", e);
+            bail!("Server error: {}", e);
         }
     } else {
-        bail!("[server] Could not initialize the development server: not in a Norgolith site directory");
+        bail!("Could not initialize the development server: not in a Norgolith site directory");
     }
 
     Ok(())

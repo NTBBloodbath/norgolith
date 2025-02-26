@@ -5,6 +5,7 @@ use eyre::{bail, eyre, Context, Result};
 use indoc::formatdoc;
 use inquire::{validator::Validation, Confirm, Select, Text};
 use spinoff::{spinners, Spinner};
+use tracing::info;
 
 use crate::{
     fs,
@@ -68,7 +69,7 @@ async fn pull_theme(repo: &str, version: &Option<String>, pin: bool) -> Result<(
         theme.pull(&mut sp).await?;
         sp.stop_and_persist("✓", "Successfully pulled theme");
     } else {
-        bail!("[theme] Could not pull the theme: not in a Norgolith site directory");
+        bail!("Could not pull the theme: not in a Norgolith site directory");
     }
 
     Ok(())
@@ -103,10 +104,10 @@ async fn update_theme() -> Result<()> {
             theme.update(&mut sp).await?;
             sp.stop_and_persist("✓", "Finished updating theme");
         } else {
-            bail!("[theme] Could not update the theme: there is no theme installed");
+            bail!("Could not update the theme: there is no theme installed");
         }
     } else {
-        bail!("[theme] Could not update the theme: not in a Norgolith site directory");
+        bail!("Could not update the theme: not in a Norgolith site directory");
     }
     Ok(())
 }
@@ -148,7 +149,7 @@ async fn rollback_theme() -> Result<()> {
 
         sp.stop_and_persist("✓", "Successfully restored previous theme state");
     } else {
-        bail!("[theme] Could not rollback the theme: not in a Norgolith site directory");
+        bail!("Could not rollback the theme: not in a Norgolith site directory");
     }
 
     Ok(())
@@ -174,7 +175,7 @@ async fn init_theme() -> Result<()> {
                 .prompt()?;
 
             if !overwrite {
-                println!("[theme] Theme initialization canceled");
+                info!("Theme initialization canceled");
                 return Ok(());
             }
         }
@@ -292,13 +293,13 @@ async fn init_theme() -> Result<()> {
         .await
         .context("Failed to write theme.toml")?;
 
-        println!("\nTheme initialized successfully!");
+        info!("\nTheme initialized successfully!");
         println!("Next steps:");
         println!("1. Edit templates in the 'templates/' directory");
         println!("2. Add scripts to 'assets/js/'");
         println!("3. Add styles to 'assets/css/'");
     } else {
-        bail!("[theme] Could not initialize the theme: not in a Norgolith site directory");
+        bail!("Could not initialize the theme: not in a Norgolith site directory");
     }
     Ok(())
 }
@@ -334,10 +335,10 @@ async fn show_theme_info() -> Result<()> {
                 if theme_metadata.pin { "yes" } else { "no" },
             );
         } else {
-            bail!("[theme] Could not display the theme info: there is no theme installed");
+            bail!("Could not display the theme info: there is no theme installed");
         }
     } else {
-        bail!("[theme] Could not display the theme info: not in a Norgolith site directory");
+        bail!("Could not display the theme info: not in a Norgolith site directory");
     }
     Ok(())
 }

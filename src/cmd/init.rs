@@ -8,6 +8,7 @@ use eyre::{bail, Result};
 use indoc::formatdoc;
 use inquire::Text;
 use tokio::fs;
+use tracing::info;
 
 /// Create basic site configuration TOML
 async fn create_config(root: &str, root_url: &str, language: &str, title: &str) -> Result<()> {
@@ -161,6 +162,7 @@ pub async fn init(name: &str, prompt: bool) -> Result<()> {
                 Cell::new("Site assets (JS, CSS, images, etc)"),
             ])
             .add_row(vec![Cell::new("theme"), Cell::new("Site theme files")])
+            .add_row(vec![Cell::new("public"), Cell::new("Production artifacts")])
             .add_row(vec![Cell::new(".build"), Cell::new("Dev server artifacts")]);
 
         let init_message = formatdoc!(
@@ -173,9 +175,9 @@ pub async fn init(name: &str, prompt: bool) -> Result<()> {
             Please make sure to read the documentation at {}."#,
             path.display(),
             structure_table,
-            "https://foobar.wip/"
+            "https://ntbbloodbath.github.io/norgolith"
         );
-        println!("{}", init_message);
+        info!("{}", init_message);
     }
 
     Ok(())
