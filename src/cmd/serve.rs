@@ -21,7 +21,7 @@ use tokio::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::accept_async;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::{config, fs, shared};
 
@@ -30,6 +30,7 @@ use crate::{config, fs, shared};
 /// This struct defines the paths to key directories in a Norgolith site, including
 /// content, assets, templates, and theme-specific assets and templates. It is used
 /// to organize and manage the file structure of the site.
+#[derive(Debug)]
 struct SitePaths {
     content: PathBuf,
     assets: PathBuf,
@@ -50,14 +51,18 @@ impl SitePaths {
     ///
     /// # Returns
     /// * `SitePaths` - A new instance of `SitePaths` with the initialized directory paths.
+    #[instrument(skip(root))]
     fn new(root: PathBuf) -> Self {
-        Self {
+        debug!("Initializing site paths");
+        let paths = Self {
             content: root.join("content"),
             assets: root.join("assets"),
             theme_assets: root.join("theme/assets"),
             theme_templates: root.join("theme/templates"),
             templates: root.join("templates"),
-        }
+        };
+        debug!(?paths, "Configured site directories");
+        paths
     }
 }
 
@@ -85,10 +90,13 @@ impl ServerState {
     /// # Returns
     /// * `Result<()>` - `Ok(())` if the templates are reloaded successfully, otherwise
     ///   an error is returned.
+    #[instrument(level = "debug", skip(self))]
     async fn reload_templates(&self) -> Result<()> {
+        debug!("Reloading templates");
         let mut tera = self.tera.write().await;
         tera.full_reload()
             .map_err(|e| eyre!("Failed to reload templates: {}", e))?;
+        info!("Templates reloaded successfully");
         Ok(())
     }
 
@@ -101,14 +109,21 @@ impl ServerState {
     /// # Returns
     /// * `Result<()>` - `Ok(())` if the signal is sent successfully, otherwise
     ///   an error is returned.
+    #[instrument(skip(self))]
     fn send_reload(&self) -> Result<()> {
+        debug!("Sending reload signal to clients");
         if self.reload_tx.receiver_count() == 0 {
             return Err(eyre!("No active receivers"));
         }
 
         self.reload_tx
             .send(())
-            .map(|_| ())
+            .map(|_| {
+                debug!(
+                    "Reload signal sent to {} clients",
+                    self.reload_tx.receiver_count()
+                );
+            })
             .map_err(|e| eyre!("Failed to send reload signal: {}", e))
     }
 }
@@ -118,7 +133,7 @@ impl ServerState {
 /// This struct defines the actions that should be performed when file system events
 /// are detected. It includes flags for reloading templates and assets, as well as
 /// lists of paths to rebuild or clean up.
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct FileActions {
     reload_templates: bool,
     reload_assets: bool,
@@ -171,6 +186,7 @@ fn is_relevant_event(event: &notify::Event) -> bool {
 ///   Returns an error if the event paths are empty or if the parent directory cannot be determined.
 async fn is_template_change(event: &notify::Event) -> Result<bool> {
     let path = event.paths.first().ok_or(eyre!("Empty event paths"))?;
+
     let is_template = path.extension().is_some_and(|ext| ext == "html");
     let parent_dir = path.parent().ok_or(eyre!("Path has no parent"))?;
 
@@ -247,9 +263,13 @@ async fn is_asset_change(event: &notify::Event) -> Result<bool> {
 /// # Arguments
 /// * `result` - The result of the debounced file system events.
 /// * `state` - The shared server state.
+#[instrument(skip(result, state))]
 async fn process_debounced_events(result: DebounceEventResult, state: Arc<ServerState>) {
     match result {
-        DebounceEventResult::Ok(events) => handle_file_events(events, state).await,
+        DebounceEventResult::Ok(events) => {
+            debug!("Processing {} file events", events.len());
+            handle_file_events(events, state).await
+        }
         DebounceEventResult::Err(errors) => {
             error!("Watcher errors: {:?}", errors);
         }
@@ -265,7 +285,16 @@ async fn process_debounced_events(result: DebounceEventResult, state: Arc<Server
 /// # Arguments
 /// * `actions` - The actions to execute.
 /// * `state` - The shared server state.
+#[instrument(level = "debug", skip(actions, state))]
 async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
+    debug!(
+        "Executing actions: templates={}, assets={}, rebuild={}, cleanup={}",
+        actions.reload_templates,
+        actions.reload_assets,
+        actions.rebuild_paths.len(),
+        actions.cleanup_paths.len()
+    );
+
     // Handle asset reloads
     if actions.reload_assets {
         if let Err(e) = state.send_reload() {
@@ -362,7 +391,10 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
 /// # Returns
 /// * `Result<(String, PathBuf)>` - A tuple containing the content and its path if successful.
 ///   Returns an error if the content cannot be retrieved.
+#[instrument(skip(request_path))]
 async fn get_content_or_error(request_path: &str) -> Result<(String, PathBuf)> {
+    debug!(path = %request_path, "Retrieving content");
+
     shared::get_content(request_path).await.map_err(|e| {
         if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
             if io_err.kind() == std::io::ErrorKind::NotFound {
@@ -384,7 +416,10 @@ async fn get_content_or_error(request_path: &str) -> Result<(String, PathBuf)> {
 ///
 /// # Arguments
 /// * `html` - The HTML content to modify.
+#[instrument(skip(html))]
 fn inject_livereload_script(html: &mut String) {
+    debug!("Injecting LiveReload script");
+
     if let Some(pos) = html.rfind("</body>") {
         html.insert_str(
             pos,
@@ -407,12 +442,20 @@ fn inject_livereload_script(html: &mut String) {
 /// # Returns
 /// * `Result<(Vec<u8>, String)>` - A tuple containing the file content and its MIME type.
 ///   Returns an error if the file cannot be read.
+#[instrument(skip(path))]
 async fn read_asset(path: &Path) -> Result<(Vec<u8>, String)> {
-    let content = tokio::fs::read(path).await?;
+    debug!(path = %path.display(), "Reading asset");
+
+    let content = tokio::fs::read(path).await.map_err(|e| {
+        error!("Failed to read asset: {}", e);
+        e
+    })?;
     let mime_type = mime_guess::from_path(path)
         .first_or_octet_stream()
         .as_ref()
         .to_string();
+
+    debug!(mime_type = %mime_type, "Determined asset MIME type");
     Ok((content, mime_type))
 }
 
@@ -451,17 +494,21 @@ async fn handle_file_events(
 /// * `path` - The path associated with the event.
 /// * `actions` - The actions to update based on the event.
 /// * `state` - The shared server state.
+#[instrument(level = "debug", skip(event, path, actions, state))]
 async fn handle_single_event(
     event: &notify::Event,
     path: &Path,
     actions: &mut FileActions,
     state: &Arc<ServerState>,
 ) {
+    debug!(event = ?event.kind, path = %path.display(), "Processing file event");
+
     // We are excluding these fucking temp (Neo)vim backup files because they trigger
     // stupid bugs that I'm not willing to debug anymore.
     //
     // TODO: also ignore swap files, my mental health will thank me later.
     if path.to_string_lossy().ends_with('~') {
+        debug!("Ignoring temporary editor backup file");
         return;
     }
 
@@ -493,12 +540,7 @@ async fn handle_single_event(
             if is_content_change(event).await.unwrap_or(false)
                 && path.strip_prefix(&state.paths.content).is_ok()
             {
-                // XXX: we are already sending a message when the content is regenerated
-                // do we still want to keep this one?
-                // info!(
-                //     "Content modified: {}",
-                //     path.strip_prefix(&state.paths.content).unwrap().display()
-                // );
+                debug!(path = %path.display(), "Content modified, adding to rebuild paths");
                 actions.rebuild_paths.push(path.to_owned());
             }
         }
@@ -514,7 +556,9 @@ async fn handle_single_event(
 /// * `path` - The path of the removed file.
 /// * `actions` - The actions to update based on the removal.
 /// * `state` - The shared server state.
+#[instrument(skip(path, state))]
 async fn handle_removed_file(path: &Path, actions: &mut FileActions, state: &Arc<ServerState>) {
+    debug!(path = %path.display(), "Handling removed file");
     if let Ok(relative_path) = path.strip_prefix(&state.paths.content) {
         if relative_path.extension().is_some_and(|ext| ext == "norg") {
             let build_path = Path::new(".build").join(relative_path);
@@ -539,26 +583,40 @@ async fn handle_removed_file(path: &Path, actions: &mut FileActions, state: &Arc
 /// # Returns
 /// * `Result<Response<Body>>` - A `Response` containing the asset content or a 404 error
 ///   if the asset is not found.
+#[instrument(skip(request_path, paths))]
 async fn handle_asset(request_path: &str, paths: &SitePaths) -> Result<Response<Body>> {
     let asset_path = request_path.trim_start_matches("/assets/");
+    debug!(path = %asset_path, "Handling asset request");
+
     let site_path = paths.assets.join(asset_path);
 
+    debug!(site_assets = %site_path.display(), "Checking site assets path");
     match read_asset(&site_path).await {
-        Ok((content, mime_type)) => Ok(Response::builder()
-            .header(CONTENT_TYPE, mime_type)
-            .status(StatusCode::OK)
-            .body(Body::from(content))?),
+        Ok((content, mime_type)) => {
+            debug!("Asset found in site directory");
+            Ok(Response::builder()
+                .header(CONTENT_TYPE, mime_type)
+                .status(StatusCode::OK)
+                .body(Body::from(content))?)
+        }
         Err(_) => {
             // Fallback to theme assets
+            debug!("Asset not found in site directory, checking theme assets");
             let theme_path = paths.theme_assets.join(asset_path);
             match read_asset(&theme_path).await {
-                Ok((content, mime_type)) => Ok(Response::builder()
-                    .header(CONTENT_TYPE, mime_type)
-                    .status(StatusCode::OK)
-                    .body(Body::from(content))?),
-                Err(_) => Ok(Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body(Body::from("404 Asset Not Found"))?),
+                Ok((content, mime_type)) => {
+                    debug!("Asset found in theme directory");
+                    Ok(Response::builder()
+                        .header(CONTENT_TYPE, mime_type)
+                        .status(StatusCode::OK)
+                        .body(Body::from(content))?)
+                }
+                Err(_) => {
+                    error!(asset_path = %request_path, "Asset not found in site or theme directories");
+                    Ok(Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(Body::from("404 Asset Not Found"))?)
+                }
             }
         }
     }
@@ -575,12 +633,16 @@ async fn handle_asset(request_path: &str, paths: &SitePaths) -> Result<Response<
 ///
 /// # Returns
 /// * `Result<Response<Body>>` - A `Response` containing the asset content.
+#[instrument(skip(content, path))]
 async fn handle_static_asset(content: &str, path: &Path) -> Result<Response<Body>> {
+    debug!(path = %path.display(), "Handling static asset");
+
     let mime_type = mime_guess::from_path(path)
         .first_or_octet_stream()
         .as_ref()
         .to_string();
 
+    debug!(mime_type = %mime_type, "Serving static asset");
     Ok(Response::builder()
         .header(
             CONTENT_TYPE,
@@ -629,11 +691,13 @@ async fn handle_content(request_path: &str, state: Arc<ServerState>) -> Result<R
 /// # Returns
 /// * `Result<Response<Body>>` - A `Response` containing the rendered HTML or an error if
 ///   rendering fails.
+#[instrument(skip(content, path, state))]
 async fn handle_html_content(
     content: &str,
     path: &Path,
     state: Arc<ServerState>,
 ) -> Result<Response<Body>> {
+    debug!(path = %path.display(), "Rendering HTML content");
     let meta_path = path.with_extension("meta.toml");
     let metadata = shared::load_metadata(meta_path).await;
     let layout = metadata
@@ -666,9 +730,13 @@ async fn handle_html_content(
 /// # Arguments
 /// * `stream` - The TCP stream for the WebSocket connection.
 /// * `reload_tx` - The broadcast sender for reload signals.
+#[instrument(skip(stream, reload_tx))]
 async fn handle_websocket(stream: TcpStream, reload_tx: Arc<broadcast::Sender<()>>) {
     let mut ws_stream = match accept_async(stream).await {
-        Ok(ws) => ws,
+        Ok(ws) => {
+            debug!("New WebSocket connection");
+            ws
+        }
         Err(e) => {
             error!("WebSocket error: {}", e);
             return;
@@ -722,6 +790,7 @@ async fn handle_websocket(stream: TcpStream, reload_tx: Arc<broadcast::Sender<()
 /// * `Result<Response<Body>>` - A `Response` containing the result of the request handling.
 async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<Response<Body>> {
     let request_path = req.uri().path();
+    debug!(path = %request_path, "Handling request");
 
     match request_path {
         "/livereload.js" => Ok(Response::builder()
@@ -745,6 +814,7 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
 /// # Returns
 /// * `Result<Response<Body>, Infallible>` - A `Response` or an error if the request
 ///   cannot be handled.
+#[instrument(name = "serve", skip(req, state))]
 async fn handle_server_request(
     req: Request<Body>,
     state: Arc<ServerState>,
@@ -753,6 +823,8 @@ async fn handle_server_request(
     let method = req.method().clone();
     let uri = req.uri().clone();
     let path = uri.path().to_owned();
+
+    debug!(method = %method, path = %path, "Incoming request");
 
     let response = match handle_request(req, state).await {
         Ok(res) => res,
@@ -789,7 +861,10 @@ async fn handle_server_request(
 ///
 /// # Returns
 /// * `Result<Arc<ServerState>>` - The initialized server state or an error if setup fails.
+#[instrument(skip(root, drafts, port))]
 async fn setup_server_state(root: PathBuf, drafts: bool, port: u16) -> Result<Arc<ServerState>> {
+    debug!("Setting up server state");
+
     let config_content = tokio::fs::read_to_string(&root).await?;
     let site_config: config::SiteConfig = toml::from_str(&config_content)?;
 
@@ -825,6 +900,7 @@ async fn setup_server_state(root: PathBuf, drafts: bool, port: u16) -> Result<Ar
 /// # Returns
 /// * `Result<(Debouncer<RecommendedWatcher, RecommendedCache>, impl Stream<Item = DebounceEventResult>)>` -
 ///   A tuple containing the debouncer and a stream of debounced events.
+#[instrument(skip(state, rt))]
 async fn setup_file_watcher(
     state: Arc<ServerState>,
     rt: Handle,
@@ -832,6 +908,8 @@ async fn setup_file_watcher(
     Debouncer<RecommendedWatcher, RecommendedCache>,
     impl Stream<Item = DebounceEventResult>,
 )> {
+    debug!("Setting up file watcher");
+
     let (debouncer_tx, debouncer_rx) = tokio::sync::mpsc::channel(16);
 
     // Create debouncer with 200ms delay, this should be enough to handle both the
@@ -877,9 +955,14 @@ async fn setup_file_watcher(
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if the server runs successfully, otherwise an error.
+#[instrument(skip(port, drafts, open))]
 pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
+    info!("Starting development server...");
+
     let root = fs::find_config_file().await?;
     if let Some(root) = root {
+        debug!(path = %root.display(), "Found site root");
+
         let state = setup_server_state(root, drafts, port).await?;
         let server_start = std::time::Instant::now();
         let rt = Handle::current();

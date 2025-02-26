@@ -4,14 +4,19 @@ use std::path::PathBuf;
 use comfy_table::modifiers::UTF8_SOLID_INNER_BORDERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, ContentArrangement, Table};
-use eyre::{bail, Result};
+use eyre::{bail, eyre, Result};
 use indoc::formatdoc;
 use inquire::Text;
 use tokio::fs;
-use tracing::info;
+use tracing::{debug, info, instrument};
 
 /// Create basic site configuration TOML
+#[instrument(level = "debug", skip(root, root_url, language, title))]
 async fn create_config(root: &str, root_url: &str, language: &str, title: &str) -> Result<()> {
+    debug!("Creating site configuration");
+    let config_path = PathBuf::from(root).join("norgolith.toml");
+    debug!(config_path = %config_path.display(), "Writing config file");
+
     let site_config = formatdoc!(
         r#"
         rootUrl = '{}'
@@ -28,14 +33,24 @@ async fn create_config(root: &str, root_url: &str, language: &str, title: &str) 
         title,
         whoami::username()
     );
-    // TBD: add Windows separator support
-    fs::write(root.to_owned() + "/norgolith.toml", site_config).await?;
 
+    fs::write(config_path, site_config)
+        .await
+        .map_err(|e| {
+            eyre!("Failed to write config file: {}", e)
+        })?;
+
+    info!("Created norgolith.toml");
     Ok(())
 }
 
 /// Create a basic hello world norg document
+#[instrument(level = "debug", skip(root))]
 async fn create_index_norg(root: &str) -> Result<()> {
+    debug!("Creating index.norg");
+    let content_path = PathBuf::from(root).join("content/index.norg");
+    debug!(content_path = %content_path.display(), "Writing index.norg");
+
     let creation_date =
         chrono::offset::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
     let norg_index = format!(
@@ -47,14 +62,21 @@ async fn create_index_norg(root: &str) -> Result<()> {
             updated_at = creation_date
         )
     );
-    // TBD: add Windows separator support
-    fs::write(root.to_owned() + "/content/index.norg", norg_index).await?;
+    fs::write(content_path, norg_index)
+        .await
+        .map_err(|e| {
+            eyre!("Failed to write index.norg: {}", e)
+        })?;
 
+    info!("Created index.norg");
     Ok(())
 }
 
 /// Create basic HTML templates
+#[instrument(level = "debug", skip(root))]
 async fn create_html_templates(root: &str) -> Result<()> {
+    debug!("Creating HTML templates");
+
     // TODO: add 'head.html', 'footer.html' for more granular content?
     let templates = HashMap::from([
         ("base", include_str!("../resources/templates/base.html")),
@@ -65,41 +87,86 @@ async fn create_html_templates(root: &str) -> Result<()> {
     ]);
 
     let templates_dir = PathBuf::from(root).join("templates");
+    debug!(templates_dir = %templates_dir.display(), "Creating templates directory");
+
     for (&name, &contents) in templates.iter() {
         let template_path = templates_dir.join(name.to_owned() + ".html");
-        fs::write(template_path, contents).await?;
+        fs::write(template_path, contents)
+            .await
+            .map_err(|e| {
+                eyre!("Failed to write template {}: {}", name, e)
+            })?;
     }
 
+    info!("Created HTML templates");
     Ok(())
 }
 
+#[instrument(level = "debug", skip(root))]
 async fn create_assets(root: &str) -> Result<()> {
+    debug!("Creating assets");
+    let assets_dir = PathBuf::from(root).join("assets");
+    debug!(assets_dir = %assets_dir.display(), "Creating assets directory");
+
     let base_style = include_str!("../resources/assets/style.css");
-    fs::write(root.to_owned() + "/assets/style.css", base_style).await?;
+    let style_path = assets_dir.join("style.css");
+    debug!(style_path = %style_path.display(), "Writing style.css");
+    fs::write(&style_path, base_style)
+        .await
+        .map_err(|e| {
+            eyre!("Failed to write style.css: {}", e)
+        })?;
 
     let norgolith_logo = include_str!("../../res/norgolith.svg");
-    fs::write(root.to_owned() + "/assets/norgolith.svg", norgolith_logo).await?;
+    let logo_path = assets_dir.join("norgolith.svg");
+    debug!(logo_path = %logo_path.display(), "Writing norgolith.svg");
+    fs::write(&logo_path, norgolith_logo)
+        .await
+        .map_err(|e| {
+            eyre!("Failed to write norgolith.svg: {}", e)
+        })?;
 
+    info!("Created assets");
     Ok(())
 }
 
+#[instrument(level = "debug", skip(path))]
 async fn create_directories(path: &str) -> Result<()> {
+    debug!("Creating site directories");
+
     // Create the site directories and all their parent directories if required
     let directories = vec!["content", "templates", "assets", "theme", ".build"];
     for dir in directories {
-        // TBD: add Windows separator support
-        fs::create_dir_all(path.to_owned() + "/" + dir).await?;
+        let dir_path = PathBuf::from(path).join(dir);
+        debug!(dir_path = %dir_path.display(), "Creating directory");
+        fs::create_dir_all(dir_path)
+            .await
+            .map_err(|e| {
+                eyre!("Failed to create directory {}: {}", dir, e)
+            })?;
     }
 
+    info!("Created site directories");
     Ok(())
 }
 
+#[instrument(skip(name, prompt))]
 pub async fn init(name: &str, prompt: bool) -> Result<()> {
-    let path_exists = fs::try_exists(name).await?;
+    info!("Initializing new Norgoliht site: {}", name);
+
+    let path_exists = fs::try_exists(name)
+        .await
+        .map_err(|e| {
+            eyre!("Failed to check if path exists: {}", e)
+        })?;
 
     if path_exists {
         // Get the canonical (absolute) path to the existing site root
-        let path = fs::canonicalize(name).await?;
+        let path = fs::canonicalize(name)
+            .await
+            .map_err(|e| {
+                eyre!("Failed to get canonnical path: {}", e)
+            })?;
         bail!(
             "Could not initialize the new Norgolith site: the target directory {} already exists.",
             path.display()
@@ -110,7 +177,10 @@ pub async fn init(name: &str, prompt: bool) -> Result<()> {
             Text::new("Site URL:")
                 .with_default("http://localhost:3030")
                 .with_help_message("URL to your production site")
-                .prompt()?
+                .prompt()
+                .map_err(|e| {
+                    eyre!("Failed to get site URL: {}", e)
+                })?
         } else {
             String::from("http://localhost:3030")
         };
@@ -118,7 +188,10 @@ pub async fn init(name: &str, prompt: bool) -> Result<()> {
             Text::new("Site language:")
                 .with_default("en-US")
                 .with_help_message("Your site language")
-                .prompt()?
+                .prompt()
+                .map_err(|e| {
+                    eyre!("Failed to get site language: {}", e)
+                })?
         } else {
             String::from("en-US")
         };
@@ -126,23 +199,27 @@ pub async fn init(name: &str, prompt: bool) -> Result<()> {
             Text::new("Site title:")
                 .with_default(name)
                 .with_help_message("Site title")
-                .prompt()?
+                .prompt()
+                .map_err(|e| {
+                    eyre!("Failed to get site title: {}", e)
+                })?
         } else {
             String::from(name)
         };
 
-        // Create site directories
+        // Create site structure
         create_directories(name).await?;
-
-        // Create initial files
-        // TBD: Basic HTML templates
         create_config(name, &root_url, &language, &title).await?;
         create_index_norg(name).await?;
         create_html_templates(name).await?;
         create_assets(name).await?;
 
         // Get the canonical (absolute) path to the new site root
-        let path = fs::canonicalize(name).await?;
+        let path = fs::canonicalize(name)
+            .await
+            .map_err(|e| {
+                eyre!("Failed to get canonical path: {}", e)
+            })?;
 
         // Create structure table
         let mut structure_table = Table::new();
@@ -172,7 +249,7 @@ pub async fn init(name: &str, prompt: bool) -> Result<()> {
             Your new site structure:
             {}
 
-            Please make sure to read the documentation at {}."#,
+            Please make sure to read the documentation at {}"#,
             path.display(),
             structure_table,
             "https://ntbbloodbath.github.io/norgolith"

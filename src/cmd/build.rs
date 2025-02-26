@@ -3,11 +3,11 @@ use std::{
     sync::Arc,
 };
 
-use eyre::{bail, Result, WrapErr};
+use eyre::{bail, eyre, Result, WrapErr};
 use futures_util::{self, StreamExt};
 use tera::{Context, Tera};
 use tokio::sync::Mutex;
-use tracing::{error, info};
+use tracing::{debug, error, info, instrument, warn};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::{config, fs, schema::ContentSchema, shared};
@@ -16,6 +16,7 @@ use crate::{config, fs, schema::ContentSchema, shared};
 ///
 /// This struct defines paths to key directories used during the build process,
 /// including build artifacts, public output, content sources, and theme resources.
+#[derive(Debug)]
 struct SitePaths {
     build: PathBuf,
     public: PathBuf,
@@ -33,15 +34,19 @@ impl SitePaths {
     ///
     /// # Arguments
     /// * `root` - Root directory containing norgolith.toml config file
+    #[instrument]
     fn new(root: PathBuf) -> Self {
-        Self {
+        debug!("Initializing site paths");
+        let paths = Self {
             build: root.join(".build"),
             public: root.join("public"),
             content: root.join("content"),
             assets: root.join("assets"),
             theme_assets: root.join("theme/assets"),
             templates: root.join("templates"),
-        }
+        };
+        debug!(?paths, "Configured site directories");
+        paths
     }
 }
 
@@ -49,9 +54,12 @@ impl SitePaths {
 ///
 /// # Arguments
 /// * `root_path` - Root directory of the site
+#[instrument(skip(root_path))]
 async fn prepare_build_directory(root_path: &Path) -> Result<()> {
     let public_dir = root_path.join("public");
+    debug!(path = %public_dir.display(), "Preparing build directory");
     if public_dir.exists() {
+        debug!(path = %public_dir.display(), "Removing existing public directory");
         tokio::fs::remove_dir_all(&public_dir)
             .await
             .wrap_err(format!(
@@ -60,6 +68,7 @@ async fn prepare_build_directory(root_path: &Path) -> Result<()> {
             ))?;
     }
 
+    debug!(path = %public_dir.display(), "Creating public directory");
     tokio::fs::create_dir_all(&public_dir)
         .await
         .wrap_err(format!(
@@ -67,6 +76,7 @@ async fn prepare_build_directory(root_path: &Path) -> Result<()> {
             public_dir.display()
         ))?;
 
+    debug!("Build directory prepared successfully");
     Ok(())
 }
 
@@ -80,6 +90,7 @@ async fn prepare_build_directory(root_path: &Path) -> Result<()> {
 /// * `paths` - Site directory paths
 /// * `site_config` - Site configuration
 /// * `minify` - Enable minification of output
+#[instrument(skip(tera, paths, site_config))]
 async fn generate_public_build(
     tera: &Tera,
     paths: &SitePaths,
@@ -128,6 +139,7 @@ async fn generate_public_build(
 ///
 /// Handles template rendering, metadata validation, and output path determination.
 /// Skips draft content and applies minification when enabled.
+#[instrument(skip(tera, paths, site_config, validation_errors))]
 async fn process_build_entry(
     entry: DirEntry,
     tera: &Tera,
@@ -145,7 +157,7 @@ async fn process_build_entry(
         let stem = rel_path
             .file_stem()
             .and_then(|s| s.to_str())
-            .ok_or_else(|| eyre::eyre!("No file stem"))?;
+            .ok_or_else(|| eyre!("No file stem"))?;
 
         // Determine output path
         let public_path = determine_public_path(&paths.public, rel_path, stem);
@@ -210,6 +222,7 @@ async fn process_build_entry(
 /// Validates content metadata against a schema
 ///
 /// Collects validation errors for aggregated reporting
+#[instrument(skip(path, build_dir, content_dir, schema, validation_errors))]
 async fn validate_metadata(
     path: &Path,
     build_dir: &Path,
@@ -223,7 +236,7 @@ async fn validate_metadata(
         .wrap_err("Failed to strip build dir prefix for content path")?
         .with_extension("")
         .to_str()
-        .ok_or_else(|| eyre::eyre!("Failed to convert content path to string"))?
+        .ok_or_else(|| eyre!("Failed to convert content path to string"))?
         .replace('\\', "/"); // Normalize path separators
 
     let norg_content_path = content_dir.join(content_path).with_extension("norg");
@@ -258,6 +271,7 @@ async fn validate_metadata(
 ///
 /// # Returns
 /// * `PathBuf` - The final public path for the HTML file.
+#[instrument]
 fn determine_public_path(public_dir: &Path, rel_path: &Path, stem: &str) -> PathBuf {
     if stem == "index" {
         public_dir.join(rel_path)
@@ -281,6 +295,7 @@ fn determine_public_path(public_dir: &Path, rel_path: &Path, stem: &str) -> Path
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if the file is written successfully, otherwise an error.
+#[instrument(skip(rendered))]
 async fn write_public_file(public_path: &Path, rendered: String) -> Result<()> {
     tokio::fs::create_dir_all(public_path.parent().unwrap())
         .await
@@ -308,6 +323,7 @@ async fn write_public_file(public_path: &Path, rendered: String) -> Result<()> {
 ///
 /// # Returns
 /// * `bool` - `true` if the asset should be minified, `false` otherwise.
+#[instrument]
 fn should_minify_asset(src: &Path) -> bool {
     let file_stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
     let file_ext = src.extension().and_then(|s| s.to_str()).unwrap_or_default();
@@ -325,6 +341,7 @@ fn should_minify_asset(src: &Path) -> bool {
 ///
 /// # Returns
 /// * `Result<String>` - The minified HTML content if successful, otherwise an error.
+#[instrument]
 fn minify_html_content(rendered: String) -> Result<String> {
     let minify_config = minify_html::Cfg {
         minify_js: true,
@@ -332,7 +349,7 @@ fn minify_html_content(rendered: String) -> Result<String> {
         ..minify_html::Cfg::default()
     };
     String::from_utf8(minify_html::minify(rendered.as_bytes(), &minify_config))
-        .map_err(|e| eyre::eyre!("HTML minification failed: {}", e))
+        .map_err(|e| eyre!("HTML minification failed: {}", e))
 }
 
 /// Minifies a JavaScript asset using the `minify-js` crate.
@@ -347,6 +364,7 @@ fn minify_html_content(rendered: String) -> Result<String> {
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if minification and writing succeed, otherwise an error.
+#[instrument(skip(src_path, dest_path))]
 async fn minify_js_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
     let content = tokio::fs::read(src_path).await?;
     let mut minified = Vec::new();
@@ -357,7 +375,7 @@ async fn minify_js_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
         &content,
         &mut minified,
     )
-    .map_err(|e| eyre::eyre!("JS minification failed for {}: {}", src_path.display(), e))?;
+    .map_err(|e| eyre!("JS minification failed for {}: {}", src_path.display(), e))?;
     tokio::fs::write(dest_path, minified)
         .await
         .wrap_err_with(|| format!("Failed to write minified JS to {}", dest_path.display()))?;
@@ -376,12 +394,13 @@ async fn minify_js_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if minification and writing succeed, otherwise an error.
+#[instrument(skip(src_path, dest_path))]
 async fn minify_css_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
     let content = tokio::fs::read_to_string(src_path).await?;
     // See https://docs.rs/css-minify/0.5.2/css_minify/optimizations/enum.Level.html#variants
     let minified = css_minify::optimizations::Minifier::default()
         .minify(&content, css_minify::optimizations::Level::Two)
-        .map_err(|e| eyre::eyre!("CSS minification failed for {}: {}", src_path.display(), e))?;
+        .map_err(|e| eyre!("CSS minification failed for {}: {}", src_path.display(), e))?;
     tokio::fs::write(dest_path, minified.into_bytes())
         .await
         .wrap_err_with(|| format!("Failed to write minified CSS to {}", dest_path.display()))?;
@@ -399,6 +418,7 @@ async fn minify_css_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if the file is copied successfully, otherwise an error.
+#[instrument(skip(src_path, dest_path))]
 async fn copy_binary_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
     let content = tokio::fs::read(src_path).await?;
     tokio::fs::write(dest_path, content)
@@ -425,6 +445,7 @@ async fn copy_binary_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if the file is processed successfully, otherwise an error.
+#[instrument(skip(src_path, dest_path, minify))]
 async fn copy_asset_file(src_path: &Path, dest_path: &Path, minify: bool) -> Result<()> {
     if minify {
         if should_minify_asset(src_path) {
@@ -459,6 +480,7 @@ async fn copy_asset_file(src_path: &Path, dest_path: &Path, minify: bool) -> Res
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if all assets are copied successfully, otherwise an error.
+#[instrument(skip(site_assets_dir, theme_assets_dir, root_path, minify))]
 async fn copy_all_assets(
     site_assets_dir: &Path,
     theme_assets_dir: &Path,
@@ -489,6 +511,7 @@ async fn copy_all_assets(
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if all assets are copied successfully, otherwise an error.
+#[instrument(skip(assets_dir, root_path, minify))]
 async fn copy_assets(assets_dir: &Path, root_path: &Path, minify: bool) -> Result<()> {
     let public_dir = root_path.join("public");
     let public_assets = public_dir.join("assets");
@@ -542,14 +565,20 @@ async fn copy_assets(assets_dir: &Path, root_path: &Path, minify: bool) -> Resul
 ///
 /// # Arguments
 /// * `minify` - Enable minification of HTML/CSS/JS outputs
+#[instrument(skip(minify))]
 pub async fn build(minify: bool) -> Result<()> {
     let root = fs::find_config_file().await?;
     if let Some(root) = root {
         let build_start = std::time::Instant::now();
+        info!(minify = minify, "Starting build process");
 
         // Load site configuration, root already contains the norgolith.toml path
-        let config_content = tokio::fs::read_to_string(&root).await?;
-        let site_config: config::SiteConfig = toml::from_str(&config_content)?;
+        let config_content = tokio::fs::read_to_string(&root)
+            .await
+            .wrap_err("Failed to read config file")?;
+        let site_config: config::SiteConfig =
+            toml::from_str(&config_content).wrap_err("Failed to parse site configuration")?;
+        debug!(?site_config, "Loaded site configuration");
 
         let root_dir = root.parent().unwrap().to_path_buf();
 
@@ -557,6 +586,7 @@ pub async fn build(minify: bool) -> Result<()> {
         let paths = SitePaths::new(root_dir.clone());
 
         // Initialize Tera once
+        debug!("Initializing template engine");
         let tera = shared::init_tera(
             paths.templates.to_str().unwrap(),
             paths.theme_assets.parent().unwrap(),

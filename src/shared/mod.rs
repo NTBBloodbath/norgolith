@@ -171,7 +171,7 @@ pub async fn cleanup_orphaned_build_files(content_dir: &Path) -> Result<()> {
                         tokio::fs::remove_file(&meta_path).await?;
                     }
 
-                    info!("[server] Cleaned orphaned build file: {}", path.display());
+                    info!("Cleaned orphaned build file: {}", path.display());
                 }
             }
         }
