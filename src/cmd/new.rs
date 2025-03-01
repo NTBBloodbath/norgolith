@@ -1,9 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use colored::Colorize;
 use chrono::{Local, SecondsFormat};
+use colored::Colorize;
 use eyre::{bail, eyre, Context, Result};
 use indoc::formatdoc;
+use inquire::Text;
+use regex::Regex;
 use tracing::{debug, info, instrument, warn};
 use whoami::username;
 
@@ -96,18 +98,44 @@ fn generate_content_title(base_path: &Path, full_path: &Path) -> String {
 #[instrument(level = "debug", skip(path, title))]
 async fn create_norg_document(path: &Path, title: &str) -> Result<()> {
     debug!("Creating new norg document: {}", path.display());
+    let re = Regex::new(", ?")?;
     let creation_date = Local::now().to_rfc3339_opts(SecondsFormat::Secs, false);
-    let username = username();
+
+    // Prompt norg file metadata
+    let title = Text::new("Title:")
+        .with_default(title)
+        .with_help_message("Document title")
+        .prompt()
+        .map_err(|e| eyre!("Failed to get document title: {}", e))?;
+    let description = Text::new("Description:")
+        .with_default("")
+        .with_help_message("Document description")
+        .prompt()
+        .map_err(|e| eyre!("Failed to get document description: {}", e))?;
+    let authors = Text::new("Author(s):")
+        .with_default(username().as_str())
+        .with_help_message("Document authors separated by comma")
+        .with_placeholder("e.g. NTBBloodbath, Vhyrro")
+        .prompt()
+        .map_err(|e| eyre!("Failed to get document author: {}", e))?;
+    let categories = Text::new("Categories:")
+        .with_default("")
+        .with_help_message("Document categories separated by comma")
+        .with_placeholder("e.g. Neovim, Neorg")
+        .prompt()
+        .map_err(|e| eyre!("Failed to get document categories: {}", e))?;
 
     let content = formatdoc!(
         r#"
         @document.meta
         title: {title}
-        description:
+        description: {description}
         authors: [
-          {username}
+          {}
         ]
-        categories: []
+        categories: [
+          {}
+        ]
         created: {creation_date}
         updated: {creation_date}
         draft: true
@@ -117,12 +145,12 @@ async fn create_norg_document(path: &Path, title: &str) -> Result<()> {
         * {title}
           Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
           labore et dolore magna aliqua. Lobortis scelerisque fermentum dui faucibus in ornare."#,
+        re.replace(&authors, "\n  "),
+        re.replace(&categories, "\n  "),
     );
     tokio::fs::write(path, content)
         .await
-        .map_err(|e| {
-            eyre!("Failed to write norg document: {}", e)
-        })?;
+        .map_err(|e| eyre!("Failed to write norg document: {}", e))?;
 
     info!("Created norg document: {}", path.display());
     Ok(())
@@ -170,9 +198,12 @@ pub async fn new(kind: &str, name: &str, open: bool) -> Result<()> {
     }
 
     // Find site root
-    let mut site_root = fs::find_config_file()
-        .await?
-        .ok_or_else(|| eyre!("{}: not in a Norgolith site directory", "Unable to create site asset".bold()))?;
+    let mut site_root = fs::find_config_file().await?.ok_or_else(|| {
+        eyre!(
+            "{}: not in a Norgolith site directory",
+            "Unable to create site asset".bold()
+        )
+    })?;
     // Remove norgolith.toml from the site_root
     site_root.pop();
 
