@@ -128,24 +128,6 @@ async fn create_norg_document(path: &Path, title: &str) -> Result<()> {
     Ok(())
 }
 
-/// Validate and parse input path
-#[instrument(skip(name))]
-fn parse_input_path(name: &str) -> PathBuf {
-    debug!(path = name, "Parsing input path");
-    let path = PathBuf::from(name);
-    let file_name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| {
-            debug!("Using default name 'untitled'");
-            "untitled".to_string()
-        });
-
-    let result = PathBuf::from(file_name);
-    debug!(parsed_path = %result.display(), "Parsed input path");
-    result
-}
-
 /// Create necessary directories for the asset
 #[instrument(skip(path))]
 async fn ensure_directory_exists(path: &Path) -> Result<()> {
@@ -172,7 +154,7 @@ async fn open_file_editor(path: &Path) -> Result<()> {
 pub async fn new(kind: &str, name: &str, open: bool) -> Result<()> {
     debug!(type = kind, name = name, "Creating new asset");
     let asset_type = AssetType::from_extension(kind)?;
-    let mut input_path = parse_input_path(name);
+    let mut input_path = PathBuf::from(name);
 
     // Validate file extension
     // TODO: also validate assets?
@@ -188,12 +170,14 @@ pub async fn new(kind: &str, name: &str, open: bool) -> Result<()> {
     }
 
     // Find site root
-    let site_root = fs::find_config_file()
+    let mut site_root = fs::find_config_file()
         .await?
         .ok_or_else(|| eyre!("{}: not in a Norgolith site directory", "Unable to create site asset".bold()))?;
+    // Remove norgolith.toml from the site_root
+    site_root.pop();
 
     // Build target path
-    let mut target_path = site_root.parent().unwrap().join(asset_type.directory());
+    let mut target_path = site_root.join(asset_type.directory());
 
     if let Some(subdir) = asset_type.subdirectory() {
         target_path.push(subdir);
