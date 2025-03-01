@@ -1,8 +1,10 @@
 use std::convert::Infallible;
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use colored::Colorize;
 use eyre::{bail, eyre, Result};
 use futures_util::{SinkExt, Stream, StreamExt};
 use hyper::service::{make_service_fn, service_fn};
@@ -955,8 +957,8 @@ async fn setup_file_watcher(
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if the server runs successfully, otherwise an error.
-#[instrument(skip(port, drafts, open))]
-pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
+#[instrument(skip(port, drafts, open, host))]
+pub async fn serve(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
     info!("Starting development server...");
 
     let root = fs::find_config_file().await?;
@@ -1006,17 +1008,47 @@ pub async fn serve(port: u16, drafts: bool, open: bool) -> Result<()> {
             }
         });
 
-        let addr = ([127, 0, 0, 1], port).into();
+        let addr = if host {
+            ([0, 0, 0, 0], port).into()
+        } else {
+            ([127, 0, 0, 1], port).into()
+        };
         let server = Server::bind(&addr).serve(make_svc);
+        let local_ip =
+            local_ip_address::local_ip().unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
 
         // Initial build
         shared::convert_content(&state.paths.content, drafts, &state.config.root_url).await?;
         shared::cleanup_orphaned_build_files(&state.paths.content).await?;
 
-        info!(
-            "Server started in {} at http://localhost:{}/",
+        let localhost_address = format!(
+            "{} {}   {}",
+            "•".green(),
+            "Local:".bold(),
+            format!("http://localhost:{}/", port.to_string().cyan().bold()).blue()
+        );
+        let lan_address = if host {
+            format!(
+                "{} {} {}",
+                "•".green(),
+                "Network:".bold(),
+                format!("http://{}:{}/", local_ip, port.to_string().cyan().bold()).blue()
+            )
+        } else {
+            format!(
+                "{} {} {} {} {}",
+                "•".green().dimmed(),
+                "Network:".bold().dimmed(),
+                "use".dimmed(),
+                "--host".bold(),
+                "to expose".dimmed()
+            )
+        };
+        println!(
+            "Server started in {}\n{}\n{}\n",
             shared::get_elapsed_time(server_start),
-            port
+            localhost_address,
+            lan_address,
         );
 
         if open {
