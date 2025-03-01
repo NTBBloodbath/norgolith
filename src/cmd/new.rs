@@ -6,6 +6,7 @@ use eyre::{bail, eyre, Context, Result};
 use indoc::formatdoc;
 use inquire::Text;
 use regex::Regex;
+use titlecase::titlecase;
 use tracing::{debug, info, instrument, warn};
 use whoami::username;
 
@@ -71,9 +72,11 @@ fn generate_content_title(base_path: &Path, full_path: &Path) -> String {
         .iter()
         .filter(|c| *c != "index.norg")
         .map(|c| {
-            c.to_string_lossy()
-                .trim_end_matches(".norg")
-                .replace(['-', '_'], " ")
+            titlecase(
+                &c.to_string_lossy()
+                    .trim_end_matches(".norg")
+                    .replace(['-', '_'], " "),
+            )
         })
         .collect::<Vec<_>>();
 
@@ -98,7 +101,7 @@ fn generate_content_title(base_path: &Path, full_path: &Path) -> String {
 #[instrument(level = "debug", skip(path, title))]
 async fn create_norg_document(path: &Path, title: &str) -> Result<()> {
     debug!("Creating new norg document: {}", path.display());
-    let re = Regex::new(", ?")?;
+    let re = Regex::new(r"[,\s+?]+")?;
     let creation_date = Local::now().to_rfc3339_opts(SecondsFormat::Secs, false);
 
     // Prompt norg file metadata
@@ -145,8 +148,8 @@ async fn create_norg_document(path: &Path, title: &str) -> Result<()> {
         * {title}
           Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut
           labore et dolore magna aliqua. Lobortis scelerisque fermentum dui faucibus in ornare."#,
-        re.replace(&authors, "\n  "),
-        re.replace(&categories, "\n  "),
+        re.replace_all(&authors, "\n  "),
+        re.replace_all(&categories, "\n  "),
     );
     tokio::fs::write(path, content)
         .await

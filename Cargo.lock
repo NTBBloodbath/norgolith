@@ -1758,6 +1758,7 @@ dependencies = [
  "spinoff",
  "tempfile",
  "tera",
+ "titlecase",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite",
@@ -2833,6 +2834,15 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+
+[[package]]
+name = "titlecase"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0e20e744fbec1913fa168f3ffbef64324bbcb152c6cda8394baa79fa5ec9142"
+dependencies = [
+ "regex",
+]
 
 [[package]]
 name = "tokio"
