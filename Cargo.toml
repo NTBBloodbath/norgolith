@@ -49,6 +49,8 @@ spinoff = "0.8.0"
 tokio-stream = { version = "0.1.17", features = ["sync", "net"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["ansi", "chrono", "env-filter"] }
+colored = "3.0.0"
+local-ip-address = "0.6.3"
 
 [dev-dependencies]
 mockall = "0.13.1"
