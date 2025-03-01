@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use colored::Colorize;
 use comfy_table::modifiers::UTF8_SOLID_INNER_BORDERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, ContentArrangement, Table};
@@ -168,7 +169,8 @@ pub async fn init(name: &str, prompt: bool) -> Result<()> {
                 eyre!("Failed to get canonnical path: {}", e)
             })?;
         bail!(
-            "Could not initialize the new Norgolith site: the target directory {} already exists.",
+            "{}: the target directory {} already exists.",
+            "Could not initialize the new Norgolith site".bold(),
             path.display()
         );
     } else {
@@ -252,7 +254,7 @@ pub async fn init(name: &str, prompt: bool) -> Result<()> {
             Please make sure to read the documentation at {}"#,
             path.display(),
             structure_table,
-            "https://ntbbloodbath.github.io/norgolith"
+            "https://ntbbloodbath.github.io/norgolith".blue()
         );
         info!("{}", init_message);
     }

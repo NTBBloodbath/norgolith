@@ -449,8 +449,7 @@ async fn read_asset(path: &Path) -> Result<(Vec<u8>, String)> {
     debug!(path = %path.display(), "Reading asset");
 
     let content = tokio::fs::read(path).await.map_err(|e| {
-        error!("Failed to read asset: {}", e);
-        e
+        eyre!("Failed to read asset: {}", e)
     })?;
     let mime_type = mime_guess::from_path(path)
         .first_or_octet_stream()
@@ -1056,15 +1055,15 @@ pub async fn serve(port: u16, drafts: bool, open: bool, host: bool) -> Result<()
                 Ok(()) => {
                     info!("Opening the development server page using your browser ...");
                 }
-                Err(e) => bail!("Could not open the development server page: {}", e),
+                Err(e) => bail!("{}: {}", "Could not open the development server page".bold(), e),
             };
         }
 
         if let Err(e) = server.await {
-            bail!("Server error: {}", e);
+            bail!("{}: {}", "Server error".bold(), e);
         }
     } else {
-        bail!("Could not initialize the development server: not in a Norgolith site directory");
+        bail!("{}: not in a Norgolith site directory", "Could not initialize the development server".bold());
     }
 
     Ok(())

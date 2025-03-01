@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use clap::Subcommand;
+use colored::Colorize;
 use eyre::{bail, eyre, Context, Result};
 use indoc::formatdoc;
 use inquire::{validator::Validation, Confirm, Select, Text};
@@ -69,7 +70,7 @@ async fn pull_theme(repo: &str, version: &Option<String>, pin: bool) -> Result<(
         theme.pull(&mut sp).await?;
         sp.stop_and_persist("✓", "Successfully pulled theme");
     } else {
-        bail!("Could not pull the theme: not in a Norgolith site directory");
+        bail!("{}: not in a Norgolith site directory", "Could not pull the theme".bold());
     }
 
     Ok(())
@@ -103,10 +104,10 @@ async fn update_theme() -> Result<()> {
             let mut sp = Spinner::new(spinners::Dots2, "Updating theme...", None);
             theme.update(&mut sp).await?;
         } else {
-            bail!("Could not update the theme: there is no theme installed");
+            bail!("{}: there is no theme installed", "Could not update the theme".bold());
         }
     } else {
-        bail!("Could not update the theme: not in a Norgolith site directory");
+        bail!("{}: not in a Norgolith site directory", "Could not update the theme".bold());
     }
     Ok(())
 }
@@ -148,7 +149,7 @@ async fn rollback_theme() -> Result<()> {
 
         sp.stop_and_persist("✓", "Successfully restored previous theme state");
     } else {
-        bail!("Could not rollback the theme: not in a Norgolith site directory");
+        bail!("{}: not in a Norgolith site directory", "Could not rollback the theme".bold());
     }
 
     Ok(())
@@ -298,7 +299,7 @@ async fn init_theme() -> Result<()> {
         println!("2. Add scripts to 'assets/js/'");
         println!("3. Add styles to 'assets/css/'");
     } else {
-        bail!("Could not initialize the theme: not in a Norgolith site directory");
+        bail!("{}: not in a Norgolith site directory", "Could not initialize the theme".bold());
     }
     Ok(())
 }
@@ -323,21 +324,22 @@ async fn show_theme_info() -> Result<()> {
                 tokio::fs::read_to_string(theme_dir.join("theme.toml")).await?;
             let theme_toml: ThemeMetadata = toml::from_str(&theme_toml_content)?;
 
-            println!("Current theme information:");
-            println!(
-                "• Name: {}\n• Description: {}\n• Author: {}\n• License: {}\n• Version: {}\n• Pinned: {}",
-                theme_toml.name,
-                theme_toml.description,
-                theme_toml.author,
-                theme_toml.license,
-                theme_metadata.version,
-                if theme_metadata.pin { "yes" } else { "no" },
-            );
+            let theme_info: Vec<String> = vec![
+                format!("\n{}", "Metadata".bold().green()),
+                format!("  {} {}:\t {}", "→".blue(), "Name".bold(), theme_toml.name),
+                format!("  {} {}: {}", "→".blue(), "Description".bold(), theme_toml.description),
+                format!("  {} {}:\t {}", "→".blue(), "Author".bold(), theme_toml.author),
+                format!("  {} {}:\t {}", "→".blue(), "License".bold(), theme_toml.license),
+                format!("\n{}", "Status".bold().green()),
+                format!("  {} {}:\t {}", "→".blue(), "Version".bold(), theme_toml.version),
+                format!("  {} {}:\t {}", "→".blue(), "Pinned".bold(), if theme_metadata.pin { "yes" } else { "no" }),
+            ];
+            println!("{}:\n{}", "Current theme information".bold(), theme_info.join("\n"));
         } else {
-            bail!("Could not display the theme info: there is no theme installed");
+            bail!("{}: there is no theme installed", "Could not display the theme info".bold());
         }
     } else {
-        bail!("Could not display the theme info: not in a Norgolith site directory");
+        bail!("{}: not in a Norgolith site directory", "Could not display the theme info".bold());
     }
     Ok(())
 }

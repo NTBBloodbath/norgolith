@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use colored::Colorize;
 use eyre::{bail, eyre, Context, Result};
 use git2::{build::CheckoutBuilder, Repository};
 use semver::{Version, VersionReq};
@@ -47,7 +48,7 @@ pub async fn resolve_repo_shorthand(repo: &str) -> Result<String> {
             "gh" | "github" => Ok(format!("https://github.com/{}", rest)),
             "srht" | "sourcehut" => Ok(format!("https://git.sr.ht/~{}", rest)),
             "berg" | "codeberg" => Ok(format!("https://codeberg.org/{}", rest)),
-            _ => bail!("Unknown repository service: {}", service),
+            _ => bail!("{}: {}", "Unknown repository service".bold(), service),
         }
     } else {
         // Assume GitHub by default if 'author/repo' has been passed instead of

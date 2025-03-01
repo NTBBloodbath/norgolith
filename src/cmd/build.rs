@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use colored::Colorize;
 use eyre::{bail, eyre, Result, WrapErr};
 use futures_util::{self, StreamExt};
 use tera::{Context, Tera};
@@ -63,7 +64,8 @@ async fn prepare_build_directory(root_path: &Path) -> Result<()> {
         tokio::fs::remove_dir_all(&public_dir)
             .await
             .wrap_err(format!(
-                "Failed to remove existing public directory: {}",
+                "{}: {}",
+                "Failed to remove existing public directory".bold(),
                 public_dir.display()
             ))?;
     }
@@ -72,7 +74,8 @@ async fn prepare_build_directory(root_path: &Path) -> Result<()> {
     tokio::fs::create_dir_all(&public_dir)
         .await
         .wrap_err(format!(
-            "Failed to create public directory: {}",
+            "{}: {}",
+            "Failed to create public directory".bold(),
             public_dir.display()
         ))?;
 
@@ -121,7 +124,7 @@ async fn generate_public_build(
                 )
                 .await
                 {
-                    error!("Error processing entry: {:?}", e);
+                    error!("{}: {:?}", "Error processing entry".bold(), e);
                 }
             }
         })
@@ -165,7 +168,7 @@ async fn process_build_entry(
         // Read content and metadata
         let html = tokio::fs::read_to_string(path)
             .await
-            .wrap_err_with(|| format!("Failed to read HTML file: {:?}", path))?;
+            .wrap_err_with(|| format!("{}: {:?}", "Failed to read HTML file".bold(), path))?;
         let meta_path = path.with_extension("meta.toml");
 
         // Handle metadata loading with proper error fallback
@@ -300,13 +303,15 @@ async fn write_public_file(public_path: &Path, rendered: String) -> Result<()> {
     tokio::fs::create_dir_all(public_path.parent().unwrap())
         .await
         .wrap_err(format!(
-            "Failed to create parent directory for: {}",
+            "{}: {}",
+            "Failed to create parent directory for".bold(),
             public_path.display()
-        ))?;
+        ).bold())?;
     tokio::fs::write(public_path, rendered)
         .await
         .wrap_err(format!(
-            "Failed to write to public path: {}",
+            "{}: {}",
+            "Failed to write to public path".bold(),
             public_path.display()
         ))?;
     Ok(())
@@ -349,7 +354,7 @@ fn minify_html_content(rendered: String) -> Result<String> {
         ..minify_html::Cfg::default()
     };
     String::from_utf8(minify_html::minify(rendered.as_bytes(), &minify_config))
-        .map_err(|e| eyre!("HTML minification failed: {}", e))
+        .map_err(|e| eyre!("{}: {}", "HTML minification failed".bold(), e))
 }
 
 /// Minifies a JavaScript asset using the `minify-js` crate.
@@ -375,7 +380,13 @@ async fn minify_js_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
         &content,
         &mut minified,
     )
-    .map_err(|e| eyre!("JS minification failed for {}: {}", src_path.display(), e))?;
+    .map_err(|e| {
+        eyre!(
+            "{}: {}",
+            format!("JS minification failed for {}", src_path.display()).bold(),
+            e
+        )
+    })?;
     tokio::fs::write(dest_path, minified)
         .await
         .wrap_err_with(|| format!("Failed to write minified JS to {}", dest_path.display()))?;
@@ -400,10 +411,10 @@ async fn minify_css_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
     // See https://docs.rs/css-minify/0.5.2/css_minify/optimizations/enum.Level.html#variants
     let minified = css_minify::optimizations::Minifier::default()
         .minify(&content, css_minify::optimizations::Level::Two)
-        .map_err(|e| eyre!("CSS minification failed for {}: {}", src_path.display(), e))?;
+        .map_err(|e| eyre!("{}: {}", format!("CSS minification failed for {}", src_path.display()).bold(), e))?;
     tokio::fs::write(dest_path, minified.into_bytes())
         .await
-        .wrap_err_with(|| format!("Failed to write minified CSS to {}", dest_path.display()))?;
+        .wrap_err_with(|| format!("Failed to write minified CSS to {}", dest_path.display()).bold())?;
     Ok(())
 }
 
@@ -619,7 +630,10 @@ pub async fn build(minify: bool) -> Result<()> {
             shared::get_elapsed_time(build_start)
         );
     } else {
-        bail!("Could not build the site: not in a Norgolith site directory");
+        bail!(
+            "{}: not in a Norgolith site directory",
+            "Could not build the site".bold()
+        );
     }
 
     Ok(())

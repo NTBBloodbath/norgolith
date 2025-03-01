@@ -1,3 +1,4 @@
+use colored::Colorize;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path};
@@ -37,21 +38,30 @@ impl ValidationError {
 impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::MissingField(field) => write!(f, "Missing field '{}'", field),
+            Self::MissingField(field) => write!(f, "{} '{}'", "Missing field".bold(), field.bold()),
             Self::TypeMismatch {
                 field,
                 expected,
                 actual,
             } => write!(
                 f,
-                "Type mismatch for field '{}': expected {}, got {}",
-                field, expected, actual
+                "{} '{}': expected {}, got {}",
+                "Type mismatch for field".bold(),
+                field.bold(),
+                expected.bold(),
+                actual.bold()
             ),
             Self::ConstraintViolation { field, message } => {
-                write!(f, "Constraint violation for field '{}': {}", field, message)
+                write!(
+                    f,
+                    "{} '{}': {}",
+                    "Constraint violation for field".bold(),
+                    field.bold(),
+                    message
+                )
             }
             Self::RuleConditionFailed { message } => {
-                write!(f, "Rule condition failed: {}", message)
+                write!(f, "{}: {}", "Rule condition failed".bold(), message)
             }
         }
     }
@@ -284,14 +294,22 @@ pub fn format_errors(
     as_warnings: bool,
 ) -> String {
     let mut output = format!(
-        "{}: Validation {} for '{}'\n",
-        if as_warnings { "Warning" } else { "Error" },
-        if as_warnings { "issues" } else { "failed" },
+        "{} '{}'\n",
+        format!(
+            "Validation {} for",
+            if as_warnings { "issues" } else { "failed" }
+        )
+        .bold(),
         file_path.display()
     );
-    output.push_str(&format!("  → Schema applied: '{}'\n", schema_path));
+    output.push_str(&format!(
+        "  {} {}: '{}'\n",
+        "→".blue(),
+        "Schema applied".bold(),
+        schema_path
+    ));
     for error in errors {
-        output.push_str(&format!("  → {}\n", error));
+        output.push_str(&format!("  {} {}\n", "→".blue(), error));
     }
     output
 }

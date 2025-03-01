@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use colored::Colorize;
 use chrono::{Local, SecondsFormat};
 use eyre::{bail, eyre, Context, Result};
 use indoc::formatdoc;
@@ -189,7 +190,7 @@ pub async fn new(kind: &str, name: &str, open: bool) -> Result<()> {
     // Find site root
     let site_root = fs::find_config_file()
         .await?
-        .ok_or_else(|| eyre!("Unable to create site asset: not in a Norgolith site directory"))?;
+        .ok_or_else(|| eyre!("{}: not in a Norgolith site directory", "Unable to create site asset".bold()))?;
 
     // Build target path
     let mut target_path = site_root.parent().unwrap().join(asset_type.directory());
