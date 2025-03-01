@@ -23,11 +23,7 @@ pub async fn find_in_previous_dirs(
                 debug!("Found matching {} at path", kind);
                 return Ok(Some(path));
             } else {
-                debug!(
-                    "Path exists but is not a {}: {}",
-                    kind,
-                    path.display()
-                );
+                debug!("Path exists but is not a {}: {}", kind, path.display());
             }
         }
 
@@ -36,7 +32,7 @@ pub async fn find_in_previous_dirs(
             Some(parent_dir) => {
                 debug!("Moving up to parent directory: {}", parent_dir.display());
                 *current_dir = parent_dir.to_path_buf()
-            },
+            }
             None => {
                 debug!("Reached root directory, stopping search");
                 break; // Reached root directory
@@ -64,7 +60,7 @@ pub async fn find_config_file() -> Result<Option<PathBuf>> {
 
     match &found_site_root {
         Some(path) => debug!("Found config file: {}", path.display()),
-        None => debug!("Config file not found in any parent directories")
+        None => debug!("Config file not found in any parent directories"),
     }
 
     Ok(found_site_root)
@@ -87,11 +83,7 @@ pub async fn copy_dir_all(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Resu
                 entry.path().display(),
                 dest.display()
             );
-            Box::pin(copy_dir_all(
-                entry.path(),
-                dest.join(entry.file_name()),
-            ))
-            .await?;
+            Box::pin(copy_dir_all(entry.path(), dest.join(entry.file_name()))).await?;
         } else {
             debug!(
                 "Copying file from {} to {}",

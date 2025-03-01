@@ -72,7 +72,12 @@ enum Commands {
         _no_drafts: bool,
 
         // TODO: add SocketAddr parsing if host is a String, similar to Vite
-        #[arg(short = 'e', long, default_value_t = false, help = "Expose site to LAN network")]
+        #[arg(
+            short = 'e',
+            long,
+            default_value_t = false,
+            help = "Expose site to LAN network"
+        )]
         host: bool,
 
         #[arg(

@@ -448,9 +448,9 @@ fn inject_livereload_script(html: &mut String) {
 async fn read_asset(path: &Path) -> Result<(Vec<u8>, String)> {
     debug!(path = %path.display(), "Reading asset");
 
-    let content = tokio::fs::read(path).await.map_err(|e| {
-        eyre!("Failed to read asset: {}", e)
-    })?;
+    let content = tokio::fs::read(path)
+        .await
+        .map_err(|e| eyre!("Failed to read asset: {}", e))?;
     let mime_type = mime_guess::from_path(path)
         .first_or_octet_stream()
         .as_ref()
@@ -1055,7 +1055,11 @@ pub async fn serve(port: u16, drafts: bool, open: bool, host: bool) -> Result<()
                 Ok(()) => {
                     info!("Opening the development server page using your browser ...");
                 }
-                Err(e) => bail!("{}: {}", "Could not open the development server page".bold(), e),
+                Err(e) => bail!(
+                    "{}: {}",
+                    "Could not open the development server page".bold(),
+                    e
+                ),
             };
         }
 
@@ -1063,7 +1067,10 @@ pub async fn serve(port: u16, drafts: bool, open: bool, host: bool) -> Result<()
             bail!("{}: {}", "Server error".bold(), e);
         }
     } else {
-        bail!("{}: not in a Norgolith site directory", "Could not initialize the development server".bold());
+        bail!(
+            "{}: not in a Norgolith site directory",
+            "Could not initialize the development server".bold()
+        );
     }
 
     Ok(())

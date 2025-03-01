@@ -70,7 +70,10 @@ async fn pull_theme(repo: &str, version: &Option<String>, pin: bool) -> Result<(
         theme.pull(&mut sp).await?;
         sp.stop_and_persist("✓", "Successfully pulled theme");
     } else {
-        bail!("{}: not in a Norgolith site directory", "Could not pull the theme".bold());
+        bail!(
+            "{}: not in a Norgolith site directory",
+            "Could not pull the theme".bold()
+        );
     }
 
     Ok(())
@@ -104,10 +107,16 @@ async fn update_theme() -> Result<()> {
             let mut sp = Spinner::new(spinners::Dots2, "Updating theme...", None);
             theme.update(&mut sp).await?;
         } else {
-            bail!("{}: there is no theme installed", "Could not update the theme".bold());
+            bail!(
+                "{}: there is no theme installed",
+                "Could not update the theme".bold()
+            );
         }
     } else {
-        bail!("{}: not in a Norgolith site directory", "Could not update the theme".bold());
+        bail!(
+            "{}: not in a Norgolith site directory",
+            "Could not update the theme".bold()
+        );
     }
     Ok(())
 }
@@ -149,7 +158,10 @@ async fn rollback_theme() -> Result<()> {
 
         sp.stop_and_persist("✓", "Successfully restored previous theme state");
     } else {
-        bail!("{}: not in a Norgolith site directory", "Could not rollback the theme".bold());
+        bail!(
+            "{}: not in a Norgolith site directory",
+            "Could not rollback the theme".bold()
+        );
     }
 
     Ok(())
@@ -299,7 +311,10 @@ async fn init_theme() -> Result<()> {
         println!("2. Add scripts to 'assets/js/'");
         println!("3. Add styles to 'assets/css/'");
     } else {
-        bail!("{}: not in a Norgolith site directory", "Could not initialize the theme".bold());
+        bail!(
+            "{}: not in a Norgolith site directory",
+            "Could not initialize the theme".bold()
+        );
     }
     Ok(())
 }
@@ -327,19 +342,54 @@ async fn show_theme_info() -> Result<()> {
             let theme_info: Vec<String> = vec![
                 format!("\n{}", "Metadata".bold().green()),
                 format!("  {} {}:\t {}", "→".blue(), "Name".bold(), theme_toml.name),
-                format!("  {} {}: {}", "→".blue(), "Description".bold(), theme_toml.description),
-                format!("  {} {}:\t {}", "→".blue(), "Author".bold(), theme_toml.author),
-                format!("  {} {}:\t {}", "→".blue(), "License".bold(), theme_toml.license),
+                format!(
+                    "  {} {}: {}",
+                    "→".blue(),
+                    "Description".bold(),
+                    theme_toml.description
+                ),
+                format!(
+                    "  {} {}:\t {}",
+                    "→".blue(),
+                    "Author".bold(),
+                    theme_toml.author
+                ),
+                format!(
+                    "  {} {}:\t {}",
+                    "→".blue(),
+                    "License".bold(),
+                    theme_toml.license
+                ),
                 format!("\n{}", "Status".bold().green()),
-                format!("  {} {}:\t {}", "→".blue(), "Version".bold(), theme_toml.version),
-                format!("  {} {}:\t {}", "→".blue(), "Pinned".bold(), if theme_metadata.pin { "yes" } else { "no" }),
+                format!(
+                    "  {} {}:\t {}",
+                    "→".blue(),
+                    "Version".bold(),
+                    theme_toml.version
+                ),
+                format!(
+                    "  {} {}:\t {}",
+                    "→".blue(),
+                    "Pinned".bold(),
+                    if theme_metadata.pin { "yes" } else { "no" }
+                ),
             ];
-            println!("{}:\n{}", "Current theme information".bold(), theme_info.join("\n"));
+            println!(
+                "{}:\n{}",
+                "Current theme information".bold(),
+                theme_info.join("\n")
+            );
         } else {
-            bail!("{}: there is no theme installed", "Could not display the theme info".bold());
+            bail!(
+                "{}: there is no theme installed",
+                "Could not display the theme info".bold()
+            );
         }
     } else {
-        bail!("{}: not in a Norgolith site directory", "Could not display the theme info".bold());
+        bail!(
+            "{}: not in a Norgolith site directory",
+            "Could not display the theme info".bold()
+        );
     }
     Ok(())
 }

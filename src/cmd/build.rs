@@ -302,11 +302,14 @@ fn determine_public_path(public_dir: &Path, rel_path: &Path, stem: &str) -> Path
 async fn write_public_file(public_path: &Path, rendered: String) -> Result<()> {
     tokio::fs::create_dir_all(public_path.parent().unwrap())
         .await
-        .wrap_err(format!(
-            "{}: {}",
-            "Failed to create parent directory for".bold(),
-            public_path.display()
-        ).bold())?;
+        .wrap_err(
+            format!(
+                "{}: {}",
+                "Failed to create parent directory for".bold(),
+                public_path.display()
+            )
+            .bold(),
+        )?;
     tokio::fs::write(public_path, rendered)
         .await
         .wrap_err(format!(
@@ -411,10 +414,18 @@ async fn minify_css_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
     // See https://docs.rs/css-minify/0.5.2/css_minify/optimizations/enum.Level.html#variants
     let minified = css_minify::optimizations::Minifier::default()
         .minify(&content, css_minify::optimizations::Level::Two)
-        .map_err(|e| eyre!("{}: {}", format!("CSS minification failed for {}", src_path.display()).bold(), e))?;
+        .map_err(|e| {
+            eyre!(
+                "{}: {}",
+                format!("CSS minification failed for {}", src_path.display()).bold(),
+                e
+            )
+        })?;
     tokio::fs::write(dest_path, minified.into_bytes())
         .await
-        .wrap_err_with(|| format!("Failed to write minified CSS to {}", dest_path.display()).bold())?;
+        .wrap_err_with(|| {
+            format!("Failed to write minified CSS to {}", dest_path.display()).bold()
+        })?;
     Ok(())
 }
 
