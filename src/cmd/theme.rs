@@ -31,7 +31,7 @@ pub enum ThemeCommands {
     Update,
     /// Restore previous theme version from backup
     Rollback,
-    /// Initialize theme structure (WIP)
+    /// Initialize theme structure
     Init,
     /// Show theme information
     Info,
