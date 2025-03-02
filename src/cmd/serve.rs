@@ -265,7 +265,7 @@ async fn is_asset_change(event: &notify::Event) -> Result<bool> {
 /// # Arguments
 /// * `result` - The result of the debounced file system events.
 /// * `state` - The shared server state.
-#[instrument(skip(result, state))]
+#[instrument(name = "watcher", skip(result, state))]
 async fn process_debounced_events(result: DebounceEventResult, state: Arc<ServerState>) {
     match result {
         DebounceEventResult::Ok(events) => {
@@ -308,7 +308,6 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     if actions.reload_templates {
         match state.reload_templates().await {
             Ok(_) => {
-                info!("Templates reloaded successfully");
                 if let Err(e) = state.send_reload() {
                     error!("Template reload signal error: {}", e);
                 }
@@ -514,21 +513,32 @@ async fn handle_single_event(
     }
 
     if is_template_change(event).await.unwrap_or(false)
-        && path.strip_prefix(&state.paths.templates).is_ok()
+        && (path.strip_prefix(&state.paths.templates).is_ok()
+            || path.strip_prefix(&state.paths.theme_templates).is_ok())
     {
-        info!(
-            "Template modified: {}",
-            path.strip_prefix(&state.paths.templates).unwrap().display()
-        );
+        let template_path = path.display().to_string();
+        let template = if template_path.contains("/theme/") {
+            path.strip_prefix(&state.paths.theme_templates).unwrap()
+        } else {
+            path.strip_prefix(&state.paths.templates).unwrap()
+        };
+        info!("Template modified: {}", template.display());
         actions.reload_templates = true;
     }
 
     if is_asset_change(event).await.unwrap_or(false)
-        && path.strip_prefix(&state.paths.assets).is_ok()
+        && (path.strip_prefix(&state.paths.assets).is_ok()
+            || path.strip_prefix(&state.paths.theme_assets).is_ok())
     {
+        let asset_path = path.display().to_string();
+        let asset = if asset_path.contains("/theme/") {
+            path.strip_prefix(&state.paths.theme_assets).unwrap()
+        } else {
+            path.strip_prefix(&state.paths.assets).unwrap()
+        };
         info!(
             "Asset modified: {}",
-            path.strip_prefix(&state.paths.assets).unwrap().display()
+            asset.display()
         );
         actions.reload_assets = true;
     }
