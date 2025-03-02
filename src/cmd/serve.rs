@@ -60,8 +60,8 @@ impl SitePaths {
             content: root.join("content"),
             assets: root.join("assets"),
             theme_assets: root.join("theme/assets"),
-            theme_templates: root.join("theme/templates"),
             templates: root.join("templates"),
+            theme_templates: root.join("theme/templates"),
         };
         debug!(?paths, "Configured site directories");
         paths
@@ -95,14 +95,20 @@ impl ServerState {
     #[instrument(level = "debug", skip(self))]
     async fn reload_templates(&self) -> Result<()> {
         debug!("Reloading templates");
+        // XXX: for some reason Tera::full_reload is not working properly for us and thus we have to
+        //      create a new Tera instance to be able to actually have the content reloaded.
+        //      I think this may be a little inefficient if the templates are being constantly reloaded
+        //      but who cares, it does the job and I am not willing to keep debugging this any longer right now.
+        let new_tera = shared::init_tera(self.paths.templates.to_str().unwrap(), &self.paths.theme_templates).await?;
         let mut tera = self.tera.write().await;
-        tera.full_reload()
-            .map(|_| {
-                info!("Templates reloaded successfully");
-                let templates: Vec<&str> = tera.get_template_names().collect();
-                debug!("There are {} templates loaded", templates.len());
-            })
-            .map_err(|e| eyre!("Failed to reload templates: {}", e))?;
+        *tera = new_tera;
+
+        info!("Templates reloaded successfully");
+        let templates: Vec<&str> = tera.get_template_names().collect();
+        debug!("There are {} templates loaded", templates.len());
+
+        // Reload the page
+        self.send_reload()?;
         Ok(())
     }
 
@@ -884,7 +890,7 @@ async fn setup_server_state(root: PathBuf, drafts: bool, port: u16) -> Result<Ar
     let paths = SitePaths::new(root_dir.clone());
 
     let tera = Arc::new(RwLock::new(
-        shared::init_tera(paths.templates.to_str().unwrap(), &root_dir.join("theme")).await?,
+        shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates).await?,
     ));
 
     let (reload_tx, _) = broadcast::channel(16);

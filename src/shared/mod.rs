@@ -191,23 +191,23 @@ pub fn get_elapsed_time(instant: Instant) -> String {
     }
 }
 
-pub async fn init_tera(templates_dir: &str, theme_dir: &Path) -> Result<Tera> {
+pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Result<Tera> {
     // Initialize Tera with the user-defined templates first
-    let mut tera = match Tera::new(&(templates_dir.to_owned() + "/**/*.html")) {
+    let mut tera = match Tera::parse(&(templates_dir.to_owned() + "/**/*.html")) {
         Ok(t) => t,
-        Err(e) => bail!("Tera parsing error(s): {}", e),
+        Err(e) => bail!("Error parsing templates from the templates directory: {}", e),
     };
 
     // Theme templates will override the user-defined templates by design if they are named exactly
     // the same in both the user's templates directory and the theme templates directory
-    let theme_templates_dir = theme_dir.join("templates");
     if tokio::fs::try_exists(&theme_templates_dir).await? {
-        let tera_theme = match Tera::new(&(theme_templates_dir.display().to_string() + "/**/*.html")) {
+        let tera_theme = match Tera::parse(&(theme_templates_dir.display().to_string() + "/**/*.html")) {
             Ok(t) => t,
-            Err(e) => bail!("Tera parsing error(s): {}", e),
+            Err(e) => bail!("Error parsing templates from themes: {}", e),
         };
         tera.extend(&tera_theme)?;
     }
+    tera.build_inheritance_chains()?;
 
     // Register functions
     tera.register_function("now", crate::tera_functions::NowFunction);

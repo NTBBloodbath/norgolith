@@ -25,6 +25,7 @@ struct SitePaths {
     assets: PathBuf,
     theme_assets: PathBuf,
     templates: PathBuf,
+    theme_templates: PathBuf,
 }
 
 impl SitePaths {
@@ -44,6 +45,7 @@ impl SitePaths {
             content: root.join("content"),
             assets: root.join("assets"),
             theme_assets: root.join("theme/assets"),
+            theme_templates: root.join("theme/templates"),
             templates: root.join("templates"),
         };
         debug!(?paths, "Configured site directories");
@@ -611,7 +613,7 @@ pub async fn build(minify: bool) -> Result<()> {
         debug!("Initializing template engine");
         let tera = shared::init_tera(
             paths.templates.to_str().unwrap(),
-            paths.theme_assets.parent().unwrap(),
+            &paths.theme_templates,
         )
         .await?;
 
