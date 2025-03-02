@@ -735,6 +735,9 @@ async fn handle_html_content(
     let mut body = tera
         .render(&format!("{}.html", layout), &context)
         .map_err(|e| eyre!("Template error: {}", e))?;
+    // Always use the proper URL to the development server for template links that refers
+    // to the local URL, this is useful when running the server exposed to LAN network
+    body = body.replace(&state.config.root_url.replace("://", ":&#x2F;&#x2F;"), &state.routes_url);
 
     inject_livereload_script(&mut body);
     Ok(Response::builder()
