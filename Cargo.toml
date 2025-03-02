@@ -23,7 +23,7 @@ eyre = "0.6.12"
 hyper = { version = "=0.14.28", features = ["runtime", "server", "http1", "http2"] }
 tera = "1.20.0"
 tokio = { version = "1.43.0", features = ["fs", "time", "rt-multi-thread", "macros", "process"] }
-toml = "0.8.19"
+toml = { version = "0.8.19", features = ["preserve_order"] }
 rust-norg = { git = "https://github.com/nvim-neorg/rust-norg", branch = "main" }
 whoami = "1.5.2"
 open = "5.3.2"
