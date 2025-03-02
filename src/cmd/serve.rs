@@ -97,8 +97,12 @@ impl ServerState {
         debug!("Reloading templates");
         let mut tera = self.tera.write().await;
         tera.full_reload()
+            .map(|_| {
+                info!("Templates reloaded successfully");
+                let templates: Vec<&str> = tera.get_template_names().collect();
+                debug!("There are {} templates loaded", templates.len());
+            })
             .map_err(|e| eyre!("Failed to reload templates: {}", e))?;
-        info!("Templates reloaded successfully");
         Ok(())
     }
 
@@ -536,10 +540,7 @@ async fn handle_single_event(
         } else {
             path.strip_prefix(&state.paths.assets).unwrap()
         };
-        info!(
-            "Asset modified: {}",
-            asset.display()
-        );
+        info!("Asset modified: {}", asset.display());
         actions.reload_assets = true;
     }
 
