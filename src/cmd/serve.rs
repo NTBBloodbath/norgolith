@@ -80,7 +80,7 @@ struct ServerState {
     config: config::SiteConfig,
     paths: SitePaths,
     build_drafts: bool,
-    port: u16,
+    routes_url: String,
 }
 
 impl ServerState {
@@ -99,7 +99,11 @@ impl ServerState {
         //      create a new Tera instance to be able to actually have the content reloaded.
         //      I think this may be a little inefficient if the templates are being constantly reloaded
         //      but who cares, it does the job and I am not willing to keep debugging this any longer right now.
-        let new_tera = shared::init_tera(self.paths.templates.to_str().unwrap(), &self.paths.theme_templates).await?;
+        let new_tera = shared::init_tera(
+            self.paths.templates.to_str().unwrap(),
+            &self.paths.theme_templates,
+        )
+        .await?;
         let mut tera = self.tera.write().await;
         *tera = new_tera;
 
@@ -345,13 +349,12 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
 
         tokio::spawn(async move {
             let start = std::time::Instant::now();
-            let root_url = format!("http://localhost:{}", state.port);
 
             match shared::convert_document(
                 &path,
                 &state.paths.content,
                 state.build_drafts,
-                &root_url,
+                &state.routes_url,
             )
             .await
             {
@@ -875,12 +878,16 @@ async fn handle_server_request(
 /// # Arguments
 /// * `root` - The root directory of the site.
 /// * `drafts` - Whether to build draft content.
-/// * `port` - The port on which the server will run.
+/// * `routes_url` - The local URL on which the server will run.
 ///
 /// # Returns
 /// * `Result<Arc<ServerState>>` - The initialized server state or an error if setup fails.
-#[instrument(skip(root, drafts, port))]
-async fn setup_server_state(root: PathBuf, drafts: bool, port: u16) -> Result<Arc<ServerState>> {
+#[instrument(skip(root, drafts, routes_url))]
+async fn setup_server_state(
+    root: PathBuf,
+    drafts: bool,
+    routes_url: String,
+) -> Result<Arc<ServerState>> {
     debug!("Setting up server state");
 
     let config_content = tokio::fs::read_to_string(&root).await?;
@@ -901,7 +908,7 @@ async fn setup_server_state(root: PathBuf, drafts: bool, port: u16) -> Result<Ar
         config: site_config,
         paths,
         build_drafts: drafts,
-        port,
+        routes_url,
     }))
 }
 
@@ -981,7 +988,15 @@ pub async fn serve(port: u16, drafts: bool, open: bool, host: bool) -> Result<()
     if let Some(root) = root {
         debug!(path = %root.display(), "Found site root");
 
-        let state = setup_server_state(root, drafts, port).await?;
+        // Early set the development URL to the site routes
+        let local_ip =
+            local_ip_address::local_ip().unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+        let routes_url = if host {
+            format!("http://{}:{}", local_ip, port)
+        } else {
+            format!("http://localhost:{}", port)
+        };
+        let state = setup_server_state(root, drafts, routes_url).await?;
         let server_start = std::time::Instant::now();
         let rt = Handle::current();
 
@@ -1030,11 +1045,9 @@ pub async fn serve(port: u16, drafts: bool, open: bool, host: bool) -> Result<()
             ([127, 0, 0, 1], port).into()
         };
         let server = Server::bind(&addr).serve(make_svc);
-        let local_ip =
-            local_ip_address::local_ip().unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
 
         // Initial build
-        shared::convert_content(&state.paths.content, drafts, &state.config.root_url).await?;
+        shared::convert_content(&state.paths.content, drafts, &state.routes_url).await?;
         shared::cleanup_orphaned_build_files(&state.paths.content).await?;
 
         let localhost_address = format!(
