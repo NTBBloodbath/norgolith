@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::schema::ContentSchema;
@@ -18,4 +20,5 @@ pub struct SiteConfig {
     #[serde(default)]
     pub content_schema: Option<ContentSchema>,
     pub highlighter: Option<SiteConfigHighlighter>,
+    pub extra: Option<HashMap<String, toml::Value>>,
 }
