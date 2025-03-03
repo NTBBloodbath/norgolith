@@ -415,7 +415,7 @@ impl NorgToHtml for NorgAST {
                                 weak_carry.remove(0);
                             }
                         }
-                        quote.push(mod_text);
+                        quote.push(format!(">{}", mod_text));
                         if !content.is_empty() {
                             quote.push(to_html(content, &strong_carry, &weak_carry, root_url));
                         }
