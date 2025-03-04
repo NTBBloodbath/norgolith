@@ -102,6 +102,7 @@ async fn generate_public_build(
     site_config: config::SiteConfig,
     minify: bool,
 ) -> Result<()> {
+    let posts = shared::collect_all_posts_metadata(&paths.build, &site_config.root_url).await?;
     let entries = WalkDir::new(&paths.build)
         .into_iter()
         .filter_map(|e| e.ok());
@@ -112,6 +113,7 @@ async fn generate_public_build(
     // Parallel processing
     futures_util::stream::iter(entries)
         .for_each_concurrent(num_cpus::get(), |entry| {
+            let posts = posts.clone();
             let site_config = site_config.clone();
             let validation_errors = Arc::clone(&validation_errors);
 
@@ -123,6 +125,7 @@ async fn generate_public_build(
                     &site_config,
                     minify,
                     &validation_errors,
+                    &posts,
                 )
                 .await
                 {
@@ -144,7 +147,7 @@ async fn generate_public_build(
 ///
 /// Handles template rendering, metadata validation, and output path determination.
 /// Skips draft content and applies minification when enabled.
-#[instrument(skip(tera, paths, site_config, validation_errors))]
+#[instrument(skip(tera, paths, site_config, validation_errors, posts))]
 async fn process_build_entry(
     entry: DirEntry,
     tera: &Tera,
@@ -152,6 +155,7 @@ async fn process_build_entry(
     site_config: &config::SiteConfig,
     minify: bool,
     validation_errors: &Arc<Mutex<Vec<String>>>,
+    posts: &[toml::Value],
 ) -> Result<()> {
     let path = entry.path();
 
@@ -172,9 +176,10 @@ async fn process_build_entry(
             .await
             .wrap_err_with(|| format!("{}: {:?}", "Failed to read HTML file".bold(), path))?;
         let meta_path = path.with_extension("meta.toml");
+        let meta_rel_path = meta_path.strip_prefix(&paths.build)?.to_path_buf();
 
         // Handle metadata loading with proper error fallback
-        let metadata = shared::load_metadata(meta_path).await;
+        let metadata = shared::load_metadata(meta_path, meta_rel_path, &site_config.root_url).await;
 
         // Metadata schema validation
         if let Some(schema) = &site_config.content_schema {
@@ -207,6 +212,7 @@ async fn process_build_entry(
         let mut context = Context::new();
         context.insert("content", &html);
         context.insert("config", &site_config);
+        context.insert("posts", &posts);
         context.insert("metadata", &metadata);
 
         // Render template
@@ -337,7 +343,7 @@ async fn write_public_file(public_path: &Path, rendered: String) -> Result<()> {
 fn should_minify_asset(src: &Path) -> bool {
     let file_stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
     let file_ext = src.extension().and_then(|s| s.to_str()).unwrap_or_default();
-    file_stem != "min" && (file_ext == "js" || file_ext == "css")
+    !file_stem.ends_with(".min") && (file_ext == "js" || file_ext == "css")
 }
 
 /// Minifies HTML content using optimized settings for production builds.
