@@ -96,10 +96,13 @@ pub async fn convert_document(
 
         // Convert html content
         let norg_document = tokio::fs::read_to_string(file_path).await?;
-        let norg_html = converter::html::convert(norg_document.clone(), root_url);
+        let (norg_html, toc) = converter::html::convert(norg_document.clone(), root_url);
 
         // Convert metadata
-        let norg_meta = converter::meta::convert(&norg_document)?;
+        let norg_meta = converter::meta::convert(
+            &norg_document,
+            Some(converter::html::toc_to_toml(&toc))
+        )?;
         let meta_toml = toml::to_string_pretty(&norg_meta)?;
 
         // Check if the current document is a draft post and also whether we should finish the conversion
@@ -212,12 +215,12 @@ pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Resul
             };
         tera.extend(&tera_theme)?;
     }
-    tera.build_inheritance_chains().map_err(|e| {
-        eyre!("Failed to build templates inheritance: {}", e)
-    })?;
+    tera.build_inheritance_chains()
+        .map_err(|e| eyre!("Failed to build templates inheritance: {}", e))?;
 
     // Register functions
     tera.register_function("now", crate::tera_functions::NowFunction);
+    tera.register_function("generate_toc", crate::tera_functions::GenerateToc);
 
     Ok(tera)
 }

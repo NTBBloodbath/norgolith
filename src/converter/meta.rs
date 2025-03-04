@@ -87,12 +87,25 @@ fn extract_meta(input: &str) -> String {
     result.join("\n")
 }
 
+pub fn merge_toc_into_metadata(
+    mut metadata: toml::Value,
+    toc: toml::Value
+) -> toml::Value {
+    if let toml::Value::Table(ref mut table) = metadata {
+        table.insert("toc".to_string(), toc);
+    }
+    metadata
+}
+
 /// Extracts and converts Norg metadata to TOML format
-pub fn convert(document: &str) -> Result<toml::Value, Error> {
+pub fn convert(document: &str, toc: Option<toml::Value>) -> Result<toml::Value, Error> {
     let extracted_meta = extract_meta(document);
     let meta = parse_metadata(&extracted_meta).expect("Failed to parse metadata");
 
-    let toml_value = norg_meta_to_toml(&meta).expect("Failed to convert metadata to TOML");
+    let mut toml_value = norg_meta_to_toml(&meta).expect("Failed to convert metadata to TOML");
+    if let Some(toc) = toc {
+        toml_value = merge_toc_into_metadata(toml_value, toc);
+    }
 
     Ok(toml_value)
 }
