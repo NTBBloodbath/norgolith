@@ -81,6 +81,7 @@ struct ServerState {
     paths: SitePaths,
     build_drafts: bool,
     routes_url: String,
+    posts: Arc<RwLock<Vec<toml::Value>>>,
 }
 
 impl ServerState {
@@ -149,7 +150,7 @@ impl ServerState {
 /// This struct defines the actions that should be performed when file system events
 /// are detected. It includes flags for reloading templates and assets, as well as
 /// lists of paths to rebuild or clean up.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct FileActions {
     reload_templates: bool,
     reload_assets: bool,
@@ -340,7 +341,8 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     }
 
     // Rebuild changed content
-    for path in actions.rebuild_paths {
+    for path in &actions.rebuild_paths {
+        let path = path.clone();
         let state = Arc::clone(&state);
         let content_path = match path.strip_prefix(&state.paths.content) {
             Ok(p) => p.to_path_buf(),
@@ -390,6 +392,18 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
                 Err(e) => error!("Content conversion failed: {}", e),
             }
         });
+    }
+
+    // Re-collect pages metadata on content changes
+    if !actions.rebuild_paths.is_empty() || !actions.cleanup_paths.is_empty() {
+        let build_dir = state.paths.content.parent().unwrap().join(".build");
+        match shared::collect_all_posts_metadata(&build_dir, &state.routes_url).await {
+            Ok(new_posts) => {
+                let mut posts_lock = state.posts.write().await;
+                *posts_lock = new_posts;
+            }
+            Err(e) => error!("Failed to update pages metadata: {}", e),
+        }
     }
 }
 
@@ -725,10 +739,12 @@ async fn handle_html_content(
         .get("layout")
         .and_then(|v| v.as_str())
         .unwrap_or("default");
+    let posts = state.posts.read().await.clone();
 
     let mut context = Context::new();
     context.insert("content", content);
     context.insert("config", &state.config);
+    context.insert("posts", &posts);
     context.insert("metadata", &metadata);
 
     let tera = state.tera.read().await;
@@ -852,9 +868,9 @@ async fn handle_server_request(
 
     let response = match handle_request(req, state).await {
         Ok(res) => res,
-        Err(_e) => {
+        Err(e) => {
             // XXX: this may be too verbose sometimes, do we want to keep it?
-            // error!("Request handling error: {}", e);
+            error!("Request handling error: {}", e);
             Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::from("500 Internal Server Error"))
@@ -905,6 +921,9 @@ async fn setup_server_state(
 
     let (reload_tx, _) = broadcast::channel(16);
 
+    let build_dir = root_dir.join(".build");
+    let posts = shared::collect_all_posts_metadata(&build_dir, &routes_url).await?;
+
     Ok(Arc::new(ServerState {
         reload_tx: Arc::new(reload_tx),
         tera,
@@ -912,6 +931,7 @@ async fn setup_server_state(
         paths,
         build_drafts: drafts,
         routes_url,
+        posts: Arc::new(RwLock::new(posts)),
     }))
 }
 
