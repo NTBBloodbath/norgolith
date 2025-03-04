@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+};
 
 use chrono::{Local, SecondsFormat};
 use colored::Colorize;
@@ -64,35 +67,59 @@ impl AssetType {
 #[instrument(skip(base_path, full_path))]
 fn generate_content_title(base_path: &Path, full_path: &Path) -> String {
     debug!("Generating content title");
+
+    // Get relative path within content directory
     let relative_path = full_path
         .strip_prefix(base_path.join("content"))
         .unwrap_or(full_path);
 
-    let mut components = relative_path
-        .iter()
-        .filter(|c| *c != "index.norg")
-        .map(|c| {
-            titlecase(
-                &c.to_string_lossy()
-                    .trim_end_matches(".norg")
-                    .replace(['-', '_'], " "),
-            )
-        })
-        .collect::<Vec<_>>();
+    // Determine if we're dealing with an index file
+    let is_index = relative_path.ends_with("index.norg");
 
-    if components.is_empty() {
-        debug!("Using default title 'index'");
-        return "index".to_string();
-    }
+    // Extract the relevant component name
+    let raw_name = if is_index {
+        // Get parent directory name for index files
+        relative_path
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_else(|| {
+                debug!("Using default title for root index");
+                Cow::Borrowed("Home")
+            })
+    } else {
+        // Get filename stem for regular files
+        relative_path
+            .file_stem()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_else(|| {
+                debug!("No valid filename stem found");
+                Cow::Borrowed("Untitled")
+            })
+    };
 
-    if let Some(last) = components.last_mut() {
-        if last == "index" {
-            debug!("Removing trailing 'index' from title");
-            components.pop();
-        }
-    }
+    // Clean and format the title
+    let title = raw_name
+        .replace(['-', '_'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
 
-    let title = components.join(" | ");
+    // Titlecase the first letter of each word
+    let title = titlecase(
+        &title
+            .split(' ')
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    );
+
     debug!(title = %title, "Generated content title");
     title
 }
