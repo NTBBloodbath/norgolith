@@ -227,10 +227,12 @@ pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Resul
 ///
 /// # Arguments
 /// * `path` - The path to the metadata file.
+/// * `rel_path` - Relative path to the metadata file without the build directory prefix.
+/// * `routes_url` - The URL used for routing.
 ///
 /// # Returns
 /// * `toml::Value` - The parsed metadata or an empty table if an error occurs.
-pub async fn load_metadata(path: PathBuf) -> toml::Value {
+pub async fn load_metadata(path: PathBuf, rel_path: PathBuf, routes_url: &str) -> toml::Value {
     match tokio::fs::read_to_string(&path).await {
         Ok(content) => {
             let mut value = toml::from_str(&content).unwrap_or_else(|e| {
@@ -245,6 +247,37 @@ pub async fn load_metadata(path: PathBuf) -> toml::Value {
                         *v = toml::Value::String(dt.to_string());
                     }
                 }
+            }
+
+            // Generate permalink from file structure
+            // Remove .meta.toml
+            let mut permalink_path = rel_path.with_extension("").with_extension("");
+
+            // Handle index pages
+            if let Some(file_name) = permalink_path.file_name() {
+                if file_name == "index" {
+                    permalink_path = permalink_path
+                        .parent()
+                        .unwrap_or_else(|| Path::new(""))
+                        .to_path_buf();
+                }
+            }
+
+            // Convert to URL path
+            let permalink_str = permalink_path
+                .to_string_lossy()
+                .trim_start_matches('/')
+                .to_string();
+
+            let permalink = if permalink_str.is_empty() {
+                format!("{}/", routes_url)
+            } else {
+                format!("{}/{}/", routes_url, permalink_str)
+            };
+
+            // Add permalink and html content to metadata
+            if let toml::Value::Table(ref mut table) = value {
+                table.insert("permalink".to_string(), toml::Value::String(permalink));
             }
 
             value
@@ -280,7 +313,12 @@ pub async fn validate_content_metadata(
     let relative_path = path.strip_prefix(content_dir).unwrap();
     let meta_path = build_dir.join(relative_path).with_extension("meta.toml");
 
-    let metadata = load_metadata(meta_path).await;
+    let rel_path = meta_path
+        .clone()
+        .strip_prefix(build_dir)
+        .map(|p| p.to_path_buf())?;
+    // We do not need to do anything with the metadata permalink here so we pass an empty string to it
+    let metadata = load_metadata(meta_path, rel_path, "").await;
     let metadata_map = metadata
         .as_table()
         .unwrap()
@@ -325,43 +363,16 @@ pub async fn collect_all_posts_metadata(
         })
     {
         let meta_path = entry.path();
-        let mut metadata = load_metadata(entry.path().to_path_buf()).await;
+        let rel_path = meta_path.strip_prefix(build_dir)?.to_path_buf();
+        let mut metadata = load_metadata(entry.path().to_path_buf(), rel_path, routes_url).await;
 
         // TODO: this won't hot reload if the content changes, should be passed as an argument instead
         // Get the raw html content
         let html_file = entry.path().with_extension("").with_extension("html");
         let html = tokio::fs::read_to_string(&html_file).await?;
 
-        // Generate permalink from file structure
-        let rel_path = meta_path.strip_prefix(build_dir)?;
-        // Remove .meta.toml
-        let mut permalink_path = rel_path.with_extension("").with_extension("");
-
-        // Handle index pages
-        if let Some(file_name) = permalink_path.file_name() {
-            if file_name == "index" {
-                permalink_path = permalink_path
-                    .parent()
-                    .unwrap_or_else(|| Path::new(""))
-                    .to_path_buf();
-            }
-        }
-
-        // Convert to URL path
-        let permalink_str = permalink_path
-            .to_string_lossy()
-            .trim_start_matches('/')
-            .to_string();
-
-        let permalink = if permalink_str.is_empty() {
-            format!("{}/", routes_url)
-        } else {
-            format!("{}/{}/", routes_url, permalink_str)
-        };
-
-        // Add permalink and html content to metadata
+        // Add html content to metadata
         if let toml::Value::Table(ref mut table) = metadata {
-            table.insert("permalink".to_string(), toml::Value::String(permalink));
             table.insert("raw".to_string(), toml::Value::String(html));
         }
         posts.push(metadata);

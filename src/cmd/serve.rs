@@ -34,6 +34,7 @@ use crate::{config, fs, shared};
 /// to organize and manage the file structure of the site.
 #[derive(Debug)]
 struct SitePaths {
+    build: PathBuf,
     content: PathBuf,
     assets: PathBuf,
     templates: PathBuf,
@@ -57,6 +58,7 @@ impl SitePaths {
     fn new(root: PathBuf) -> Self {
         debug!("Initializing site paths");
         let paths = Self {
+            build: root.join(".build"),
             content: root.join("content"),
             assets: root.join("assets"),
             theme_assets: root.join("theme/assets"),
@@ -369,10 +371,9 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
 
                     // Validate metadata if schema exists
                     if let Some(schema) = &state.config.content_schema {
-                        let build_dir = state.paths.content.parent().unwrap().join(".build");
                         let validation_warnings = shared::validate_content_metadata(
                             &path,
-                            &build_dir,
+                            &state.paths.build,
                             &state.paths.content,
                             schema,
                             true,
@@ -396,8 +397,7 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
 
     // Re-collect pages metadata on content changes
     if !actions.rebuild_paths.is_empty() || !actions.cleanup_paths.is_empty() {
-        let build_dir = state.paths.content.parent().unwrap().join(".build");
-        match shared::collect_all_posts_metadata(&build_dir, &state.routes_url).await {
+        match shared::collect_all_posts_metadata(&state.paths.build, &state.routes_url).await {
             Ok(new_posts) => {
                 let mut posts_lock = state.posts.write().await;
                 *posts_lock = new_posts;
@@ -734,7 +734,8 @@ async fn handle_html_content(
 ) -> Result<Response<Body>> {
     debug!(path = %path.display(), "Rendering HTML content");
     let meta_path = path.with_extension("meta.toml");
-    let metadata = shared::load_metadata(meta_path).await;
+    let rel_path = meta_path.strip_prefix(".build")?.to_path_buf();
+    let metadata = shared::load_metadata(meta_path, rel_path, &state.routes_url).await;
     let layout = metadata
         .get("layout")
         .and_then(|v| v.as_str())
@@ -753,7 +754,10 @@ async fn handle_html_content(
         .map_err(|e| eyre!("Template error: {}", e))?;
     // Always use the proper URL to the development server for template links that refers
     // to the local URL, this is useful when running the server exposed to LAN network
-    body = body.replace(&state.config.root_url.replace("://", ":&#x2F;&#x2F;"), &state.routes_url);
+    body = body.replace(
+        &state.config.root_url.replace("://", ":&#x2F;&#x2F;"),
+        &state.routes_url,
+    );
 
     inject_livereload_script(&mut body);
     Ok(Response::builder()
@@ -921,8 +925,7 @@ async fn setup_server_state(
 
     let (reload_tx, _) = broadcast::channel(16);
 
-    let build_dir = root_dir.join(".build");
-    let posts = shared::collect_all_posts_metadata(&build_dir, &routes_url).await?;
+    let posts = shared::collect_all_posts_metadata(&paths.build, &routes_url).await?;
 
     Ok(Arc::new(ServerState {
         reload_tx: Arc::new(reload_tx),

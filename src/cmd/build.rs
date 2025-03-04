@@ -176,9 +176,10 @@ async fn process_build_entry(
             .await
             .wrap_err_with(|| format!("{}: {:?}", "Failed to read HTML file".bold(), path))?;
         let meta_path = path.with_extension("meta.toml");
+        let meta_rel_path = meta_path.strip_prefix(&paths.build)?.to_path_buf();
 
         // Handle metadata loading with proper error fallback
-        let metadata = shared::load_metadata(meta_path).await;
+        let metadata = shared::load_metadata(meta_path, meta_rel_path, &site_config.root_url).await;
 
         // Metadata schema validation
         if let Some(schema) = &site_config.content_schema {
