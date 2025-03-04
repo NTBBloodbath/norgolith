@@ -212,7 +212,9 @@ pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Resul
             };
         tera.extend(&tera_theme)?;
     }
-    tera.build_inheritance_chains()?;
+    tera.build_inheritance_chains().map_err(|e| {
+        eyre!("Failed to build templates inheritance: {}", e)
+    })?;
 
     // Register functions
     tera.register_function("now", crate::tera_functions::NowFunction);
