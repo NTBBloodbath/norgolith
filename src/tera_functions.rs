@@ -1,5 +1,6 @@
-use eyre::Result;
 use std::collections::HashMap;
+
+use eyre::Result;
 use tera::{Error, Function, Value};
 
 /// Now function
