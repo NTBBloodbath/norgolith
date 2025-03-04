@@ -21,6 +21,14 @@ struct CarryOverTag {
     parameters: Vec<String>,
 }
 
+/// ToC entries
+#[derive(Clone, Debug)]
+pub struct TocEntry {
+    level: u16,
+    title: String,
+    id: String,
+}
+
 /// Converts paragraph segment tokens to a String
 fn paragraph_tokens_to_string(tokens: &[ParagraphSegmentToken]) -> String {
     let mut s = String::new();
@@ -275,6 +283,7 @@ trait NorgToHtml {
         strong_carry: Vec<CarryOverTag>,
         weak_carry: Vec<CarryOverTag>,
         root_url: &str,
+        toc: &mut Vec<TocEntry>
     ) -> String;
 }
 
@@ -285,6 +294,7 @@ impl NorgToHtml for NorgAST {
         strong_carry: Vec<CarryOverTag>,
         mut weak_carry: Vec<CarryOverTag>,
         root_url: &str,
+        toc: &mut Vec<TocEntry>,
     ) -> String {
         match self {
             NorgAST::Paragraph(s) => {
@@ -319,13 +329,14 @@ impl NorgToHtml for NorgAST {
 
                 // Regex to remove possible links from heading title ids
                 let re = Regex::new(r"-?<.*>").unwrap();
+                let heading_id = re.replace(&heading_title.replace(" ", "-"), "").to_string();
 
                 match level {
                     1..=6 => {
                         section.push(format!(
                             "<h{} id=\"{}\"",
                             level,
-                            re.replace(&heading_title.replace(" ", "-"), "")
+                            heading_id,
                         ));
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
@@ -341,7 +352,7 @@ impl NorgToHtml for NorgAST {
                     _ => {
                         section.push(format!(
                             "<h6 id=\"{}\"",
-                            re.replace(&heading_title.replace(" ", "-"), "")
+                            heading_id,
                         ));
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
@@ -354,7 +365,14 @@ impl NorgToHtml for NorgAST {
                         section.push(format!(">{}</h6>", heading_title));
                     }
                 }
-                section.push(to_html(content, &strong_carry, &weak_carry, root_url));
+                let entry = TocEntry {
+                    level: *level,
+                    title: heading_title.clone(),
+                    id: heading_id.clone(),
+                };
+                toc.push(entry);
+
+                section.push(to_html(content, &strong_carry, &weak_carry, root_url, toc));
 
                 section.join(" ")
             }
@@ -396,7 +414,7 @@ impl NorgToHtml for NorgAST {
                         list.push("</li>".to_string());
                         if !content.is_empty() {
                             list.push(get_list_tag(modifier_type.clone(), true));
-                            list.push(to_html(content, &strong_carry, &weak_carry, root_url));
+                            list.push(to_html(content, &strong_carry, &weak_carry, root_url, toc));
                             list.push(get_list_tag(modifier_type.clone(), false));
                         }
                         if *level == 1 {
@@ -417,7 +435,7 @@ impl NorgToHtml for NorgAST {
                         }
                         quote.push(format!(">{}", mod_text));
                         if !content.is_empty() {
-                            quote.push(to_html(content, &strong_carry, &weak_carry, root_url));
+                            quote.push(to_html(content, &strong_carry, &weak_carry, root_url, toc));
                         }
                         quote.push("</blockquote>".to_string());
                         quote.join(" ")
@@ -501,6 +519,7 @@ impl NorgToHtml for NorgAST {
                         &strong_carry,
                         &weak_carry,
                         root_url,
+                        toc,
                     )
                 }
                 CarryoverTag::Macro => {
@@ -573,17 +592,36 @@ fn to_html(
     strong_carry: &[CarryOverTag],
     weak_carry: &[CarryOverTag],
     root_url: &str,
+    toc: &mut Vec<TocEntry>,
 ) -> String {
     let mut res = String::new();
     for node in ast {
-        res.push_str(&node.to_html(strong_carry.to_vec(), weak_carry.to_vec(), root_url));
+        res.push_str(&node.to_html(strong_carry.to_vec(), weak_carry.to_vec(), root_url, toc));
     }
 
     res
 }
 
-pub fn convert(document: String, root_url: &str) -> String {
+/// Convert TOC entries to TOML
+pub fn toc_to_toml(toc: &[TocEntry]) -> toml::Value {
+    let mut items = toml::value::Array::new();
+
+    for entry in toc {
+        let mut table = toml::value::Table::new();
+        table.insert("level".into(), toml::Value::Integer(entry.level as i64));
+        table.insert("title".into(), toml::Value::String(entry.title.clone()));
+        table.insert("id".into(), toml::Value::String(entry.id.clone()));
+        items.push(toml::Value::Table(table));
+    }
+
+    toml::Value::Array(items)
+}
+
+pub fn convert(document: String, root_url: &str) -> (String, Vec<TocEntry>) {
     let ast = parse_tree(&document).unwrap();
+    let mut toc = Vec::<TocEntry>::new();
     // We do not have any carryover tag when starting to convert the document
-    to_html(&ast, &[], &[], root_url)
+    let html = to_html(&ast, &[], &[], root_url, &mut toc);
+
+    (html, toc)
 }
