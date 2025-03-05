@@ -28,7 +28,13 @@ async fn create_config(root: &str, root_url: &str, language: &str, title: &str) 
         # Code blocks highlighting
         [highlighter]
         enable = false
-        # engine = 'prism' # Can be 'prism' or 'hljs'. Defaults to 'prism'"#,
+        # engine = 'prism' # Can be 'prism' or 'hljs'. Defaults to 'prism'
+
+        # RSS feed
+        [rss]
+        enable = true
+        description = 'Latest posts'
+        ttl = 60"#,
         root_url, // this is the default port
         language,
         title,
@@ -94,6 +100,20 @@ async fn create_html_templates(root: &str) -> Result<()> {
     }
 
     info!("Created HTML templates");
+    Ok(())
+}
+
+#[instrument(level = "debug", skip(root))]
+async fn create_rss_template(root: &str) -> Result<()> {
+    debug!("Creating RSS template");
+    let rss_xml = include_str!("../resources/templates/rss.xml");
+    let template_path = PathBuf::from(root).join("templates/rss.xml");
+
+    fs::write(&template_path, rss_xml)
+        .await
+        .map_err(|e| eyre!("Failed to write rss.xml: {}", e))?;
+
+    info!("Created RSS template");
     Ok(())
 }
 
@@ -192,6 +212,7 @@ pub async fn init(name: &str, prompt: bool) -> Result<()> {
         create_config(name, &root_url, &language, &title).await?;
         create_index_norg(name).await?;
         create_html_templates(name).await?;
+        create_rss_template(name).await?;
         create_assets(name).await?;
 
         // Get the canonical (absolute) path to the new site root
