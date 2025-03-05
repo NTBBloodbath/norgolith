@@ -11,6 +11,13 @@ pub struct SiteConfigHighlighter {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SiteConfigRss {
+    pub enable: bool,
+    pub ttl: i32,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SiteConfig {
     #[serde(rename = "rootUrl")]
     pub root_url: String,
@@ -20,5 +27,6 @@ pub struct SiteConfig {
     #[serde(default)]
     pub content_schema: Option<ContentSchema>,
     pub highlighter: Option<SiteConfigHighlighter>,
+    pub rss: Option<SiteConfigRss>,
     pub extra: Option<HashMap<String, toml::Value>>,
 }

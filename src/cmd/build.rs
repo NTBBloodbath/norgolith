@@ -6,6 +6,7 @@ use std::{
 use colored::Colorize;
 use eyre::{bail, eyre, Result, WrapErr};
 use futures_util::{self, StreamExt};
+use rss::Channel;
 use tera::{Context, Tera};
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, instrument, warn};
@@ -85,6 +86,31 @@ async fn prepare_build_directory(root_path: &Path) -> Result<()> {
     Ok(())
 }
 
+#[instrument(level = "debug", skip(tera, site_config, posts, output_path))]
+async fn generate_rss_feed(
+    tera: &Tera,
+    site_config: &config::SiteConfig,
+    posts: &[toml::Value],
+    output_path: &Path,
+) -> Result<()> {
+    // Prepare template
+    let mut context = Context::new();
+    context.insert("config", site_config);
+    context.insert("posts", posts);
+    context.insert("now", &chrono::Utc::now());
+
+    // Render the template
+    let rss_content = tera.render("rss.xml", &context)
+        .map_err(|e| eyre!("Failed to render RSS template: {}", e))?;
+
+    // Parse the rendered XML to validate it
+    let channel = Channel::read_from(rss_content.as_bytes())
+        .map_err(|e| eyre!("Invalid RSS feed generated: {}", e))?;
+
+    tokio::fs::write(output_path, channel.to_string()).await?;
+    Ok(())
+}
+
 /// Generates the final public build from intermediate build artifacts
 ///
 /// Processes HTML files through templates and handles minification.
@@ -99,7 +125,7 @@ async fn prepare_build_directory(root_path: &Path) -> Result<()> {
 async fn generate_public_build(
     tera: &Tera,
     paths: &SitePaths,
-    site_config: config::SiteConfig,
+    site_config: &config::SiteConfig,
     minify: bool,
 ) -> Result<()> {
     let posts = shared::collect_all_posts_metadata(&paths.build, &site_config.root_url).await?;
@@ -633,7 +659,7 @@ pub async fn build(minify: bool) -> Result<()> {
         shared::cleanup_orphaned_build_files(&paths.content).await?;
 
         // Generate public HTML build
-        generate_public_build(&tera, &paths, site_config, minify).await?;
+        generate_public_build(&tera, &paths, &site_config, minify).await?;
 
         // Copy site assets
         copy_all_assets(
@@ -643,6 +669,14 @@ pub async fn build(minify: bool) -> Result<()> {
             minify,
         )
         .await?;
+
+        // Generate RSS feed after building content if enabled
+        if site_config.rss.clone().is_some_and(|rss| rss.enable) {
+            debug!("Generating RSS feed");
+            let rss_path = paths.public.join("rss.xml");
+            let posts = shared::collect_all_posts_metadata(&paths.build, &site_config.root_url).await?;
+            generate_rss_feed(&tera, &site_config, &posts, &rss_path).await?;
+        }
 
         info!(
             "Finished site build in {}",
