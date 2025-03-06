@@ -34,7 +34,8 @@ async fn create_config(root: &str, root_url: &str, language: &str, title: &str) 
         [rss]
         enable = true
         description = 'Latest posts'
-        ttl = 60"#,
+        ttl = 60
+        image = '/assets/favicon.png'"#,
         root_url, // this is the default port
         language,
         title,
