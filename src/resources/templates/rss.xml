@@ -10,6 +10,14 @@
     <ttl>{{ config.rss.ttl | default(value=60) }}</ttl>
     <atom:link href="{{ config.rootUrl }}/rss.xml" rel="self" type="application/rss+xml" />
 
+    <image>
+      <url>{{ config.rootUrl | escape_xml | safe }}{{ config.rss.image | default(value="/assets/favicon.png") }}</url>
+      <title>{{ config.title }}</title>
+      <link>{{ config.rootUrl | escape_xml | safe }}</link>
+      <width>144</width>
+      <height>144</height>
+    </image>
+
     {% for post in posts | filter(attribute="draft", value=false) %}
     <item>
       <title>{{ post.title }}</title>

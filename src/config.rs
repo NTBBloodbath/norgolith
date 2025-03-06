@@ -15,6 +15,7 @@ pub struct SiteConfigRss {
     pub enable: bool,
     pub ttl: i32,
     pub description: String,
+    pub image: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
