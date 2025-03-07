@@ -39,7 +39,6 @@ walkdir = "2.5.0"
 minify-html = "0.15.0"
 num_cpus = "1.16.0"
 minify-js = "0.6.0"
-css-minify = "0.5.2"
 regex = "1.11.1"
 semver = { version = "1.0.25", features = ["serde"] }
 git2 = "0.20.0"
@@ -53,6 +52,7 @@ colored = "3.0.0"
 local-ip-address = "0.6.3"
 titlecase = "3.3.0"
 rss = "2.0.12"
+lightningcss = "1.0.0-alpha.64"
 
 [dev-dependencies]
 mockall = "0.13.1"

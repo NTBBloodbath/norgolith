@@ -6,6 +6,9 @@ use std::{
 use colored::Colorize;
 use eyre::{bail, eyre, Result, WrapErr};
 use futures_util::{self, StreamExt};
+use lightningcss::stylesheet::{
+    StyleSheet, ParserOptions, MinifyOptions, PrinterOptions
+};
 use rss::Channel;
 use tera::{Context, Tera};
 use tokio::sync::Mutex;
@@ -444,18 +447,13 @@ async fn minify_js_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
 /// * `Result<()>` - `Ok(())` if minification and writing succeed, otherwise an error.
 #[instrument(skip(src_path, dest_path))]
 async fn minify_css_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
-    let content = tokio::fs::read_to_string(src_path).await?;
-    // See https://docs.rs/css-minify/0.5.2/css_minify/optimizations/enum.Level.html#variants
-    let minified = css_minify::optimizations::Minifier::default()
-        .minify(&content, css_minify::optimizations::Level::Two)
-        .map_err(|e| {
-            eyre!(
-                "{}: {}",
-                format!("CSS minification failed for {}", src_path.display()).bold(),
-                e
-            )
-        })?;
-    tokio::fs::write(dest_path, minified.into_bytes())
+    let content = tokio::fs::read_to_string(src_path).await?.leak();
+
+    let mut stylesheet = StyleSheet::parse(content, ParserOptions::default())?;
+    stylesheet.minify(MinifyOptions::default())?;
+    let minified = stylesheet.to_css(PrinterOptions { minify: true, ..Default::default() })?;
+
+    tokio::fs::write(dest_path, minified.code)
         .await
         .wrap_err_with(|| {
             format!("Failed to write minified CSS to {}", dest_path.display()).bold()

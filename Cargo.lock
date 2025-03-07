@@ -516,17 +516,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "css-minify"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25e3cc5d5517306d2e87095a5563c6e2136226aa679e812244838e7b59179463"
-dependencies = [
- "derive_more",
- "indexmap",
- "nom",
-]
-
-[[package]]
 name = "cssparser"
 version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -650,27 +639,6 @@ checksum = "ab63b0e2bf4d5928aff72e83a7dace85d7bba5fe12dcc3c5a572d78caffd3f3c"
 dependencies = [
  "derive_builder_core",
  "syn 2.0.96",
-]
-
-[[package]]
-name = "derive_more"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a9b99b9cbbe49445b21764dc0625032a89b145a2642e67603e1c936f5458d05"
-dependencies = [
- "derive_more-impl",
-]
-
-[[package]]
-name = "derive_more-impl"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.96",
- "unicode-xid",
 ]
 
 [[package]]
@@ -1555,9 +1523,9 @@ dependencies = [
 
 [[package]]
 name = "lightningcss"
-version = "1.0.0-alpha.63"
+version = "1.0.0-alpha.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a75fcbcdbcc84fc1ae7c60c31f99337560b620757a9bfc1c9f84df3cff8ac24"
+checksum = "a296273515b1036d06fce6c1d6bfc11347083458e1765ae4a70d6288cdb15521"
 dependencies = [
  "ahash 0.8.11",
  "bitflags 2.8.0",
@@ -1722,12 +1690,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "minimal-lexical"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
-
-[[package]]
 name = "miniz_oxide"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1827,16 +1789,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nom"
-version = "7.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
-dependencies = [
- "memchr",
- "minimal-lexical",
-]
-
-[[package]]
 name = "norgolith"
 version = "0.2.0"
 dependencies = [
@@ -1844,7 +1796,6 @@ dependencies = [
  "clap",
  "colored 3.0.0",
  "comfy-table",
- "css-minify",
  "eyre",
  "futures-util",
  "git2",
@@ -1852,6 +1803,7 @@ dependencies = [
  "hyper",
  "indoc",
  "inquire",
+ "lightningcss",
  "local-ip-address",
  "mime_guess",
  "minify-html",
@@ -3267,12 +3219,6 @@ name = "unicode-width"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
-
-[[package]]
-name = "unicode-xid"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "unicode_categories"
