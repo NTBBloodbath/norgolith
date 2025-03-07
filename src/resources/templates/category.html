@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Category: {{ category }}{% endblock title %}
+{% block content %}
+<div>
+  <h1>Posts in {{ category }}</h1>
+  <p><i>All the posts with the category "{{ category }}"</i></p>
+  <hr />
+  <ul>
+    {% for post in posts %}
+      {% if category in post.categories %}
+        <li>
+          <a href="{{ post.permalink }}">{{ post.title }}</a>
+          <time>{{ post.created | date(format="%B %e, %Y") }}</time>
+        </li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+</div>
+{% endblock content %}

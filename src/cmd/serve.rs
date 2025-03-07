@@ -399,6 +399,19 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     if !actions.rebuild_paths.is_empty() || !actions.cleanup_paths.is_empty() {
         match shared::collect_all_posts_metadata(&state.paths.build, &state.routes_url).await {
             Ok(new_posts) => {
+                // Update categories
+                let tera = state.tera.read().await;
+                if let Err(e) = shared::generate_category_pages(
+                    &tera,
+                    &state.paths.build,
+                    &new_posts,
+                    &state.config,
+                )
+                .await
+                {
+                    error!("Failed to regenerate categories: {}", e);
+                }
+
                 let mut posts_lock = state.posts.write().await;
                 *posts_lock = new_posts;
             }
@@ -820,6 +833,55 @@ async fn handle_websocket(stream: TcpStream, reload_tx: Arc<broadcast::Sender<()
     }
 }
 
+async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body>> {
+    let categories = shared::collect_all_posts_categories(&state.posts.read().await).await;
+    let posts = state.posts.read().await.clone();
+    let mut context = Context::new();
+    context.insert("config", &state.config);
+    context.insert("posts", &posts);
+    context.insert("categories", &categories.into_iter().collect::<Vec<_>>());
+
+    let tera = state.tera.read().await;
+    let body = tera
+        .render("categories.html", &context)
+        .map_err(|e| eyre!("Template error: {}", e))?;
+
+    Ok(Response::builder()
+        .header(CONTENT_TYPE, "text/html; charset=utf-8")
+        .status(StatusCode::OK)
+        .body(Body::from(body))?)
+}
+
+async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Response<Body>> {
+    let category = path.trim_start_matches("/categories/");
+    let posts = state.posts.read().await.clone();
+
+    let category_posts: Vec<_> = posts
+        .into_iter()
+        .filter(|post| {
+            post.get("categories")
+                .and_then(|c| c.as_array())
+                .map(|cats| cats.iter().any(|c| c.as_str() == Some(category)))
+                .unwrap_or(false)
+        })
+        .collect();
+
+    let mut context = Context::new();
+    context.insert("config", &state.config);
+    context.insert("category", &category);
+    context.insert("posts", &category_posts);
+
+    let tera = state.tera.read().await;
+    let body = tera
+        .render("category.html", &context)
+        .map_err(|e| eyre!("Template error: {}", e))?;
+
+    Ok(Response::builder()
+        .header(CONTENT_TYPE, "text/html; charset=utf-8")
+        .status(StatusCode::OK)
+        .body(Body::from(body))?)
+}
+
 /// Handles HTTP requests and routes them to the appropriate handler.
 ///
 /// This function processes incoming HTTP requests and routes them to the appropriate
@@ -840,6 +902,8 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
         "/livereload.js" => Ok(Response::builder()
             .header(CONTENT_TYPE, "text/javascript")
             .body(LIVE_RELOAD_SCRIPT.into())?),
+        "/categories" => handle_category_index(&state).await,
+        path if path.starts_with("/categories/") => handle_category(path, &state).await,
         path if path.starts_with("/assets/") => handle_asset(path, &state.paths).await,
         _ => handle_content(request_path, state).await,
     }
