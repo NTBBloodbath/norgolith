@@ -668,11 +668,19 @@ pub async fn build(minify: bool) -> Result<()> {
         )
         .await?;
 
+        // Generate category pages
+        let posts = shared::collect_all_posts_metadata(&paths.build, &site_config.root_url).await?;
+        shared::generate_category_pages(
+            &tera,
+            &paths.public,
+            &posts,
+            &site_config
+        ).await?;
+
         // Generate RSS feed after building content if enabled
         if site_config.rss.clone().is_some_and(|rss| rss.enable) {
             debug!("Generating RSS feed");
             let rss_path = paths.public.join("rss.xml");
-            let posts = shared::collect_all_posts_metadata(&paths.build, &site_config.root_url).await?;
             generate_rss_feed(&tera, &site_config, &posts, &rss_path).await?;
         }
 

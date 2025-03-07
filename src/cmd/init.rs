@@ -88,6 +88,14 @@ async fn create_html_templates(root: &str) -> Result<()> {
             "default",
             include_str!("../resources/templates/default.html"),
         ),
+        (
+            "category",
+            include_str!("../resources/templates/category.html"),
+        ),
+        (
+            "categories",
+            include_str!("../resources/templates/categories.html"),
+        ),
     ]);
 
     let templates_dir = PathBuf::from(root).join("templates");

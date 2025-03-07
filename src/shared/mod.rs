@@ -1,11 +1,13 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use eyre::{bail, eyre, Result};
-use tera::Tera;
+use tera::{Context, Tera};
 use tracing::{error, info};
 use walkdir::WalkDir;
 
+use crate::config::SiteConfig;
 use crate::converter;
 use crate::schema::{format_errors, validate_metadata, ContentSchema};
 
@@ -99,10 +101,8 @@ pub async fn convert_document(
         let (norg_html, toc) = converter::html::convert(norg_document.clone(), root_url);
 
         // Convert metadata
-        let norg_meta = converter::meta::convert(
-            &norg_document,
-            Some(converter::html::toc_to_toml(&toc))
-        )?;
+        let norg_meta =
+            converter::meta::convert(&norg_document, Some(converter::html::toc_to_toml(&toc)))?;
         let meta_toml = toml::to_string_pretty(&norg_meta)?;
 
         // Check if the current document is a draft post and also whether we should finish the conversion
@@ -166,7 +166,8 @@ pub async fn cleanup_orphaned_build_files(content_dir: &Path) -> Result<()> {
                 let relative_path = path.strip_prefix(build_dir)?;
                 let norg_path = content_dir.join(relative_path).with_extension("norg");
 
-                if !norg_path.exists() {
+                // Delete orphaned content files
+                if !norg_path.exists() && !relative_path.starts_with("categories/") {
                     // Delete HTML and meta files
                     let meta_path = path.with_extension("meta.toml");
 
@@ -176,6 +177,32 @@ pub async fn cleanup_orphaned_build_files(content_dir: &Path) -> Result<()> {
                     }
 
                     info!("Cleaned orphaned build file: {}", path.display());
+                }
+
+                // Clean empty category directories
+                let categories_dir = build_dir.join("categories");
+                if categories_dir.exists() {
+                    let mut dirs_to_check = vec![categories_dir];
+
+                    while let Some(dir) = dirs_to_check.pop() {
+                        let mut entries = tokio::fs::read_dir(&dir).await?;
+                        let mut has_content = false;
+
+                        while let Some(entry) = entries.next_entry().await? {
+                            let path = entry.path();
+                            if path.is_dir() {
+                                dirs_to_check.push(path);
+                                has_content = true;
+                            } else {
+                                has_content = true;
+                            }
+                        }
+
+                        if !has_content {
+                            tokio::fs::remove_dir(&dir).await?;
+                            info!("Cleaned empty category directory: {}", dir.display());
+                        }
+                    }
                 }
             }
         }
@@ -356,6 +383,23 @@ pub async fn validate_content_metadata(
     Ok(String::new())
 }
 
+/// Collects all unique categories from post metadata
+pub async fn collect_all_posts_categories(posts: &[toml::Value]) -> HashSet<String> {
+    let mut categories = HashSet::new();
+
+    for post in posts {
+        if let Some(cats) = post.get("categories").and_then(|v| v.as_array()) {
+            for cat in cats {
+                if let Some(cat_str) = cat.as_str() {
+                    categories.insert(cat_str.to_lowercase());
+                }
+            }
+        }
+    }
+
+    categories
+}
+
 pub async fn collect_all_posts_metadata(
     build_dir: &Path,
     routes_url: &str,
@@ -405,4 +449,57 @@ pub async fn collect_all_posts_metadata(
     });
 
     Ok(posts)
+}
+
+/// Generates category listing pages
+pub async fn generate_category_pages(
+    tera: &Tera,
+    public_dir: &Path,
+    posts: &[toml::Value],
+    config: &SiteConfig,
+) -> Result<()> {
+    let categories = collect_all_posts_categories(posts).await;
+    let categories_dir = public_dir.join("categories");
+
+    // Generate main categories index
+    let mut context = Context::new();
+    context.insert("config", config);
+    context.insert("posts", &posts);
+    context.insert("categories", &categories.iter().collect::<Vec<_>>());
+
+    let content = tera
+        .render("categories.html", &context)
+        .map_err(|e| eyre!("Failed to render categories index: {}", e))?;
+
+    tokio::fs::create_dir_all(&categories_dir).await?;
+    tokio::fs::write(categories_dir.join("index.html"), content).await?;
+
+    // Generate individual category pages
+    for category in categories {
+        let cat_posts: Vec<_> = posts
+            .iter()
+            .filter(|post| {
+                post.get("categories")
+                    .and_then(|c| c.as_array())
+                    .map(|cats| cats.iter().any(|c| c.as_str() == Some(category.as_str())))
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        let mut context = Context::new();
+        context.insert("config", config);
+        context.insert("category", &category);
+        context.insert("posts", &cat_posts);
+
+        let cat_dir = categories_dir.join(&category);
+        tokio::fs::create_dir_all(&cat_dir).await?;
+
+        let content = tera
+            .render("category.html", &context)
+            .map_err(|e| eyre!("Failed to render category page: {}", e))?;
+
+        tokio::fs::write(cat_dir.join("index.html"), content).await?;
+    }
+
+    Ok(())
 }

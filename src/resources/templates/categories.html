@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock title %}
+{% block content %}
+<div>
+  <h1>Categories</h1>
+  <p><i>All the categories used in posts.</i></p>
+  <hr />
+  <ul>
+    {% for category in categories | sort %}
+      {%- set_global cat_posts = 0 -%}
+      {% for post in posts %}
+        {% if category in post.categories %}
+          {%- set_global cat_posts = cat_posts + 1 -%}
+        {% endif %}
+      {% endfor %}
+      <li>
+        <a href="{{ config.rootUrl }}/categories/{{ category }}">{{ category }}</a>
+        <span>({{ cat_posts }} post{{ cat_posts | pluralize }})</span>
+      </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock content %}
