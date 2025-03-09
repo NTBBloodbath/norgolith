@@ -1,7 +1,9 @@
 use std::collections::HashSet;
+use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use colored::Colorize;
 use eyre::{bail, eyre, Result};
 use tera::{Context, Tera};
 use tracing::{error, info};
@@ -200,7 +202,7 @@ pub async fn cleanup_orphaned_build_files(content_dir: &Path) -> Result<()> {
 
                         if !has_content {
                             tokio::fs::remove_dir(&dir).await?;
-                            info!("Cleaned empty category directory: {}", dir.display());
+                            info!("{}: {}", "Cleaned empty category directory".bold(), dir.display());
                         }
                     }
                 }
@@ -227,14 +229,16 @@ pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Resul
     let mut tera = match Tera::parse(&(templates_dir.to_owned() + "/**/*.html")) {
         Ok(t) => t,
         Err(e) => bail!(
-            "Error parsing HTML templates from the templates directory: {}",
+            "{}: {}",
+            "Error parsing HTML templates from the templates directory".bold(),
             e
         ),
     };
     let tera_xml = match Tera::parse(&(templates_dir.to_owned() + "/**/*.xml")) {
         Ok(t) => t,
         Err(e) => bail!(
-            "Error parsing XML templates from the templates directory: {}",
+            "{}: {}",
+            "Error parsing XML templates from the templates directory".bold(),
             e
         ),
     };
@@ -246,12 +250,12 @@ pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Resul
         let tera_theme =
             match Tera::parse(&(theme_templates_dir.display().to_string() + "/**/*.html")) {
                 Ok(t) => t,
-                Err(e) => bail!("Error parsing HTML templates from themes: {}", e),
+                Err(e) => bail!("{}: {}", "Error parsing HTML templates from themes".bold(), e),
             };
         tera.extend(&tera_theme)?;
     }
     tera.build_inheritance_chains()
-        .map_err(|e| eyre!("Failed to build templates inheritance: {}", e))?;
+        .map_err(|e| eyre!("{}: {}", "Failed to build templates inheritance".bold(), e))?;
 
     // Register functions
     tera.register_function("now", crate::tera_functions::NowFunction);
@@ -276,7 +280,7 @@ pub async fn load_metadata(path: PathBuf, rel_path: PathBuf, routes_url: &str) -
     match tokio::fs::read_to_string(&path).await {
         Ok(content) => {
             let mut value = toml::from_str(&content).unwrap_or_else(|e| {
-                error!("Metadata parse error: {}", e);
+                error!("{}: {}", "Metadata parse error".bold(), e);
                 toml::Value::Table(toml::map::Map::new())
             });
 
@@ -322,8 +326,8 @@ pub async fn load_metadata(path: PathBuf, rel_path: PathBuf, routes_url: &str) -
 
             value
         }
-        Err(e) => {
-            error!("Metadata file not found: {}", e);
+        Err(_) => {
+            error!("{} {}", "Metadata file not found for".bold(), rel_path.display());
             toml::Value::Table(toml::map::Map::new())
         }
     }
@@ -469,7 +473,10 @@ pub async fn generate_category_pages(
 
     let content = tera
         .render("categories.html", &context)
-        .map_err(|e| eyre!("Failed to render categories index: {}", e))?;
+        .map_err(|e| {
+            let internal_err = e.source().unwrap();
+            eyre!("{}: {}", "Failed to render categories index".bold(), internal_err)
+        })?;
 
     tokio::fs::create_dir_all(&categories_dir).await?;
     tokio::fs::write(categories_dir.join("index.html"), content).await?;
@@ -496,7 +503,10 @@ pub async fn generate_category_pages(
 
         let content = tera
             .render("category.html", &context)
-            .map_err(|e| eyre!("Failed to render category page: {}", e))?;
+            .map_err(|e| {
+                let internal_err = e.source().unwrap();
+                eyre!("{}: {}", "Failed to render category page".bold(), internal_err)
+            })?;
 
         tokio::fs::write(cat_dir.join("index.html"), content).await?;
     }

@@ -1,4 +1,5 @@
 use std::convert::Infallible;
+use std::error::Error;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -764,7 +765,20 @@ async fn handle_html_content(
     let tera = state.tera.read().await;
     let mut body = tera
         .render(&format!("{}.html", layout), &context)
-        .map_err(|e| eyre!("Template error: {}", e))?;
+        .map_err(|e| {
+            // Store the reason why Tera failed to render the template
+            let internal_err = e.source().unwrap();
+            eyre!(
+                "{}: {}",
+                format!(
+                    "Failed to render template for '{}'",
+                    path.strip_prefix(".build").unwrap().display()
+                )
+                .bold(),
+                internal_err
+            )
+        })?;
+
     // Always use the proper URL to the development server for template links that refers
     // to the local URL, this is useful when running the server exposed to LAN network
     body = body.replace(
@@ -844,7 +858,15 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
     let tera = state.tera.read().await;
     let body = tera
         .render("categories.html", &context)
-        .map_err(|e| eyre!("Template error: {}", e))?;
+        .map_err(|e| {
+            // Store the reason why Tera failed to render the template
+            let internal_err = e.source().unwrap();
+            eyre!(
+                "{}: {}",
+                "Failed to render 'categories.html' template".bold(),
+                internal_err
+            )
+        })?;
 
     Ok(Response::builder()
         .header(CONTENT_TYPE, "text/html; charset=utf-8")
@@ -874,7 +896,15 @@ async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Respons
     let tera = state.tera.read().await;
     let body = tera
         .render("category.html", &context)
-        .map_err(|e| eyre!("Template error: {}", e))?;
+        .map_err(|e| {
+            // Store the reason why Tera failed to render the template
+            let internal_err = e.source().unwrap();
+            eyre!(
+                "{}: {}",
+                "Failed to render 'category.html' template".bold(),
+                internal_err
+            )
+        })?;
 
     Ok(Response::builder()
         .header(CONTENT_TYPE, "text/html; charset=utf-8")
@@ -937,11 +967,12 @@ async fn handle_server_request(
     let response = match handle_request(req, state).await {
         Ok(res) => res,
         Err(e) => {
-            // XXX: this may be too verbose sometimes, do we want to keep it?
-            error!("Request handling error: {}", e);
+            error!("{}", e);
+            // Remove ANSI codes from error string as the colored crate clear method is stupid enough not to do anything
+            let e_str = e.to_string().replace("\x1b[1m", "").replace("\x1b[0m", "");
             Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from("500 Internal Server Error"))
+                .body(Body::from(format!("500 Internal Server Error\n\n{}", e_str)))
                 .unwrap()
         }
     };

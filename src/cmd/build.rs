@@ -1,4 +1,5 @@
 use std::{
+    error::Error,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -6,9 +7,7 @@ use std::{
 use colored::Colorize;
 use eyre::{bail, eyre, Result, WrapErr};
 use futures_util::{self, StreamExt};
-use lightningcss::stylesheet::{
-    StyleSheet, ParserOptions, MinifyOptions, PrinterOptions
-};
+use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions, StyleSheet};
 use rss::Channel;
 use tera::{Context, Tera};
 use tokio::sync::Mutex;
@@ -103,12 +102,13 @@ async fn generate_rss_feed(
     context.insert("now", &chrono::Utc::now());
 
     // Render the template
-    let rss_content = tera.render("rss.xml", &context)
-        .map_err(|e| eyre!("Failed to render RSS template: {}", e))?;
+    let rss_content = tera
+        .render("rss.xml", &context)
+        .map_err(|e| eyre!("{}: {}", "Failed to render RSS template".bold(), e))?;
 
     // Parse the rendered XML to validate it
     let channel = Channel::read_from(rss_content.as_bytes())
-        .map_err(|e| eyre!("Invalid RSS feed generated: {}", e))?;
+        .map_err(|e| eyre!("{}: {}", "Invalid RSS feed generated".bold(), e))?;
 
     tokio::fs::write(output_path, channel.to_string()).await?;
     Ok(())
@@ -124,7 +124,7 @@ async fn generate_rss_feed(
 /// * `paths` - Site directory paths
 /// * `site_config` - Site configuration
 /// * `minify` - Enable minification of output
-#[instrument(skip(tera, paths, site_config))]
+#[instrument(level = "debug", skip(tera, paths, site_config))]
 async fn generate_public_build(
     tera: &Tera,
     paths: &SitePaths,
@@ -158,7 +158,7 @@ async fn generate_public_build(
                 )
                 .await
                 {
-                    error!("{}: {:?}", "Error processing entry".bold(), e);
+                    error!("{:?}", e);
                 }
             }
         })
@@ -176,7 +176,10 @@ async fn generate_public_build(
 ///
 /// Handles template rendering, metadata validation, and output path determination.
 /// Skips draft content and applies minification when enabled.
-#[instrument(skip(tera, paths, site_config, validation_errors, posts))]
+#[instrument(
+    level = "debug",
+    skip(tera, paths, site_config, validation_errors, posts)
+)]
 async fn process_build_entry(
     entry: DirEntry,
     tera: &Tera,
@@ -208,18 +211,27 @@ async fn process_build_entry(
         let meta_rel_path = meta_path.strip_prefix(&paths.build)?.to_path_buf();
 
         // Handle metadata loading with proper error fallback
-        let metadata = shared::load_metadata(meta_path, meta_rel_path, &site_config.root_url).await;
+        //
+        // The /categories routes does not have a metadata file by design so we return an empty TOML table for them
+        let metadata = if !rel_path.starts_with("/categories") {
+            shared::load_metadata(meta_path, meta_rel_path, &site_config.root_url).await
+        } else {
+            toml::Value::Table(toml::map::Map::new())
+        };
 
         // Metadata schema validation
         if let Some(schema) = &site_config.content_schema {
-            validate_metadata(
-                path,
-                &paths.build,
-                &paths.content,
-                schema,
-                validation_errors,
-            )
-            .await?;
+            // Do not try to validate generated categories
+            if !rel_path.starts_with("/categories") {
+                validate_metadata(
+                    path,
+                    &paths.build,
+                    &paths.content,
+                    schema,
+                    validation_errors,
+                )
+                .await?;
+            }
         }
 
         // Do not try to build draft content for production builds
@@ -245,16 +257,36 @@ async fn process_build_entry(
         context.insert("metadata", &metadata);
 
         // Render template
-        let rendered = tera.render(&(layout + ".html"), &context).unwrap();
-
-        let rendered = if minify {
-            minify_html_content(rendered)?
-        } else {
-            rendered
+        let rendered = match tera.render(&(layout.clone() + ".html"), &context) {
+            Ok(content) => content,
+            Err(e) => {
+                // Store the reason why Tera failed to render the template
+                let internal_err = e.source().unwrap();
+                warn!(
+                    "{}: {} - {}",
+                    format!(
+                        "Failed to render template for '{}'",
+                        rel_path.display()
+                    )
+                    .bold(),
+                    internal_err,
+                    "Excluding from build".bold()
+                );
+                String::new()
+            }
         };
 
-        // Write rendered output to public path
-        write_public_file(&public_path, rendered).await?;
+        // If no errors occurred then rendered should not be empty and we should proceed
+        if !rendered.is_empty() {
+            let rendered = if minify {
+                minify_html_content(rendered)?
+            } else {
+                rendered
+            };
+
+            // Write rendered output to public path
+            write_public_file(&public_path, rendered).await?;
+        }
     }
     Ok(())
 }
@@ -451,7 +483,10 @@ async fn minify_css_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
 
     let mut stylesheet = StyleSheet::parse(content, ParserOptions::default())?;
     stylesheet.minify(MinifyOptions::default())?;
-    let minified = stylesheet.to_css(PrinterOptions { minify: true, ..Default::default() })?;
+    let minified = stylesheet.to_css(PrinterOptions {
+        minify: true,
+        ..Default::default()
+    })?;
 
     tokio::fs::write(dest_path, minified.code)
         .await
@@ -641,11 +676,8 @@ pub async fn build(minify: bool) -> Result<()> {
 
         // Initialize Tera once
         debug!("Initializing template engine");
-        let tera = shared::init_tera(
-            paths.templates.to_str().unwrap(),
-            &paths.theme_templates,
-        )
-        .await?;
+        let tera =
+            shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates).await?;
 
         // Prepare the public build directory
         prepare_build_directory(Path::new(&root_dir)).await?;
@@ -670,12 +702,7 @@ pub async fn build(minify: bool) -> Result<()> {
 
         // Generate category pages
         let posts = shared::collect_all_posts_metadata(&paths.build, &site_config.root_url).await?;
-        shared::generate_category_pages(
-            &tera,
-            &paths.public,
-            &posts,
-            &site_config
-        ).await?;
+        shared::generate_category_pages(&tera, &paths.public, &posts, &site_config).await?;
 
         // Generate RSS feed after building content if enabled
         if site_config.rss.clone().is_some_and(|rss| rss.enable) {
