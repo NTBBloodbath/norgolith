@@ -856,17 +856,15 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
     context.insert("categories", &categories.into_iter().collect::<Vec<_>>());
 
     let tera = state.tera.read().await;
-    let body = tera
-        .render("categories.html", &context)
-        .map_err(|e| {
-            // Store the reason why Tera failed to render the template
-            let internal_err = e.source().unwrap();
-            eyre!(
-                "{}: {}",
-                "Failed to render 'categories.html' template".bold(),
-                internal_err
-            )
-        })?;
+    let body = tera.render("categories.html", &context).map_err(|e| {
+        // Store the reason why Tera failed to render the template
+        let internal_err = e.source().unwrap();
+        eyre!(
+            "{}: {}",
+            "Failed to render 'categories.html' template".bold(),
+            internal_err
+        )
+    })?;
 
     Ok(Response::builder()
         .header(CONTENT_TYPE, "text/html; charset=utf-8")
@@ -894,17 +892,15 @@ async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Respons
     context.insert("posts", &category_posts);
 
     let tera = state.tera.read().await;
-    let body = tera
-        .render("category.html", &context)
-        .map_err(|e| {
-            // Store the reason why Tera failed to render the template
-            let internal_err = e.source().unwrap();
-            eyre!(
-                "{}: {}",
-                "Failed to render 'category.html' template".bold(),
-                internal_err
-            )
-        })?;
+    let body = tera.render("category.html", &context).map_err(|e| {
+        // Store the reason why Tera failed to render the template
+        let internal_err = e.source().unwrap();
+        eyre!(
+            "{}: {}",
+            "Failed to render 'category.html' template".bold(),
+            internal_err
+        )
+    })?;
 
     Ok(Response::builder()
         .header(CONTENT_TYPE, "text/html; charset=utf-8")
@@ -972,7 +968,10 @@ async fn handle_server_request(
             let e_str = e.to_string().replace("\x1b[1m", "").replace("\x1b[0m", "");
             Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from(format!("500 Internal Server Error\n\n{}", e_str)))
+                .body(Body::from(format!(
+                    "500 Internal Server Error\n\n{}",
+                    e_str
+                )))
                 .unwrap()
         }
     };

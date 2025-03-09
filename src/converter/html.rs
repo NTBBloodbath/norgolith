@@ -283,7 +283,7 @@ trait NorgToHtml {
         strong_carry: Vec<CarryOverTag>,
         weak_carry: Vec<CarryOverTag>,
         root_url: &str,
-        toc: &mut Vec<TocEntry>
+        toc: &mut Vec<TocEntry>,
     ) -> String;
 }
 
@@ -333,11 +333,7 @@ impl NorgToHtml for NorgAST {
 
                 match level {
                     1..=6 => {
-                        section.push(format!(
-                            "<h{} id=\"{}\"",
-                            level,
-                            heading_id,
-                        ));
+                        section.push(format!("<h{} id=\"{}\"", level, heading_id,));
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
                                 section.push(weak_carryover_attribute(weak_carryover));
@@ -350,10 +346,7 @@ impl NorgToHtml for NorgAST {
                     }
                     // XXX: fallback to h6 if the header level is higher than 6
                     _ => {
-                        section.push(format!(
-                            "<h6 id=\"{}\"",
-                            heading_id,
-                        ));
+                        section.push(format!("<h6 id=\"{}\"", heading_id,));
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
                                 section.push(weak_carryover_attribute(weak_carryover));

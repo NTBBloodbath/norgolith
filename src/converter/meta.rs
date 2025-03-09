@@ -87,10 +87,7 @@ fn extract_meta(input: &str) -> String {
     result.join("\n")
 }
 
-pub fn merge_toc_into_metadata(
-    mut metadata: toml::Value,
-    toc: toml::Value
-) -> toml::Value {
+pub fn merge_toc_into_metadata(mut metadata: toml::Value, toc: toml::Value) -> toml::Value {
     if let toml::Value::Table(ref mut table) = metadata {
         table.insert("toc".to_string(), toc);
     }

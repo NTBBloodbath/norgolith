@@ -202,7 +202,11 @@ pub async fn cleanup_orphaned_build_files(content_dir: &Path) -> Result<()> {
 
                         if !has_content {
                             tokio::fs::remove_dir(&dir).await?;
-                            info!("{}: {}", "Cleaned empty category directory".bold(), dir.display());
+                            info!(
+                                "{}: {}",
+                                "Cleaned empty category directory".bold(),
+                                dir.display()
+                            );
                         }
                     }
                 }
@@ -250,7 +254,11 @@ pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Resul
         let tera_theme =
             match Tera::parse(&(theme_templates_dir.display().to_string() + "/**/*.html")) {
                 Ok(t) => t,
-                Err(e) => bail!("{}: {}", "Error parsing HTML templates from themes".bold(), e),
+                Err(e) => bail!(
+                    "{}: {}",
+                    "Error parsing HTML templates from themes".bold(),
+                    e
+                ),
             };
         tera.extend(&tera_theme)?;
     }
@@ -327,7 +335,11 @@ pub async fn load_metadata(path: PathBuf, rel_path: PathBuf, routes_url: &str) -
             value
         }
         Err(_) => {
-            error!("{} {}", "Metadata file not found for".bold(), rel_path.display());
+            error!(
+                "{} {}",
+                "Metadata file not found for".bold(),
+                rel_path.display()
+            );
             toml::Value::Table(toml::map::Map::new())
         }
     }
@@ -471,12 +483,14 @@ pub async fn generate_category_pages(
     context.insert("posts", &posts);
     context.insert("categories", &categories.iter().collect::<Vec<_>>());
 
-    let content = tera
-        .render("categories.html", &context)
-        .map_err(|e| {
-            let internal_err = e.source().unwrap();
-            eyre!("{}: {}", "Failed to render categories index".bold(), internal_err)
-        })?;
+    let content = tera.render("categories.html", &context).map_err(|e| {
+        let internal_err = e.source().unwrap();
+        eyre!(
+            "{}: {}",
+            "Failed to render categories index".bold(),
+            internal_err
+        )
+    })?;
 
     tokio::fs::create_dir_all(&categories_dir).await?;
     tokio::fs::write(categories_dir.join("index.html"), content).await?;
@@ -501,12 +515,14 @@ pub async fn generate_category_pages(
         let cat_dir = categories_dir.join(&category);
         tokio::fs::create_dir_all(&cat_dir).await?;
 
-        let content = tera
-            .render("category.html", &context)
-            .map_err(|e| {
-                let internal_err = e.source().unwrap();
-                eyre!("{}: {}", "Failed to render category page".bold(), internal_err)
-            })?;
+        let content = tera.render("category.html", &context).map_err(|e| {
+            let internal_err = e.source().unwrap();
+            eyre!(
+                "{}: {}",
+                "Failed to render category page".bold(),
+                internal_err
+            )
+        })?;
 
         tokio::fs::write(cat_dir.join("index.html"), content).await?;
     }

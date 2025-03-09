@@ -264,11 +264,7 @@ async fn process_build_entry(
                 let internal_err = e.source().unwrap();
                 warn!(
                     "{}: {} - {}",
-                    format!(
-                        "Failed to render template for '{}'",
-                        rel_path.display()
-                    )
-                    .bold(),
+                    format!("Failed to render template for '{}'", rel_path.display()).bold(),
                     internal_err,
                     "Excluding from build".bold()
                 );

@@ -40,27 +40,33 @@ fn parse_toc(value: &Value) -> Result<TocTree> {
         nodes: Vec::new(),
         root_indices: Vec::new(),
     };
-    let mut stack: Vec<usize> = Vec::new();  // Store indices instead of references
+    let mut stack: Vec<usize> = Vec::new(); // Store indices instead of references
 
     for entry in entries {
-        let level = entry.get("level")
+        let level = entry
+            .get("level")
             .and_then(|v| v.as_i64())
-            .ok_or("Missing or invalid level").unwrap() as u8;
+            .ok_or("Missing or invalid level")
+            .unwrap() as u8;
 
-        let title = entry.get("title")
+        let title = entry
+            .get("title")
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string();
 
-        let id = entry.get("id")
+        let id = entry
+            .get("id")
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string();
 
         // Find the parent index
-        let parent_idx = stack.iter().rev().find(|&&idx| {
-            tree.nodes[idx].level < level
-        }).copied();
+        let parent_idx = stack
+            .iter()
+            .rev()
+            .find(|&&idx| tree.nodes[idx].level < level)
+            .copied();
 
         // Create new node
         let node_idx = tree.nodes.len();
@@ -79,7 +85,11 @@ fn parse_toc(value: &Value) -> Result<TocTree> {
         }
 
         // Update stack
-        while stack.last().map(|&idx| tree.nodes[idx].level >= level).unwrap_or(false) {
+        while stack
+            .last()
+            .map(|&idx| tree.nodes[idx].level >= level)
+            .unwrap_or(false)
+        {
             stack.pop();
         }
         stack.push(node_idx);
@@ -118,7 +128,8 @@ pub struct GenerateToc;
 impl Function for GenerateToc {
     fn call(&self, args: &HashMap<String, Value>) -> Result<Value, Error> {
         let toc = args.get("toc").expect("Missing 'toc' argument");
-        let list_type = args.get("list_type")
+        let list_type = args
+            .get("list_type")
             .and_then(|v| v.as_str())
             .unwrap_or("ol");
 
