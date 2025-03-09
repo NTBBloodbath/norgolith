@@ -856,7 +856,7 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
     context.insert("categories", &categories.into_iter().collect::<Vec<_>>());
 
     let tera = state.tera.read().await;
-    let body = tera.render("categories.html", &context).map_err(|e| {
+    let mut body = tera.render("categories.html", &context).map_err(|e| {
         // Store the reason why Tera failed to render the template
         let internal_err = e.source().unwrap();
         eyre!(
@@ -865,6 +865,12 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
             internal_err
         )
     })?;
+    // Always use the proper URL to the development server for template links that refers
+    // to the local URL, this is useful when running the server exposed to LAN network
+    body = body.replace(
+        &state.config.root_url.replace("://", ":&#x2F;&#x2F;"),
+        &state.routes_url,
+    );
 
     Ok(Response::builder()
         .header(CONTENT_TYPE, "text/html; charset=utf-8")
@@ -892,7 +898,7 @@ async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Respons
     context.insert("posts", &category_posts);
 
     let tera = state.tera.read().await;
-    let body = tera.render("category.html", &context).map_err(|e| {
+    let mut body = tera.render("category.html", &context).map_err(|e| {
         // Store the reason why Tera failed to render the template
         let internal_err = e.source().unwrap();
         eyre!(
@@ -901,6 +907,13 @@ async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Respons
             internal_err
         )
     })?;
+
+    // Always use the proper URL to the development server for template links that refers
+    // to the local URL, this is useful when running the server exposed to LAN network
+    body = body.replace(
+        &state.config.root_url.replace("://", ":&#x2F;&#x2F;"),
+        &state.routes_url,
+    );
 
     Ok(Response::builder()
         .header(CONTENT_TYPE, "text/html; charset=utf-8")
