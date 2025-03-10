@@ -121,9 +121,13 @@ enum Commands {
             short = 'm',
             long,
             default_value_t = true,
+            overrides_with = "_no_minify",
             help = "Minify the produced assets"
         )]
         minify: bool,
+
+        #[arg(long = "no-minify")]
+        _no_minify: bool,
     },
 }
 
@@ -152,7 +156,7 @@ pub async fn start() -> Result<()> {
             host,
             open,
         } => check_and_serve(*port, !_no_drafts, *open, *host).await?,
-        Commands::Build { minify } => build_site(*minify).await?,
+        Commands::Build { minify: _, _no_minify } => build_site(!_no_minify).await?,
         Commands::New { kind, name, open } => {
             new_asset(kind.as_ref(), name.as_ref(), *open).await?
         } // _ => bail!("Unsupported command"),
@@ -185,6 +189,20 @@ async fn init_site(name: Option<&String>, prompt: bool) -> Result<()> {
 /// # Returns:
 ///   A `Result<()>` indicating success or error.
 async fn build_site(minify: bool) -> Result<()> {
+    let build_config = match crate::fs::find_config_file().await? {
+        Some(config_path) => {
+            let config_content = tokio::fs::read_to_string(config_path).await?;
+            toml::from_str(&config_content)?
+        }
+        None => crate::config::SiteConfig::default(),
+    }
+    .build
+    .unwrap_or_default();
+
+    // Merge CLI and config values
+    // CLI options have higher priority than config
+    // config has higher priority than defaults
+    let minify = minify || build_config.minify;
     cmd::build(minify).await
 }
 
@@ -200,6 +218,30 @@ async fn build_site(minify: bool) -> Result<()> {
 ///   A `Result<()>` indicating success or error. On error, the context message
 ///   will provide information on why the development server could not be initialized.
 async fn check_and_serve(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
+    let serve_config = match crate::fs::find_config_file().await? {
+        Some(config_path) => {
+            let config_content = tokio::fs::read_to_string(config_path).await?;
+            toml::from_str(&config_content)?
+        }
+        None => crate::config::SiteConfig::default(),
+    }
+    .serve
+    .unwrap_or_default();
+
+    // Merge CLI and config values
+    // CLI options have higher priority than config
+    // config has higher priority than defaults
+    let port = if port != 3030 {
+        port
+    } else if serve_config.port == 0 {
+        3030
+    } else {
+        serve_config.port
+    };
+    let drafts = drafts || serve_config.drafts;
+    let host = host || serve_config.host;
+    let open = open || serve_config.open;
+
     if !net::is_port_available(port) {
         let port_msg = if port == 3030 {
             "default Norgolith port (3030)".to_string()
