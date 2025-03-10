@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::ContentSchema;
+use commands::{BuildConfig, ServeConfig};
+
+pub mod commands;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SiteConfigHighlighter {
@@ -18,13 +21,17 @@ pub struct SiteConfigRss {
     pub image: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct SiteConfig {
     #[serde(rename = "rootUrl")]
     pub root_url: String,
     pub language: String,
     pub title: String,
     pub author: String,
+    #[serde(default)]
+    pub build: Option<BuildConfig>,
+    #[serde(default)]
+    pub serve: Option<ServeConfig>,
     #[serde(default)]
     pub content_schema: Option<ContentSchema>,
     pub highlighter: Option<SiteConfigHighlighter>,
