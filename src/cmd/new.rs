@@ -154,6 +154,12 @@ async fn create_norg_document(path: &Path, title: &str) -> Result<()> {
         .with_placeholder("e.g. Neovim, Neorg")
         .prompt()
         .map_err(|e| eyre!("Failed to get document categories: {}", e))?;
+    let layout = Text::new("Layout:")
+        .with_default("default")
+        .with_help_message("Template to be used for this file")
+        .with_placeholder("e.g. post")
+        .prompt()
+        .map_err(|e| eyre!("Failed to get document layout: {}", e))?;
 
     let content = formatdoc!(
         r#"
@@ -169,6 +175,7 @@ async fn create_norg_document(path: &Path, title: &str) -> Result<()> {
         created: {creation_date}
         updated: {creation_date}
         draft: true
+        layout: {layout}
         version: 1.1.1
         @end
 
