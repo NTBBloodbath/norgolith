@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use colored::Colorize;
-use eyre::{bail, eyre, Result};
+use eyre::{eyre, Result};
 use tera::{Context, Tera};
 use tracing::{error, info};
 use walkdir::WalkDir;
@@ -229,39 +229,28 @@ pub fn get_elapsed_time(instant: Instant) -> String {
 }
 
 pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Result<Tera> {
-    // Initialize Tera with the user-defined templates first
-    let mut tera = match Tera::parse(&(templates_dir.to_owned() + "/**/*.html")) {
-        Ok(t) => t,
-        Err(e) => bail!(
-            "{}: {}",
-            "Error parsing HTML templates from the templates directory".bold(),
-            e
-        ),
-    };
-    let tera_xml = match Tera::parse(&(templates_dir.to_owned() + "/**/*.xml")) {
-        Ok(t) => t,
-        Err(e) => bail!(
-            "{}: {}",
-            "Error parsing XML templates from the templates directory".bold(),
-            e
-        ),
-    };
-    tera.extend(&tera_xml)?;
+    let mut tera = Tera::default();
 
-    // Theme templates will override the user-defined templates by design if they are named exactly
-    // the same in both the user's templates directory and the theme templates directory
+    // Loading theme templates first allows the user to extend the theme templates using their own user-defined
+    // templates aka inheriting from the theme templates.
     if tokio::fs::try_exists(&theme_templates_dir).await? {
-        let tera_theme =
-            match Tera::parse(&(theme_templates_dir.display().to_string() + "/**/*.html")) {
-                Ok(t) => t,
-                Err(e) => bail!(
-                    "{}: {}",
-                    "Error parsing HTML templates from themes".bold(),
-                    e
-                ),
-            };
-        tera.extend(&tera_theme)?;
+        let theme_glob = format!("{}/**/*.html", theme_templates_dir.display());
+        let theme_tera = Tera::parse(&theme_glob)
+            .map_err(|e| eyre!("Error parsing theme templates: {}", e))?;
+        tera.extend(&theme_tera)?;
     }
+
+    // Load user's templates
+    let user_glob = format!("{}/**/*.html", templates_dir);
+    let user_tera = Tera::parse(&user_glob)
+        .map_err(|e| eyre!("Error parsing user templates: {}", e))?;
+    tera.extend(&user_tera)?;
+
+    let xml_glob = format!("{}/**/*.xml", templates_dir);
+    let xml_tera = Tera::parse(&xml_glob)
+        .map_err(|e| eyre!("Error parsing user XML templates: {}", e))?;
+    tera.extend(&xml_tera)?;
+
     tera.build_inheritance_chains()
         .map_err(|e| eyre!("{}: {}", "Failed to build templates inheritance".bold(), e))?;
 
