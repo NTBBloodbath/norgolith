@@ -1,6 +1,6 @@
 @document.meta
 title: Welcome to Norgolith
-description: The monolithic Norg static site generator built with Rust.
+description: The monolithic static site generator for Neorg, built with Rust.
 authors: [
   NTBBloodbath
 ]
@@ -21,38 +21,39 @@ version: 1.1.1
   .image /assets/norgolith.svg
 
   +html.class font-mono px-4
-  Norgolith is a monolithic static site generator for {https://github.com/nvim-neorg/neorg}[Neorg]
-  built with Rust. It caters to both developers and content creators seeking a powerful and
-  user-friendly solution for creating static websites from Norg content.
+  Norgolith is a Rust-powered static site generator designed for
+  {https://github.com/nvim-neorg/neorg}[Neorg] — built by Neorg enthusiasts, for Neorg enthusiasts.
+  It gets out of your way by combining Rust's rock-solid foundations with opt-in validations and
+  sane defaults, so you spend less time configuring and debugging, and spend more time creating
+  appealing content.
   @embed html
   </div>
   @end
 
+  > /*Precision meets simplicity*: Norgolith combines Rust's reliability with a community-driven
+  design. We handle the config — you own the content./
+
   +html.class text-base-alt mt-12 lg:mt-14
   ___
 
+** Key Features
+   - *Built with Rust*: Extremely fast performance and type-safe pipelines, everything you need in a
+     single binary with no external dependencies.
+   - *Neorg-first*: Native support for Norg, powered by our in-house HTML conversion tool.
+   - *Zero-config workflow*: Ship sites with sane defaults — just write Norg.
+   - *Error-proof content*:
+   -- Syntax validation via {https://github.com/nvim-neorg/rust-norg}[rust-norg].
+   -- *Content schemas*: Opt-in metadata rules enforcement /before/ build time.
+   - *Easy to use*: Everything is designed to be as intuitive as possible, including the error
+     messages!
+
 ** Getting Started
-   - Create assets and content using `lith new`.
-   - Use `lith serve` to start the development server.
-   - Run `lith build` for building your production-ready site.
-
-** Features
-   - Native `.norg` file support.
-   - Fully async build system.
-   - Live reload development server.
-   - Flexible template system with Tera.
-
-** Documentation
-   TBD...
+   Do you want to get started? Check out the {:/docs:}[documentation]!
 
 ** Support
-   - Need help? {https://discord.gg/T6EgTAX7ht}[Join our Discord]!
+   - Need help? {https://discord.gg/T6EgTAX7ht}[Join the Neorg Discord community]!
    - Found an issue? {https://github.com/NTBBloodbath/norgolith/issues/new}[Report it on GitHub].
 
-** Next steps
-   - Edit this file at `content/index.norg`.
-   - Add your first post: `lith new posts/hello-world.norg`.
-   - Customize CSS in the `assets` directory.
-   - Customize templates in the `templates` directory.
-   - Build your site for production: `lith build`.
-   - Deploy the produced `public/` directory to {https://pages.github.com}[GitHub Pages].
+** Contributing
+   Norgolith is open-source! {:/docs/contributing:}[Join us] to improve documentation, fix bugs, or
+   add features.
