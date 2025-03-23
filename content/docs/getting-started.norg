@@ -23,7 +23,7 @@ This guide will walk you through setting up your first static site, creating con
     <strong class="text-xl">Note</strong>
   </span>
 @end
-This guide assumes that you’ve already {./installation}[installed Norgolith].
+This guide assumes that you’ve already {:/docs/installation:}[installed Norgolith].
 @embed html
 </blockquote>
 @end
@@ -186,7 +186,7 @@ This guide assumes that you’ve already {./installation}[installed Norgolith].
      lith theme pull github:NTBBloodbath/norgolith-pico-theme
      @end
 
-     Learn more about the themes in the {./theming}[Theming] guide section.
+     Learn more about the themes in the {:/docs/theming:}[Theming] guide section.
 
      @embed html
      <blockquote style="border-color: var(--color-yellow)">
@@ -206,7 +206,7 @@ This guide assumes that you’ve already {./installation}[installed Norgolith].
 
 **** Explore Content Schemas
      Define validation rules for your content metadata in `norgolith.toml`. Learn more in the
-     {./content-schemas}[Content Schemas Guide].
+     {:/docs/content-schemas:}[Content Schemas Guide].
 
      +html.class text-base-alt mt-12 lg:mt-14
      ___
@@ -228,4 +228,4 @@ This guide assumes that you’ve already {./installation}[installed Norgolith].
 ** Need Help?
    Join the {https://discord.gg/T6EgTAX7ht}[Neorg community on Discord] for support and discussions in the `#norgolith` channel.
 
-   {./configuration}[Next: Configuration Reference →]
+   {:/docs/configuration:}[Next: Configuration Reference →]

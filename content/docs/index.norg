@@ -35,12 +35,12 @@ Transform your Norg content into high-performance websites with /opt-in/ validat
    - *Community-driven*: Built with open collaboration and feedback from the community! 💜
 
 ** Contributing
-   Want to contribute with the project? Check out the {./docs/contributing}[Contributing] section!
+   Want to contribute with the project? Check out the {:/docs/contributing:}[Contributing] section!
 
 ** Getting started
-   - {./docs/installation}[Installation]
-   - {./docs/getting-started}[Quick Start]
-   - {./docs/configuration}[Configuration Reference]
-   - {./docs/commands}[Commands Reference]
-   - {./docs/templating}[Templating]
-   - {./docs/content-schemas}[Content Schemas]
+   - {:/docs/installation:}[Installation]
+   - {:/docs/getting-started:}[Quick Start]
+   - {:/docs/configuration:}[Configuration Reference]
+   - {:/docs/commands:}[Commands Reference]
+   - {:/docs/templating:}[Templating]
+   - {:/docs/content-schemas:}[Content Schemas]

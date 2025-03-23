@@ -88,4 +88,4 @@ The Norgolith binary is called `lith` and not `norgolith`, this is for ergonomic
 
    > Special thanks to {https://github.com/Ladas552}[@Ladas552] for providing this example flake!
 
-   {./getting-started}[Next: Create your first site →]
+   {:/docs/getting-started:}[Next: Create your first site →]

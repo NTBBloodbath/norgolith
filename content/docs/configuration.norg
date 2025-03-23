@@ -78,7 +78,7 @@ Norgolith uses a `norgolith.toml` file to manage site-wide settings, content sch
      - *Field definitions*: Rules for validating individual fields.
      - *Validation Rules*: Conditional logic for enforcing additional constraints.
 
-     For a detailed guide on content schemas, see the {./docs/content-schemas}[Content Schemas Guide].
+     For a detailed guide on content schemas, see the {:/docs/docs/content-schemas:}[Content Schemas Guide].
 
 ** Syntax Highlighting
    Norgolith supports syntax highlighting for code blocks in your content. You can configure it in the `[highlighter]` section.
@@ -142,6 +142,6 @@ Norgolith uses a `norgolith.toml` file to manage site-wide settings, content sch
     ___
 
 * Next Steps
-  - Learn how to customize your site’s appearance in the {./theming}[Theming Guide].
-  - Explore advanced content validation in the {./content-schemas}[Content Schemas Guide].
-  - Refer to the {./commands}[Commands Reference] for all available CLI options.
+  - Learn how to customize your site’s appearance in the {:/docs/theming:}[Theming Guide].
+  - Explore advanced content validation in the {:/docs/content-schemas:}[Content Schemas Guide].
+  - Refer to the {:/docs/commands:}[Commands Reference] for all available CLI options.
