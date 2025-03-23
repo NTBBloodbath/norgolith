@@ -54,6 +54,12 @@ titlecase = "3.3.0"
 rss = "2.0.12"
 lightningcss = "1.0.0-alpha.64"
 
+[target.aarch64-unknown-linux-musl.dependencies]
+git2 = { version = "0.20.0", features = ["vendored-libgit2", "vendored-openssl"] }
+
+[target.x86_64-unknown-linux-musl.dependencies]
+git2 = { version = "0.20.0", features = ["vendored-libgit2", "vendored-openssl"] }
+
 [dev-dependencies]
 mockall = "0.13.1"
 
