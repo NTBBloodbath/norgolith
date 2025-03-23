@@ -1,8 +1,8 @@
 @document.meta
 title: Welcome to Norgolith
-description: This is a static site made using norgolith.
+description: The monolithic Norg static site generator built with Rust.
 authors: [
-  amartin
+  NTBBloodbath
 ]
 categories: []
 created: 2025-02-17T03:36:04-04:00
@@ -12,8 +12,7 @@ draft: false
 version: 1.1.1
 @end
 
-+html.class text-3xl font-bold
-* Welcome to your new Norgolith site!
+* Welcome to Norgolith!
   @embed html
   <div class="flex items-center mt-2">
   @end
@@ -21,8 +20,7 @@ version: 1.1.1
   +html.height 120
   .image /assets/norgolith.svg
 
-  +html.class px-4 font-mono
-  +html.id desc
+  +html.class font-mono px-4
   Norgolith is a monolithic static site generator for {https://github.com/nvim-neorg/neorg}[Neorg]
   built with Rust. It caters to both developers and content creators seeking a powerful and
   user-friendly solution for creating static websites from Norg content.
@@ -30,51 +28,31 @@ version: 1.1.1
   </div>
   @end
 
-+html.class text-2xl font-bold mt-4
+  +html.class text-base-alt mt-12 lg:mt-14
+  ___
+
 ** Getting Started
-   +html.class list-disc mx-4
    - Create assets and content using `lith new`.
-   +html.class list-disc mx-4
    - Use `lith serve` to start the development server.
-   +html.class list-disc mx-4
    - Run `lith build` for building your production-ready site.
 
-+html.class text-2xl font-bold mt-4
 ** Features
-   +html.class list-disc mx-4
    - Native `.norg` file support.
-   +html.class list-disc mx-4
    - Fully async build system.
-   +html.class list-disc mx-4
    - Live reload development server.
-   +html.class list-disc mx-4
    - Flexible template system with Tera.
 
-+html.class text-2xl font-bold mt-4
 ** Documentation
    TBD...
 
-+html.class text-2xl font-bold mt-4
 ** Support
-   +html.class list-disc mx-4
-   +html.id discord-link
    - Need help? {https://discord.gg/T6EgTAX7ht}[Join our Discord]!
-   +html.class list-disc mx-4
-   +html.id github-issues
    - Found an issue? {https://github.com/NTBBloodbath/norgolith/issues/new}[Report it on GitHub].
 
-+html.class text-2xl font-bold mt-4
 ** Next steps
-   +html.class list-disc mx-4
    - Edit this file at `content/index.norg`.
-   +html.class list-disc mx-4
    - Add your first post: `lith new posts/hello-world.norg`.
-   +html.class list-disc mx-4
    - Customize CSS in the `assets` directory.
-   +html.class list-disc mx-4
    - Customize templates in the `templates` directory.
-   +html.class list-disc mx-4
    - Build your site for production: `lith build`.
-   +html.class list-disc mx-4
-   +html.id github-pages
    - Deploy the produced `public/` directory to {https://pages.github.com}[GitHub Pages].

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock title %}
+{% block content %}
+<div>
+  <h1>Categories</h1>
+  <p class="text-lg"><i>All the categories used in posts.</i></p>
+  <hr class="text-base-alt mt-6 lg:mt-8" />
+  <ul class="mt-6 lg:mt-8">
+    {% for category in categories | sort %}
+      {%- set_global cat_posts = 0 -%}
+      {% for post in posts %}
+        {% if category in post.categories %}
+          {%- set_global cat_posts = cat_posts + 1 -%}
+        {% endif %}
+      {% endfor %}
+      <li>
+        <a class="font-mono text-xl no-underline! hover:underline! hover:decoration-dashed" href="/categories/{{ category }}">{{ category }}</a>
+        <span class="text-grey">({{ cat_posts }} post{{ cat_posts | pluralize }})</span>
+      </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock content %}

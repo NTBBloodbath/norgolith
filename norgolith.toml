@@ -7,3 +7,22 @@ author = 'NTBBloodbath'
 [highlighter]
 enable = true
 engine = 'prism'
+
+# RSS Feed
+[rss]
+enable = true
+description = "Latest posts"
+ttl = 60
+image = "/assets/norgolith.svg"
+
+[extra]
+license = "GPLv2"
+footer_author_link = "https://github.com/NTBBloodbath"
+
+[extra.nav]
+docs = "/docs"
+blog = "/posts"
+source = "https://github.com/NTBBloodbath/norgolith"
+
+[extra.footer]
+GitHub = "https://github.com/NTBBloodbath/norgolith"

@@ -1,0 +1,230 @@
+@document.meta
+title: Contributing
+description: Contributor guide for Norgolith development
+authors: [
+  NTBBloodbath
+]
+categories: [
+  docs
+]
+created: 2025-03-10T14:00:32-04:00
+updated: 2025-03-10T14:00:32-04:00
+draft: false
+layout: docs
+version: 1.1.1
+@end
+
+Thank you for considering contributing to Norgolith, as the only maintainer of the project I appreciate it very much! This guide will walk you through the development setup, coding standards, and contribution workflow.
+
+** Development Setup
+*** Nix Development Environment
+    Norgolith provides a Nix flake for a reproducible development environment. This is the recommended setup.
+
+**** Install Nix
+     If you don’t have Nix installed, follow the {https://nixos.org/download.html}[official installation guide].
+
+**** Enable Flakes
+     Ensure {https://nixos.wiki/wiki/Flakes}[flakes] are enabled in your Nix configuration:
+
+     @code bash
+     mkdir -p ~/.config/nix
+     echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+     @end
+
+**** Enter the Development Shell
+     @code bash
+     nix develop
+     @end
+
+     This will provide an interactive shell with all dependencies pre-installed.
+
+**** Build and Test
+     @code bash
+     cargo build
+     cargo nextest run --test-threads=1
+     @end
+
+     @embed html
+     <blockquote style="border-color: var(--color-green)">
+       <span style="color: var(--color-green)" class="flex items-center">
+         <i class="text-2xl ti ti-bulb mr-1"></i>
+         <strong class="text-xl">Tip</strong>
+       </span>
+     @end
+     If you are testing changes that require an existing Norgolith site, you could create a new site called `my-site` in Norgolith’s project root directory, `my-site` is gitignored so there won’t be any risk of `git add`ing it per accident.
+     @embed html
+     </blockquote>
+     @end
+
+**** Optional: Nix-Direnv Integration
+     For automatic development environment activation, use {https://github.com/nix-community/nix-direnv}[nix-direnv].
+
+*** Manual Setup
+    If you prefer not to use Nix, you can set up the environment manually:
+
+**** Install Rust
+     Install Rust using {https://rustup.rs/}[rustup]:
+
+     @code bash
+     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+     @end
+
+**** Install Dependencies
+     Ensure you have the following installed:
+     - `cargo`: Rust’s package manager (comes with `rustup`).
+     - {https://rust-analyzer.github.io/}[`rust-analyzer`]: Rust Language Server (optional but recommended, `rustup component add rust-analyzer`).
+     - {https://nexte.st/}[`cargo-nextest`]: Next-generation test runner for Rust projects (optional but recommended).
+
+**** Clone the Repository
+     @code bash
+     git clone https://github.com/NTBBloodbath/norgolith.git \
+     && cd norgolith
+     @end
+
+**** Build and Test
+     @code bash
+     cargo build
+     # 'cargo nextest run --test-threads=1' if you've installed cargo-nextest
+     cargo test -- --test-threads=1
+     @end
+
+** Coding Standards
+*** Rust Code Style
+    - Follow the {https://rust-lang.github.io/api-guidelines/}[Rust API Guidelines].
+    - Use `rustfmt` to format your code before pushing your changes:
+    @code bash
+    cargo fmt
+    @end
+    - Use `clippy` for linting:
+    @code bash
+    cargo clippy
+    @end
+
+*** Documentation
+    - Document public APIs using {https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html}[Rustdoc].
+    - Include examples in your documentation where applicable.
+
+** Git Workflow
+*** Feature Branch Workflow
+    Follow the {https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow}[Feature Branch Workflow].
+
+    @code bash
+    git checkout -b feat/your-feature-name
+    @end
+
+*** Commit Your Changes
+    Follow the {https://www.conventionalcommits.org/en/v1.0.0/}[Conventional Commits] guidelines.
+
+*** Push Your Branch
+    @code bash
+    git push origin feat/your-feature-name
+    @end
+
+*** Create a Pull Request
+    Open a PR against the `master` branch.
+
+    +html.class text-base-alt mt-12 lg:mt-14
+    ___
+
+*** Conventional Commits
+    Norgolith follows the {https://www.conventionalcommits.org/en/v1.0.0/}[Conventional Commits] specification. This ensures a consistent commit history and enables automated changelog generation.
+
+**** Commit Message Format
+     @code bash
+     <type>[optional scope]: <description>
+
+     [optional body]
+
+     [optional footer]
+     @end
+
+***** Common Types
+      - `feat`: A new feature.
+      - `fix`: A bug fix.
+      - `hotfix`: A critical bug fix.
+      - `docs`: Documentation changes.
+      - `style`: Code style changes (formatting, linting).
+      - `perf`: Performance changes.
+      - `refactor`: Code refactoring.
+      - `test`: Adding or updating tests.
+      - `chore`: Maintenance tasks.
+      - `ci`: CI/CD changes.
+      - `revert`: Revert changes.
+
+***** Example Commit Messages
+      @code bash
+      feat(templates): add support for dark mode
+
+      fix(converter): handle edge case in norg syntax
+
+      docs: update contributing guide
+      @end
+
+** Testing Guidelines
+*** Running Tests
+    Avoid running tests with parallelism, this can cause issues with some of them. Running the tests using one thread will take /a little/ longer, but the tests won’t interfere with each other if they share state.
+
+    @code bash
+    cargo test -- --test-threads=1
+    @end
+
+    @embed html
+    <blockquote style="border-color: var(--color-blue)">
+      <span style="color: var(--color-blue)" class="flex items-center">
+        <i class="text-2xl ti ti-message mr-1"></i>
+        <strong class="text-xl">Note</strong>
+      </span>
+    @end
+    Try to use `cargo nextest` whenever possible for getting a better output.
+    @embed html
+    </blockquote>
+    @end
+
+*** Writing tests
+    - Use Tokio’s {https://tokio.rs/tokio/topics/testing}[test framework].
+    - Include unit tests for individual functions.
+
+** Pull Request Process
+*** Fork the Repository
+    Fork the Norgolith repository to your GitHub account.
+
+*** Create a Feature Branch
+    Follow the {https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow}[Feature Branch Workflow].
+
+*** Submit a Pull Request
+    - Ensure your PR includes a clear title and description of the changes.
+    - Reference any related issues.
+    - Ensure your commits follow the {https://www.conventionalcommits.org/en/v1.0.0/}[Conventional Commits] conventions.
+    - Squash any non-relevant commit message (e.g. fixes to your own Pull Request code) to keep the commit history as clean as possible.
+
+*** Code Review
+    - Address any feedback from reviewers. Please try to use {https://conventionalcomments.org}[Conventional Comments] whenever possible while reviewing code.
+    - Update your PR as needed.
+
+*** Merge
+    Once approved, your PR will be merged into `master`.
+
+** Community Standards
+*** Code of Conduct
+    Norgolith follows the {https://www.rust-lang.org/policies/code-of-conduct}[Rust Code of Conduct]. Please adhere to it in all interactions.
+
+*** Communication
+    - Join the {https://discord.gg/T6EgTAX7ht}[Neorg community on Discord] for discussions in the `#norgolith` channel.
+    - Use GitHub Issues for bug reports and feature requests. Please use the issues templates whenever possible.
+
+    @embed html
+    <blockquote style="border-color: var(--color-blue)">
+      <span style="color: var(--color-blue)" class="flex items-center">
+        <i class="text-2xl ti ti-message mr-1"></i>
+        <strong class="text-xl">Note</strong>
+      </span>
+    @end
+    Feel free to bug me on the Discord community `@ntbbloodbath` if you have any question, need guidance or prefer a real-time communication while debugging/implementing something in the codebase. I’ll be glad to give you a hand!
+    @embed html
+    </blockquote>
+    @end
+
+** Do you want to start contributing?
+   Check out the {https://github.com/NTBBloodbath/norgolith/issues}[issue tracker] for open tasks. I try to assign priorities, scopes and milestones to the issues so that they are easier to identify.
+
+   Any contribution is welcome, and thanks again for your interest in helping with the project! 💜

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ metadata.title | title }}{% endblock title %}
+{% block content %}
+<h1 class="text-center">Posts</h1>
+<hr class="text-base-alt mt-6 lg:mt-8" />
+<div class="mt-6 lg:mt-8 break-keep">
+  {% for post in posts | filter(attribute="draft", value=false) | slice(end=5) %}
+  <div class="bg-surface p-4 mt-4 border-2 border-base-alt rounded-md shadow-lg">
+    <div class="flex flex-col">
+      <h3 class="mt-0! text-text-alt"><a class="no-underline! hover:underline! hover:decoration-dashed" href="{{ post.permalink }}">{{ post.title }}</a></h3>
+      <time class="text-dark-grey dark:text-grey" datetime="{{ post.created }}">{{ post.created | date(format="%B %e, %Y") }}</time>
+      <span class="text-sm text-grey italic">{{ post.description }}</span>
+    </div>
+    <div class="flex flex-col">
+      <p>{{ post.raw | striptags | truncate(length=100) | safe }}</p>
+      <a class="no-underline! text-dark-grey font-semibold" href="{{ post.permalink }}">Read more …</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock content %}
