@@ -466,23 +466,25 @@ pub async fn generate_category_pages(
     let categories = collect_all_posts_categories(posts).await;
     let categories_dir = public_dir.join("categories");
 
-    // Generate main categories index
-    let mut context = Context::new();
-    context.insert("config", config);
-    context.insert("posts", &posts);
-    context.insert("categories", &categories.iter().collect::<Vec<_>>());
+    // Generate main categories index only if the site has posts
+    if !posts.is_empty() {
+        let mut context = Context::new();
+        context.insert("config", config);
+        context.insert("posts", &posts);
+        context.insert("categories", &categories.iter().collect::<Vec<_>>());
 
-    let content = tera.render("categories.html", &context).map_err(|e| {
-        let internal_err = e.source().unwrap();
-        eyre!(
-            "{}: {}",
-            "Failed to render categories index".bold(),
-            internal_err
-        )
-    })?;
+        let content = tera.render("categories.html", &context).map_err(|e| {
+            let internal_err = e.source().unwrap();
+            eyre!(
+                "{}: {}",
+                "Failed to render categories index".bold(),
+                internal_err
+            )
+        })?;
 
-    tokio::fs::create_dir_all(&categories_dir).await?;
-    tokio::fs::write(categories_dir.join("index.html"), content).await?;
+        tokio::fs::create_dir_all(&categories_dir).await?;
+        tokio::fs::write(categories_dir.join("index.html"), content).await?;
+    }
 
     // Generate individual category pages
     for category in categories {
