@@ -213,7 +213,7 @@ async fn process_build_entry(
         // Handle metadata loading with proper error fallback
         //
         // The /categories routes does not have a metadata file by design so we return an empty TOML table for them
-        let metadata = if !rel_path.starts_with("/categories") {
+        let metadata = if !rel_path.starts_with("categories") {
             shared::load_metadata(meta_path, meta_rel_path, &site_config.root_url).await
         } else {
             toml::Value::Table(toml::map::Map::new())
@@ -222,7 +222,7 @@ async fn process_build_entry(
         // Metadata schema validation
         if let Some(schema) = &site_config.content_schema {
             // Do not try to validate generated categories
-            if !rel_path.starts_with("/categories") {
+            if !rel_path.starts_with("categories") {
                 validate_metadata(
                     path,
                     &paths.build,
