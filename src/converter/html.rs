@@ -114,10 +114,10 @@ fn paragraph_to_string(
             description,
         } => {
             let mut a_tag = Vec::<String>::new();
-            a_tag.push("<a".to_string());
+            a_tag.push("<a ".to_string());
             // link to local paths (':/about:' -> '/about')
             if let Some(path) = filepath {
-                a_tag.push(format!("href=\"{}\"", path));
+                a_tag.push(format!("href=\"{}{}\"", root_url, path));
             }
             // link to anything else
             if !targets.is_empty() {
@@ -468,7 +468,7 @@ impl NorgToHtml for NorgAST {
                         // work out-of-the-box with code highlighting libraries like highlight.js or prismjs
                         code_tag.push(format!(
                             "><code{}>{}</code></pre>",
-                            if language.is_empty() { String::from("") } else { format!("class=\"language-{language}\"") },
+                            if language.is_empty() { String::from("") } else { format!(" class=\"language-{language}\"") },
                             content
                         ));
                         verbatim_tag = code_tag.join(" ")

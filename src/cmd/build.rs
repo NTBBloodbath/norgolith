@@ -257,7 +257,7 @@ async fn process_build_entry(
         context.insert("metadata", &metadata);
 
         // Render template
-        let rendered = match tera.render(&(layout.clone() + ".html"), &context) {
+        let mut rendered = match tera.render(&(layout.clone() + ".html"), &context) {
             Ok(content) => content,
             Err(e) => {
                 // Store the reason why Tera failed to render the template
@@ -271,6 +271,12 @@ async fn process_build_entry(
                 String::new()
             }
         };
+
+        // Convert all '/' references to the site root URL in links and assets, e.g.,
+        // - `<a href="/docs" ...` -> `<a href="https://foobar.com/docs" ...`
+        // - `<link rel... href="/assets/..." ...` -> `<link rel... href="https://foobar.com/assets/..." ...`
+        let href_re = regex::Regex::new(r#"href="(/|&#x2F;)"#)?;
+        rendered = href_re.replace_all(&rendered, format!("href=\"{}/", site_config.root_url)).into_owned();
 
         // If no errors occurred then rendered should not be empty and we should proceed
         if !rendered.is_empty() {
