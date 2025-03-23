@@ -1,0 +1,121 @@
+<!doctypehtml><html lang=en-us><meta charset=UTF-8><meta content=width=device-width,initial-scale=1.0 name=viewport><meta content=Norgolith name=generator><meta content="Norgolith templates reference"name=description><meta content=NTBBloodbath name=author><meta content=docs name=keywords><link href=https://ntbbloodbath.github.io/norgolith/assets/css/prism-sweetie.min.css rel=stylesheet><script src=https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js></script><script src=https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js></script><script src=https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js></script><script defer src=https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js></script><script>document.addEventListener(`alpine:init`,()=>{let b=`dark`,c=`light`,a=`theme`;Alpine.data(`menu`,()=>({currentPage:window.location.pathname,openMobile:!1,toggleMobile(){this.openMobile=!this.openMobile}}));Alpine.data(`toc`,()=>({open:!0,toggle(){this.open=!this.open}}));Alpine.data(a,()=>({current:b,init(){const d=localStorage.getItem(a);if(d===b){this.current=b}else if(d===c){this.current=c}else if(window.matchMedia(`(prefers-color-scheme: dark)`).matches){this.current=b};localStorage.setItem(a,this.current);if(this.current===b){document.documentElement.classList.add(b)}},toggle(){this.current=this.current===b?c:b;document.documentElement.classList.toggle(b,this.current===b);localStorage.setItem(a,this.current)}}))})</script><link href=https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.28.1/tabler-icons.min.css rel=stylesheet><link href=https://ntbbloodbath.github.io/norgolith/assets/css/styles.min.css rel=stylesheet><link href=https://ntbbloodbath.github.io/norgolith/assets/norgolith.svg rel=icon><title>Templating Guide - Norgolith</title><body><header class="relative shadow-sm"><nav class="container mx-auto px-4 md:px-0 font-mono"x-data=menu><div class="flex items-center justify-between h-16"><div class="flex items-center shrink-0"x-data=theme><a class="flex items-center space-x-2"href=/>  <span class="text-xl font-bold text-text">Norgolith</span> </a><button :aria-label="current === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"class="ml-2 md:ml-4 rounded-lg transition-colors flex items-center"@click=toggle() type=button><i class="ti ti-moon text-2xl text-grey hover:text-blue"x-show="current === 'light'"></i> <i class="ti ti-sun text-2xl text-grey hover:text-yellow"x-show="current === 'dark'"></i></button></div><div class="hidden md:flex md:items-center md:space-x-8"><a :class="{ 'text-blue!': currentPage.startsWith('/docs') }"class="text-text-alt hover:text-blue px-3 py-2 rounded-md text-sm font-medium"href=/docs>Docs</a><a :class="{ 'text-blue!': currentPage.startsWith('/posts') }"class="text-text-alt hover:text-blue px-3 py-2 rounded-md text-sm font-medium"href=/posts>Blog</a><a :class="{ 'text-blue!': currentPage.startsWith('https://github.com/NTBBloodbath/norgolith') }"class="text-text-alt hover:text-blue px-3 py-2 rounded-md text-sm font-medium"href=https://github.com/NTBBloodbath/norgolith>Source</a></div><div class=md:hidden><button class="inline-flex items-center justify-center p-2 rounded-md text-dark-grey hover:text-text-alt focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"@click=toggleMobile aria-controls=mobile-menu aria-expanded=false type=button><span class=sr-only>Open main menu</span>  <svg class="h-6 w-6"viewbox="0 0 24 24"fill=none stroke=currentColor x-show=!openMobile><path d="M4 6h16M4 12h16M4 18h16"stroke-linecap=round stroke-linejoin=round stroke-width=2 /></svg>  <svg class="h-6 w-6 text-red"viewbox="0 0 24 24"fill=none stroke=currentColor x-show=openMobile><path d="M6 18L18 6M6 6l12 12"stroke-linecap=round stroke-linejoin=round stroke-width=2 /></svg></button></div></div><div @click.outside="openMobile = false"class=md:hidden id=mobile-menu x-show=openMobile><div class="flex flex-row items-center justify-between px-2 pt-2 pb-3 space-y-1 sm:px-3"><a :class="{ 'text-blue!': currentPage.startsWith('/docs') }"class="text-text-alt hover:text-blue px-3 py-2 rounded-md text-sm font-medium"href=/docs>Docs</a><a :class="{ 'text-blue!': currentPage.startsWith('/posts') }"class="text-text-alt hover:text-blue px-3 py-2 rounded-md text-sm font-medium"href=/posts>Blog</a><a :class="{ 'text-blue!': currentPage.startsWith('https://github.com/NTBBloodbath/norgolith') }"class="text-text-alt hover:text-blue px-3 py-2 rounded-md text-sm font-medium"href=https://github.com/NTBBloodbath/norgolith>Source</a></div></div></nav></header><main class="container mx-auto min-h-screen pt-8 px-4 md:px-0"><div><h1>Templating Guide</h1></div><div class="flex flex-row"><div class="flex flex-1 items-center justify-between"><div><span> <time class="text-grey text-sm md:text-md lg:text-lg tabular-nums text-opacity-70 dark:text-opacity-100"datetime=2025-03-10T14:00:32-04:00><strong>Last updated:</strong> March 10, 2025</time> </span></div></div></div><div class=mt-4 x-data=toc><button class="inline-flex items-center"@click=toggle type=button><span class=sr-only>Close Table of Contents</span> <h3 class="mt-0! mr-1">Table of Contents</h3> <span :class="{ 'ti-arrow-badge-up-filled': open }"class="text-2xl hover:text-blue ti ti-arrow-badge-down-filled"></span></button><nav class=toc x-show=open><ol><li><a href=#Template-Basics>Template Basics</a><ol><li><a href=#Default-Templates>Default Templates</a><li><a href=#Example:-Basic-Template>Example: Basic Template</a></ol><li><a href=#Template-Variables>Template Variables</a><ol><li><a href=#Example>Example</a></ol><li><a href=#Template-Inheritance>Template Inheritance</a><li><a href=#Filters-and-Functions>Filters and Functions</a><li><a href=#Advanced-Templating-Techniques>Advanced Templating Techniques</a><ol><li><a href=#Loops-and-Conditionals>Loops and Conditionals</a><ol><li><a href=#Example:-Looping-Over-Categories>Example: Looping Over Categories</a><li><a href=#Example:-Conditional-Rendering>Example: Conditional Rendering</a></ol><li><a href=#Including-Partial-Templates>Including Partial Templates</a><ol><li><a href=#Example:-Including-a-Header>Example: Including a Header</a></ol></ol><li><a href=#Practical-Examples>Practical Examples</a><ol><li><a href=#Example-1:-Blog-Post-Template>Example 1: Blog Post Template</a><li><a href=#Example-2:-Homepage-Template>Example 2: Homepage Template</a></ol><li><a href=#Troubleshooting-Template-Issues>Troubleshooting Template Issues</a><ol><li><a href=#Common-Issues-and-Fixes>Common Issues and Fixes</a><ol><li><a href=#Template-Not-Rendering>Template Not Rendering</a><li><a href=#Missing-Variables>Missing Variables</a><li><a href=#Inheritance-Errors>Inheritance Errors</a></ol></ol><li><a href=#Best-Practices>Best Practices</a><ol><li><a href=#Organizing-Templates>Organizing Templates</a></ol></ol></nav></div><hr class="text-base-alt mt-12 lg:mt-14"><div class="mt-12 lg:mt-14 text-justify break-keep"><p>Norgolith uses the <a href=https://keats.github.io/tera/>Tera</a> templating engine to generate HTML from your Norg content. This guide will walk you through creating, customizing, and extending templates for your Norgolith site.<h2 id=Template-Basics>Template Basics</h2><p>Templates in Norgolith are written in HTML with Tera’s templating syntax. They are stored in the <code>templates/</code> directory of your site or theme.<h3 id=Default-Templates>Default Templates</h3><ul><li><code>base.html</code>: The base template that other templates extend.</ul><ul><li><code>index.html</code>: The homepage template.</ul><h3 id=Example:-Basic-Template>Example: Basic Template</h3><pre><codeclass ="language-django">&LT!-- templates/post.html -->
+&LT!DOCTYPE html>
+&LThtml lang="en">
+  &LThead>
+    &LTmeta charset="UTF-8">
+    &LTtitle>{{ metadata.title }}&LT/title>
+  &LT/head>
+  &LTbody>
+    &LTh1>{{ metadata.title }}&LT/h1>
+    &LTdiv class="content">{{ content }}&LT/div>
+  &LT/body>
+&LT/html>
+<h2 id=Template-Variables>Template Variables</h2> <p>Norgolith provides several variables for use in your templates:<ul> <li><code>metadata</code>: Frontmatter data from the Norg file (includes an additional <code>permalink</code> field). </li> </ul><ul> <li><code>config</code>: Global site configuration from <code>norgolith.toml</code> </li> </ul><ul> <li><code>content</code>: The rendered HTML content. </li> </ul><ul> <li><code>posts</code>: All the posts metadata as an array. </li> </ul><blockquote style=border-color:var(--color-violet)>
+  <span class="flex items-center"style=color:var(--color-violet)>
+    <i class="text-2xl ti ti-message-report mr-1"></i>
+    <strong class=text-xl>Important</strong>
+  </span>
+<ul> <li>Right now <code>posts</code> will retrieve all of the content files from <code>posts/</code> directory in <code>content/</code>, including draft posts. You will have to filter it on your own in the templates by checking for the <code>draft</code> metadata field. </li> </ul><ul> <li>Additionally to the regular metadata from the posts, <code>posts</code> will also contain a <code>raw</code> metadata field, containing the HTML code for the post. This is useful if you are creating a recent posts section and you want to display part of the post content additional to the post description. See the picture below for an example. </li> </ul><img alt="demo recent posts with post description"src=https://github.com/user-attachments/assets/a7b2fe09-bdc5-4a14-94e6-416484a3d7ab></blockquote>
+<h3 id=Example>Example</h3> <pre><codeclass ="language-django">&LT!-- templates/post.html -->
+&LTh1>{{ metadata.title }}&LT/h1>
+&LTdiv class="content">{{ content }}&LT/div>
+<h2 id=Template-Inheritance>Template Inheritance</h2> <p>Use template inheritance to avoid duplicating code. For example:<pre><codeclass ="language-django">&LT!-- templates/base.html -->
+&LThtml>
+  &LThead>
+    &LTtitle>{{ site.title }}&LT/title>
+  &LT/head>
+  &LTbody>
+  {% block content %}{% endblock %}
+  &LT/body>
+&LT/html>
+
+&LT!-- templates/post.html -->
+{% extends "base.html" %}
+
+{% block content %}
+&LTh1>{{ metadata.title }}&LT/h1>
+&LTdiv class="content">{{ content }}&LT/div>
+{% endblock %}
+<h2 id=Filters-and-Functions>Filters and Functions</h2> <p>Tera comes with some built-in global <a href=https://keats.github.io/tera/docs/#built-in-filters>filters</a> and <a href=https://keats.github.io/tera/docs/#built-in-functions>functions</a> which you can use directly in your templates. Additionally, Norgolith also exposes custom Tera functions for use in templates:<ul> <li><code>now</code>: Returns the current datetime. </li> </ul><pre><codeclass ="language-django">&LT!-- You can also use it without providing an argument -->
+&LTfooter>
+  &LTspan>Copyright &ampcopy; {{ now(format="%Y") }}&LT/span>
+&LT/footer>
+<ul> <li><code>generate_toc</code>: Generates a ToC for the current page content. </li> </ul><pre><codeclass ="language-django">&LT!-- Usage example -->
+{% if metadata.toc %}
+  &LTdiv>
+    {% set toc_html = generate_toc(toc=metadata.toc, list_type="ol") %}
+    &LTh3>
+      Table of Contents
+    &LT/h3>
+    &LTnav>
+      {{ toc_html | safe }}
+    &LT/nav>
+  &LT/div>
+{% endif %}
+<h2 id=Advanced-Templating-Techniques>Advanced Templating Techniques</h2> <h3 id=Loops-and-Conditionals>Loops and Conditionals</h3> <p>Tera supports loops and conditionals for dynamic content.<h4 id=Example:-Looping-Over-Categories>Example: Looping Over Categories</h4> <pre><codeclass ="language-django">&LTul>
+  {% for category in metadata.categories %}
+    &LTli>{{ category }}&LT/li>
+  {% endfor %}
+&LT/ul>
+<h4 id=Example:-Conditional-Rendering>Example: Conditional Rendering</h4> <pre><codeclass ="language-django">{% if metadata.draft %}
+  &LTdiv class="draft-notice">This post is a draft.&LT/div>
+{% endif %}
+<h3 id=Including-Partial-Templates>Including Partial Templates</h3> <p>You can include other templates within a template.<h4 id=Example:-Including-a-Header>Example: Including a Header</h4> <pre><codeclass ="language-django">{% include "header.html" %}
+<h2 id=Practical-Examples>Practical Examples</h2> <h3 id=Example-1:-Blog-Post-Template>Example 1: Blog Post Template</h3> <pre><codeclass ="language-django">&LT!-- templates/post.html -->
+{% extends "base.html" %}
+
+{% block content %}
+&LTarticle>
+  &LTh1>{{ metadata.title }}&LT/h1>
+  &LTp class="meta">By {{ metadata.authors | join(sep=", ") }} on {{ metadata.created | date(format="%Y-%m-%d") }}&LT/p>
+  &LTdiv class="content">{{ content }}&LT/div>
+  &LTul class="categories">
+  {% for category in metadata.categories %}
+    &LTli>{{ category }}&LT/li>
+  {% endfor %}
+  &LT/ul>
+&LT/article>
+{% endblock %}
+<h3 id=Example-2:-Homepage-Template>Example 2: Homepage Template</h3> <pre><codeclass ="language-django">&LT!-- templates/index.html -->
+{% extends "base.html" %}
+
+{% block content %}
+&LTsection class="posts">
+  {% for post in posts %}
+    &LTarticle>
+      &LTh2>&LTa href="{{ post.url }}">{{ post.title }}&LT/a>&LT/h2>
+      &LTp class="meta">By {{ post.authors | join(sep=", ") }} on {{ post.created | date(format="%Y-%m-%d") }}&LT/p>
+      &LTspan class="description">{{ post.description }}&LT/span>
+    &LT/article>
+  {% endfor %}
+&LT/section>
+{% endblock %}
+<h2 id=Troubleshooting-Template-Issues>Troubleshooting Template Issues</h2> <h3 id=Common-Issues-and-Fixes>Common Issues and Fixes</h3> <h4 id=Template-Not-Rendering>Template Not Rendering</h4> <ul> <li>Ensure the template file is in the correct directory (<code>templates/</code>). </li> </ul><ul> <li>Check for syntax errors in your Tera templates. </li> </ul><h4 id=Missing-Variables>Missing Variables</h4> <ul> <li>Verify that the variable exists in the context (e.g., <code>metadata.title</code>). </li> </ul><ul> <li>Check for typos in variable names. </li> </ul><h4 id=Inheritance-Errors>Inheritance Errors</h4> <ul> <li>Ensure the base template exists and is correctly referenced. </li> </ul><ul> <li>Verify that <code>{% block %}</code> tags are correctly placed. </li> </ul><h2 id=Best-Practices>Best Practices</h2> <h3 id=Organizing-Templates>Organizing Templates</h3> <ul> <li>Keep templates modular and reusable. </li> </ul><ul> <li>Use template inheritance to avoid duplicating code. </li> </ul><ul> <li>Organize partial templates into subdirectories (e.g. <code>templates/partials/</code>). </li> </ul>
+
+
+  
+
+  <footer class="mt-8 py-4 px-6 w-full font-mono">
+    <div class="flex justify-between items-center font-medium text-xs md:text-sm text-text-alt">
+  <span>Copyright © 2025
+    
+    <a class="text-blue hover:underline"href=https://github.com/NTBBloodbath>NTBBloodbath</a>.
+    
+    
+      <br class=md:hidden> Licensed under GPLv2.
+    
+  </span>
+  <div class="flex flex-inline">
+    
+    <div class="mr-4 md:mr-6 lg:mr-8 last:mr-0">
+      <a class=hover:text-blue href=https://github.com/NTBBloodbath/norgolith>
+        <span>Github</span>
+      </a>
+    </div>
+    
+  </div>
+</div>
+
+  </footer>
+
+
