@@ -454,7 +454,11 @@ impl NorgToHtml for NorgAST {
                                 weak_carry.remove(0);
                             }
                         }
-                        let language = &parameters[0];
+                        let language = if !parameters.is_empty() {
+                            &parameters[0]
+                        } else {
+                            &String::from("")
+                        };
                         // NOTE: Tera completely skips HTML code block contents while rendering our HTML content
                         // because we are forced to use the `safe` filter. This workaround aims to fix those
                         // problems, and (hopefully) also including XML rendering.
@@ -463,8 +467,9 @@ impl NorgToHtml for NorgAST {
                         // NOTE: the class `language-foo` is being added by default so the converter can
                         // work out-of-the-box with code highlighting libraries like highlight.js or prismjs
                         code_tag.push(format!(
-                            "><code class=\"language-{}\">{}</code></pre>",
-                            language, content
+                            "><code{}>{}</code></pre>",
+                            if language.is_empty() { String::from("") } else { format!("class=\"language-{language}\"") },
+                            content
                         ));
                         verbatim_tag = code_tag.join(" ")
                     }
