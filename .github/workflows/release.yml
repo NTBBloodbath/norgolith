@@ -29,10 +29,10 @@ jobs:
             target: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v4
-      - name: Install deps
+      - name: Install openssl-sys
         if: ${{ startsWith(matrix.platform.os_name, 'Linux') }}
         run: |
-          sudo apt-get install -y pkg-config libssl-dev
+          sudo apt-get install -y librust-openssl-sys-dev
       - name: Build
         uses: houseabsolute/actions-rust-cross@v0
         with:
