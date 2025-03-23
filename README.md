@@ -108,10 +108,12 @@ You can add norgolith to your NixOS configuration with flakes
 The Norgolith repository includes a Nix flake for development and testing purposes in the root directory. This section outlines how to
 use the Nix flake for these workflows.
 
+<!--
 > [!IMPORTANT]
 >
 > I've set up a Cachix cache, which has `x86_64-linux` binaries for the Norgolith releases, so it
 > should be faster to get it working on Nix systems. Make sure to accept the flake `nixConfig` inputs.
+-->
 
 <details>
 <summary>Usage</summary>
@@ -172,6 +174,12 @@ valuable and would like to support its continued development, here are some ways
 - **Financial Support (Optional)**: if you'd like to offer financial support, you can consider using
   my Ko-fi page (linked in the repository). Any amount is greatly appreciated and helps me invest
   further time in Norgolith's development.
+
+### 💜 Sponsors
+
+Huge thanks to the project sponsors for supporting my work!
+
+[![Ladas552](https://images.weserv.nl/?url=github.com/Ladas552.png&h=60&w=60&fit=cover&mask=circle&maxage=7d)](https://github.com/Ladas552)
 
 ## 📖 License
 
