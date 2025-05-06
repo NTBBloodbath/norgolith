@@ -6,7 +6,9 @@ pub struct BuildConfig {
     pub minify: bool,
 }
 
-fn default_minify() -> bool { true }
+fn default_minify() -> bool {
+    true
+}
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct ServeConfig {
@@ -20,5 +22,9 @@ pub struct ServeConfig {
     pub open: bool,
 }
 
-fn default_port() -> u16 { 3030 }
-fn default_drafts() -> bool { true }
+fn default_port() -> u16 {
+    3030
+}
+fn default_drafts() -> bool {
+    true
+}

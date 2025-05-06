@@ -235,20 +235,20 @@ pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Resul
     // templates aka inheriting from the theme templates.
     if tokio::fs::try_exists(&theme_templates_dir).await? {
         let theme_glob = format!("{}/**/*.html", theme_templates_dir.display());
-        let theme_tera = Tera::parse(&theme_glob)
-            .map_err(|e| eyre!("Error parsing theme templates: {}", e))?;
+        let theme_tera =
+            Tera::parse(&theme_glob).map_err(|e| eyre!("Error parsing theme templates: {}", e))?;
         tera.extend(&theme_tera)?;
     }
 
     // Load user's templates
     let user_glob = format!("{}/**/*.html", templates_dir);
-    let user_tera = Tera::parse(&user_glob)
-        .map_err(|e| eyre!("Error parsing user templates: {}", e))?;
+    let user_tera =
+        Tera::parse(&user_glob).map_err(|e| eyre!("Error parsing user templates: {}", e))?;
     tera.extend(&user_tera)?;
 
     let xml_glob = format!("{}/**/*.xml", templates_dir);
-    let xml_tera = Tera::parse(&xml_glob)
-        .map_err(|e| eyre!("Error parsing user XML templates: {}", e))?;
+    let xml_tera =
+        Tera::parse(&xml_glob).map_err(|e| eyre!("Error parsing user XML templates: {}", e))?;
     tera.extend(&xml_tera)?;
 
     tera.build_inheritance_chains()

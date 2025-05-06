@@ -276,7 +276,9 @@ async fn process_build_entry(
         // - `<a href="/docs" ...` -> `<a href="https://foobar.com/docs" ...`
         // - `<link rel... href="/assets/..." ...` -> `<link rel... href="https://foobar.com/assets/..." ...`
         let href_re = regex::Regex::new(r#"href="(/|&#x2F;)"#)?;
-        rendered = href_re.replace_all(&rendered, format!("href=\"{}/", site_config.root_url)).into_owned();
+        rendered = href_re
+            .replace_all(&rendered, format!("href=\"{}/", site_config.root_url))
+            .into_owned();
 
         // If no errors occurred then rendered should not be empty and we should proceed
         if !rendered.is_empty() {

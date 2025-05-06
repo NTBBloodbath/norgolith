@@ -468,7 +468,11 @@ impl NorgToHtml for NorgAST {
                         // work out-of-the-box with code highlighting libraries like highlight.js or prismjs
                         code_tag.push(format!(
                             "><code{}>{}</code></pre>",
-                            if language.is_empty() { String::from("") } else { format!(" class=\"language-{language}\"") },
+                            if language.is_empty() {
+                                String::from("")
+                            } else {
+                                format!(" class=\"language-{language}\"")
+                            },
                             content
                         ));
                         verbatim_tag = code_tag.join(" ")

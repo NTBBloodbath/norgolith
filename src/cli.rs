@@ -156,7 +156,10 @@ pub async fn start() -> Result<()> {
             host,
             open,
         } => check_and_serve(*port, !_no_drafts, *open, *host).await?,
-        Commands::Build { minify: _, _no_minify } => build_site(!_no_minify).await?,
+        Commands::Build {
+            minify: _,
+            _no_minify,
+        } => build_site(!_no_minify).await?,
         Commands::New { kind, name, open } => {
             new_asset(kind.as_ref(), name.as_ref(), *open).await?
         } // _ => bail!("Unsupported command"),
