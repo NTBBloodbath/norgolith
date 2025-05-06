@@ -767,16 +767,27 @@ async fn handle_html_content(
         .render(&format!("{}.html", layout), &context)
         .map_err(|e| {
             // Store the reason why Tera failed to render the template
-            let internal_err = e.source().unwrap();
-            eyre!(
-                "{}: {}",
-                format!(
-                    "Failed to render template for '{}'",
-                    path.strip_prefix(".build").unwrap().display()
+            if e.source().is_some() {
+                let internal_err = e.source().unwrap();
+                eyre!(
+                    "{}: {}",
+                    format!(
+                        "Failed to render template for '{}'",
+                        path.strip_prefix(".build").unwrap().display()
+                    )
+                    .bold(),
+                    internal_err
                 )
-                .bold(),
-                internal_err
-            )
+            } else {
+                eyre!(
+                    "{}",
+                    format!(
+                        "Failed to render template for '{}'",
+                        path.strip_prefix(".build").unwrap().display()
+                    )
+                    .bold()
+                )
+            }
         })?;
 
     // Always use the proper URL to the development server for template links that refers
@@ -858,12 +869,16 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
     let tera = state.tera.read().await;
     let mut body = tera.render("categories.html", &context).map_err(|e| {
         // Store the reason why Tera failed to render the template
-        let internal_err = e.source().unwrap();
-        eyre!(
-            "{}: {}",
-            "Failed to render 'categories.html' template".bold(),
-            internal_err
-        )
+        if e.source().is_some() {
+            let internal_err = e.source().unwrap();
+            eyre!(
+                "{}: {}",
+                "Failed to render 'categories.html' template".bold(),
+                internal_err
+            )
+        } else {
+            eyre!("{}", "Failed to render 'categories.html' template".bold())
+        }
     })?;
     // Always use the proper URL to the development server for template links that refers
     // to the local URL, this is useful when running the server exposed to LAN network
@@ -900,12 +915,16 @@ async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Respons
     let tera = state.tera.read().await;
     let mut body = tera.render("category.html", &context).map_err(|e| {
         // Store the reason why Tera failed to render the template
-        let internal_err = e.source().unwrap();
-        eyre!(
-            "{}: {}",
-            "Failed to render 'category.html' template".bold(),
-            internal_err
-        )
+        if e.source().is_some() {
+            let internal_err = e.source().unwrap();
+            eyre!(
+                "{}: {}",
+                "Failed to render 'category.html' template".bold(),
+                internal_err
+            )
+        } else {
+            eyre!("{}", "Failed to render 'category.html' template".bold())
+        }
     })?;
 
     // Always use the proper URL to the development server for template links that refers
