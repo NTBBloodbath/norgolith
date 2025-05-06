@@ -2,8 +2,8 @@
   description = "The monolithic Norg static site generator built with Rust";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
+    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable&shallow=1";
+    flake-utils.url = "github:numtide/flake-utils?shallow=1";
   };
 
   outputs = {
