@@ -12,7 +12,7 @@ use rust_norg::{
     parse_tree, CarryoverTag, DelimitingModifier, LinkTarget, NestableDetachedModifier, NorgAST,
     NorgASTFlat, ParagraphSegment, ParagraphSegmentToken,
 };
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// CarryOver
 #[derive(Clone, Debug)]
@@ -148,16 +148,21 @@ fn paragraph_to_string(
                     weak_carry.remove(0);
                 }
             }
-            // TODO: description is an option, should we handle it or YAGNI?
-            a_tag.push(format!(
-                ">{}</a>",
-                paragraph_to_string(
-                    &description.clone().unwrap(),
-                    _strong_carry,
-                    weak_carry,
-                    root_url
-                )
-            ));
+            if description.is_some() {
+                a_tag.push(format!(
+                    ">{}</a>",
+                    paragraph_to_string(
+                        &description.clone().unwrap(),
+                        _strong_carry,
+                        weak_carry,
+                        root_url
+                    )
+                ));
+            } else {
+                // TODO: handle `{* This is a link}`, perhaps in the targets as the norg docs say?
+                a_tag.push(String::from("></a>"));
+                warn!("Generated link with no description, make sure all of your Norg links contain a description");
+            }
             paragraph.push_str(a_tag.join(" ").as_str());
         }
         ParagraphSegment::AnchorDefinition { content, target } => {
