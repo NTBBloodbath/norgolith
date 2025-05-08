@@ -114,23 +114,36 @@ fn paragraph_to_string(
             description,
         } => {
             let mut a_tag = Vec::<String>::new();
+            let mut link_name = String::new();
             a_tag.push("<a ".to_string());
+
             // link to local paths (':/about:' -> '/about')
             if let Some(path) = filepath {
+                if description.is_none() {
+                    link_name = path.to_string();
+                }
                 a_tag.push(format!("href=\"{}{}\"", root_url, path));
             }
+
             // link to anything else
             if !targets.is_empty() {
                 match &targets[0] {
                     // link to external URLs
                     LinkTarget::Url(path) | LinkTarget::Path(path) => {
+                        if description.is_none() {
+                            link_name = path.to_string();
+                        }
                         a_tag.push(format!("href=\"{}\"", path));
                     }
                     LinkTarget::Heading { level: _, title } => {
+                        let title_str = paragraph_to_string(title, _strong_carry, weak_carry, root_url);
+
+                        if description.is_none() {
+                            link_name = title_str.clone();
+                        }
                         a_tag.push(format!(
                             "href=\"#{}\"",
-                            paragraph_to_string(title, _strong_carry, weak_carry, root_url)
-                                .replace(" ", "-")
+                            title_str.replace(" ", "-"),
                         ));
                     }
                     // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
@@ -148,20 +161,21 @@ fn paragraph_to_string(
                     weak_carry.remove(0);
                 }
             }
-            if description.is_some() {
+            if let Some(desc) = description {
                 a_tag.push(format!(
                     ">{}</a>",
                     paragraph_to_string(
-                        &description.clone().unwrap(),
+                        desc,
                         _strong_carry,
                         weak_carry,
                         root_url
                     )
                 ));
-            } else {
-                // TODO: handle `{* This is a link}`, perhaps in the targets as the norg docs say?
+            } else if link_name.is_empty() {
                 a_tag.push(String::from("></a>"));
                 warn!("Generated link with no description, make sure all of your Norg links contain a description");
+            } else {
+                a_tag.push(format!(">{}</a>", link_name));
             }
             paragraph.push_str(a_tag.join(" ").as_str());
         }
