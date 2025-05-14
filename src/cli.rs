@@ -46,7 +46,7 @@ enum Commands {
         _no_prompt: bool,
 
         /// Site name
-        name: Option<String>,
+        name: String,
     },
     /// Theme management
     Theme {
@@ -145,7 +145,7 @@ pub async fn start() -> Result<()> {
             name,
             prompt: _,
             _no_prompt,
-        } => init_site(name.as_ref(), !_no_prompt).await?,
+        } => init_site(name, !_no_prompt).await?,
         Commands::Theme { subcommand } => theme_handle(&subcommand).await?,
         Commands::Dev {
             port,
@@ -173,12 +173,12 @@ pub async fn start() -> Result<()> {
 ///
 /// # Returns:
 ///   A `Result<()>` indicating success or error. On error, the context message will provide information on why the site could not be initialized.
-async fn init_site(name: Option<&String>, prompt: bool) -> Result<()> {
-    if let Some(name) = name {
-        cmd::init(name, prompt).await?;
-    } else {
-        bail!("Missing name for the site: could not initialize the new Norgolith site");
-    }
+async fn init_site(name: String, prompt: bool) -> Result<()> {
+    cmd::init(&name, prompt).await?;
+    // if let Some(name) = name {
+    // } else {
+    //     bail!("Missing name for the site: could not initialize the new Norgolith site");
+    // }
     Ok(())
 }
 
@@ -317,24 +317,12 @@ mod tests {
         std::env::set_current_dir(dir.path())?;
 
         let test_name = String::from("my-site");
-        let result = init_site(Some(&test_name), false).await;
+        let result = init_site(test_name, false).await;
         assert!(result.is_ok());
 
         std::env::set_current_dir(origin)?;
 
         Ok(())
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn test_init_site_without_name() {
-        let result = init_site(None, false).await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .root_cause()
-            .to_string()
-            .contains("Missing name for the site"));
     }
 
     #[cfg_attr(test, automock)]
@@ -370,11 +358,11 @@ mod tests {
         let port = temp_listener.local_addr()?.port();
 
         // Create temporal site
-        let test_site_dir = String::from("my-unavailable-site");
-        init_site(Some(&test_site_dir), false).await.unwrap();
+        let test_site_name = String::from("my-unavailable-site");
+        init_site(test_site_name.clone(), false).await.unwrap();
 
         // Enter the test directory
-        let path = dir.path().join(&test_site_dir);
+        let path = dir.path().join(&test_site_name);
 
         std::env::set_current_dir(path)?;
 
