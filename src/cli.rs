@@ -53,8 +53,8 @@ enum Commands {
         #[command(subcommand)]
         subcommand: cmd::ThemeCommands,
     },
-    /// Build a site for development
-    Serve {
+    /// Run a site in development mode
+    Dev {
         #[arg(short = 'p', long, default_value_t = 3030, help = "Port to be used")]
         port: u16,
 
@@ -140,27 +140,27 @@ pub async fn start() -> Result<()> {
         set_current_dir(dir)?;
     }
 
-    match &cli.command {
+    match cli.command {
         Commands::Init {
             name,
             prompt: _,
             _no_prompt,
         } => init_site(name.as_ref(), !_no_prompt).await?,
-        Commands::Theme { subcommand } => theme_handle(subcommand).await?,
-        Commands::Serve {
+        Commands::Theme { subcommand } => theme_handle(&subcommand).await?,
+        Commands::Dev {
             port,
             drafts: _,
             _no_drafts,
             host,
             open,
-        } => check_and_serve(*port, !_no_drafts, *open, *host).await?,
+        } => check_and_serve(port, !_no_drafts, open, host).await?,
         Commands::Build {
             minify: _,
             _no_minify,
         } => build_site(!_no_minify).await?,
         Commands::New { kind, name, open } => {
-            new_asset(kind.as_ref(), name.as_ref(), *open).await?
-        } // _ => bail!("Unsupported command"),
+            new_asset(kind.as_ref(), name.as_ref(), open).await?
+        }
     }
 
     Ok(())
@@ -253,7 +253,7 @@ async fn check_and_serve(port: u16, drafts: bool, open: bool, host: bool) -> Res
         bail!("Could not initialize the development server: failed to open listener, perhaps the {} is busy?", port_msg);
     }
 
-    cmd::serve(port, drafts, open, host).await
+    cmd::dev(port, drafts, open, host).await
 }
 
 async fn theme_handle(subcommand: &cmd::ThemeCommands) -> Result<()> {
