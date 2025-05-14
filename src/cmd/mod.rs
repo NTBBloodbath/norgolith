@@ -1,9 +1,9 @@
 mod build;
 mod init;
 mod new;
-mod serve;
+mod dev;
 mod theme;
 
 pub use self::{
-    build::build, init::init, new::new, serve::serve, theme::handle as theme, theme::ThemeCommands,
+    build::build, init::init, new::new, dev::dev, theme::handle as theme, theme::ThemeCommands,
 };

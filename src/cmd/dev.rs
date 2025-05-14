@@ -1133,7 +1133,7 @@ async fn setup_file_watcher(
 /// # Returns
 /// * `Result<()>` - `Ok(())` if the server runs successfully, otherwise an error.
 #[instrument(skip(port, drafts, open, host))]
-pub async fn serve(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
+pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
     info!("Starting development server...");
 
     let root = fs::find_config_file().await?;
