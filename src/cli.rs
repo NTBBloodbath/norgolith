@@ -346,7 +346,7 @@ mod tests {
     #[tokio::test]
     #[cfg_attr(feature = "ci", ignore)]
     #[serial]
-    async fn test_check_and_serve_available_port() {
+    async fn test_is_port_available() {
         let mut mock_net = MockNetTrait::new();
         mock_net
             .expect_is_port_available()
@@ -359,14 +359,14 @@ mod tests {
     #[tokio::test]
     #[cfg_attr(feature = "ci", ignore)]
     #[serial]
-    async fn test_check_and_serve_unavailable_port() -> Result<()> {
+    async fn test_check_and_serve() -> Result<()> {
         let dir = tempdir()?;
 
         let origin = std::env::current_dir()?;
         std::env::set_current_dir(dir.path())?;
 
         // Bind port
-        let temp_listener = std::net::TcpListener::bind(("127.0.0.1", 3030))?;
+        let temp_listener = std::net::TcpListener::bind("127.0.0.1:0")?;
         let port = temp_listener.local_addr()?.port();
 
         // Create temporal site
