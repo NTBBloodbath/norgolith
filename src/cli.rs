@@ -9,8 +9,6 @@ use crate::net;
 
 #[cfg(test)]
 use mockall::{automock, predicate::*};
-#[cfg(test)]
-use tokio::{fs::canonicalize, fs::remove_dir_all};
 
 #[derive(Parser)]
 #[command(
@@ -304,20 +302,31 @@ async fn new_asset(kind: Option<&String>, name: Option<&String>, open: bool) -> 
 
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
+    use tempfile::tempdir;
+
     use super::*;
 
     // init_site tests
     #[tokio::test]
-    async fn test_init_site_with_name() {
+    #[serial]
+    async fn test_init_site_with_name() -> Result<()> {
+        let dir = tempdir()?;
+
+        let origin = std::env::current_dir()?;
+        std::env::set_current_dir(dir.path())?;
+
         let test_name = String::from("my-site");
         let result = init_site(Some(&test_name), false).await;
         assert!(result.is_ok());
 
-        // Cleanup
-        remove_dir_all(test_name).await.unwrap();
+        std::env::set_current_dir(origin)?;
+
+        Ok(())
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_init_site_without_name() {
         let result = init_site(None, false).await;
         assert!(result.is_err());
@@ -336,6 +345,7 @@ mod tests {
     // check_and_serve tests
     #[tokio::test]
     #[cfg_attr(feature = "ci", ignore)]
+    #[serial]
     async fn test_check_and_serve_available_port() {
         let mut mock_net = MockNetTrait::new();
         mock_net
@@ -348,20 +358,25 @@ mod tests {
 
     #[tokio::test]
     #[cfg_attr(feature = "ci", ignore)]
+    #[serial]
     async fn test_check_and_serve_unavailable_port() -> Result<()> {
+        let dir = tempdir()?;
+
+        let origin = std::env::current_dir()?;
+        std::env::set_current_dir(dir.path())?;
+
         // Bind port
         let temp_listener = std::net::TcpListener::bind(("127.0.0.1", 3030))?;
         let port = temp_listener.local_addr()?.port();
 
         // Create temporal site
         let test_site_dir = String::from("my-unavailable-site");
-        init_site(Some(&test_site_dir), false).await?;
-
-        // Save current directory as the previous directory to restore it later
-        let previous_dir = std::env::current_dir()?;
+        init_site(Some(&test_site_dir), false).await.unwrap();
 
         // Enter the test directory
-        std::env::set_current_dir(canonicalize(test_site_dir.clone()).await?)?;
+        let path = dir.path().join(&test_site_dir);
+
+        std::env::set_current_dir(path)?;
 
         let result = check_and_serve(port, false, false, false).await;
         assert!(result.is_err());
@@ -372,10 +387,7 @@ mod tests {
             .contains("failed to open listener"));
 
         // Restore previous directory
-        std::env::set_current_dir(previous_dir)?;
-
-        // Cleanup test directory and test file
-        remove_dir_all(test_site_dir).await?;
+        std::env::set_current_dir(origin)?;
 
         Ok(())
     }

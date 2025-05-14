@@ -62,6 +62,7 @@ git2 = { version = "0.20.0", features = ["vendored-libgit2", "vendored-openssl"]
 
 [dev-dependencies]
 mockall = "0.13.1"
+serial_test = "3.2.0"
 tempfile = "3.17.1"
 
 [features]
