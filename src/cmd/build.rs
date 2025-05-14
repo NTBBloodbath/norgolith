@@ -107,10 +107,10 @@ async fn generate_rss_feed(
         .map_err(|e| eyre!("{}: {}", "Failed to render RSS template".bold(), e))?;
 
     // Parse the rendered XML to validate it
-    let channel = Channel::read_from(rss_content.as_bytes())
+    Channel::read_from(rss_content.as_bytes())
         .map_err(|e| eyre!("{}: {}", "Invalid RSS feed generated".bold(), e))?;
 
-    tokio::fs::write(output_path, channel.to_string()).await?;
+    tokio::fs::write(output_path, rss_content).await?;
     Ok(())
 }
 
@@ -709,7 +709,7 @@ pub async fn build(minify: bool) -> Result<()> {
         shared::generate_category_pages(&tera, &paths.public, &posts, &site_config).await?;
 
         // Generate RSS feed after building content if enabled
-        if site_config.rss.clone().is_some_and(|rss| rss.enable) {
+        if site_config.rss.as_ref().is_some_and(|rss| rss.enable) {
             debug!("Generating RSS feed");
             let rss_path = paths.public.join("rss.xml");
             generate_rss_feed(&tera, &site_config, &posts, &rss_path).await?;
