@@ -5,7 +5,7 @@ use tokio::fs::{copy, create_dir_all, metadata, read_dir};
 use tracing::{debug, instrument};
 
 #[cfg(test)]
-use tokio::fs::{canonicalize, create_dir, remove_dir, remove_file, File};
+use tokio::fs::{create_dir, File};
 
 /// Find a given file or directory in the current working directory and its parent directories recursively
 #[instrument(skip(kind, filename, current_dir))]
@@ -100,71 +100,59 @@ pub async fn copy_dir_all(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Resu
 
 #[cfg(test)]
 mod tests {
+    use tempfile::tempdir;
+
     use super::*;
 
     #[tokio::test]
     async fn test_find_file_in_current_directory() -> Result<()> {
+        let dir = tempdir()?;
         // Create temporal test file
         let test_file = "test_file_1.txt";
-        let test_file_path = PathBuf::from(test_file);
-        File::create(test_file).await?;
+        let test_file_path = dir.path().join(test_file);
+        File::create(&test_file_path).await?;
 
         // Look for the temporal test file
-        let mut current_dir = std::env::current_dir()?;
-        let result = find_in_previous_dirs("file", test_file, &mut current_dir).await;
+        let result = find_in_previous_dirs("file", test_file, &mut dir.path().to_path_buf()).await;
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(),
-            Some(canonicalize(test_file_path.clone()).await?)
+            Some(test_file_path)
         );
-
-        // Cleanup test file
-        remove_file(test_file_path).await?;
 
         Ok(())
     }
 
     #[tokio::test]
     async fn test_find_file_from_child_directory() -> Result<()> {
+        let dir = tempdir()?;
         // Create temporal test directory and test file
-        let test_file = "test_file_2.txt";
-        let test_directory = PathBuf::from("parent_dir");
+        let test_file_name = "test_file_2.txt";
+        let test_file = dir.path().join(test_file_name);
+        let test_directory = dir.path().join("parent_dir");
 
         create_dir(&test_directory).await?;
-        File::create(test_file).await?;
-
-        // Save current directory as the previous directory to restore it later
-        let previous_dir = std::env::current_dir()?;
-
-        // Enter the test directory
-        std::env::set_current_dir(canonicalize(test_directory.clone()).await?)?;
+        File::create(&test_file).await?;
 
         // Look for the temporal test file
         let result = find_in_previous_dirs(
             "file",
-            test_file,
-            &mut previous_dir.join(test_directory.clone()),
+            test_file_name,
+            &mut test_directory.clone()
         )
         .await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some(previous_dir.join(test_file)));
-
-        // Restore previous directory
-        std::env::set_current_dir(previous_dir)?;
-
-        // Cleanup test directory and test file
-        remove_file(test_file).await?;
-        remove_dir(test_directory).await?;
+        assert_eq!(result.unwrap(), Some(test_file.clone()));
 
         Ok(())
     }
 
     #[tokio::test]
     async fn test_find_file_not_found() -> Result<()> {
+        let dir = tempdir()?;
         let test_file = "non_existent_file.txt";
 
-        let mut current_dir = std::env::current_dir()?;
-        let result = find_in_previous_dirs("file", test_file, &mut current_dir).await;
+        let result = find_in_previous_dirs("file", test_file, &mut dir.path().to_path_buf()).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), None);
 
@@ -173,27 +161,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_find_dir_in_current_dir() -> Result<()> {
+        let dir = tempdir()?;
         // Create temporal test directory
-        let test_directory = PathBuf::from("parent_dir2");
+        let test_directory_name = "parent_dir2";
+        let test_directory = dir.path().join(test_directory_name);
 
         create_dir(&test_directory).await?;
 
         // Look for the temporal directory
-        let mut current_dir = std::env::current_dir()?;
         let result = find_in_previous_dirs(
             "dir",
-            test_directory.clone().to_str().unwrap(),
-            &mut current_dir,
+            test_directory_name,
+            &mut dir.path().to_path_buf(),
         )
         .await;
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(),
-            Some(canonicalize(test_directory.clone()).await?)
+            Some(test_directory)
         );
-
-        // Cleanup test directory
-        remove_dir(test_directory).await?;
 
         Ok(())
     }
