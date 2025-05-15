@@ -131,7 +131,7 @@ async fn generate_public_build(
     site_config: &config::SiteConfig,
     minify: bool,
 ) -> Result<()> {
-    let posts = shared::collect_all_posts_metadata(&paths.build, &site_config.root_url).await?;
+    let posts = shared::collect_all_posts_metadata(&paths.content, &site_config.root_url).await?;
     let entries = WalkDir::new(&paths.build)
         .into_iter()
         .filter_map(|e| e.ok());
@@ -687,10 +687,8 @@ pub async fn build(minify: bool) -> Result<()> {
         prepare_build_directory(Path::new(&root_dir)).await?;
 
         // Convert the norg documents to html
+        // TODO: convert documents directly to dist folder
         shared::convert_content(&paths.content, false, &site_config.root_url).await?;
-
-        // Clean up orphaned files before building the site
-        shared::cleanup_orphaned_build_files(&paths.content).await?;
 
         // Generate public HTML build
         generate_public_build(&tera, &paths, &site_config, minify).await?;
@@ -705,7 +703,7 @@ pub async fn build(minify: bool) -> Result<()> {
         .await?;
 
         // Generate category pages
-        let posts = shared::collect_all_posts_metadata(&paths.build, &site_config.root_url).await?;
+        let posts = shared::collect_all_posts_metadata(&paths.content, &site_config.root_url).await?;
         shared::generate_category_pages(&tera, &paths.public, &posts, &site_config).await?;
 
         // Generate RSS feed after building content if enabled

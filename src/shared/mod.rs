@@ -6,7 +6,7 @@ use std::time::Instant;
 use colored::Colorize;
 use eyre::{eyre, Result};
 use tera::{Context, Tera};
-use tracing::{error, info};
+use tracing::error;
 use walkdir::WalkDir;
 
 use crate::config::SiteConfig;
@@ -125,74 +125,6 @@ pub async fn convert_document(
     Ok(())
 }
 
-pub async fn cleanup_orphaned_build_files(content_dir: &Path) -> Result<()> {
-    let build_dir = Path::new(".build");
-    if !build_dir.exists() {
-        return Ok(());
-    }
-
-    let mut stack = vec![build_dir.to_path_buf()];
-
-    while let Some(current_dir) = stack.pop() {
-        let mut entries = tokio::fs::read_dir(&current_dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|ext| ext == "html") {
-                let relative_path = path.strip_prefix(build_dir)?;
-                let norg_path = content_dir.join(relative_path).with_extension("norg");
-
-                // Delete orphaned content files
-                if !norg_path.exists() && !relative_path.starts_with("categories/") {
-                    // Delete HTML and meta files
-                    let meta_path = path.with_extension("meta.toml");
-
-                    tokio::fs::remove_file(&path).await?;
-                    if tokio::fs::try_exists(&meta_path).await? {
-                        tokio::fs::remove_file(&meta_path).await?;
-                    }
-
-                    info!("Cleaned orphaned build file: {}", path.display());
-                }
-
-                // Clean empty category directories
-                let categories_dir = build_dir.join("categories");
-                if categories_dir.exists() {
-                    let mut dirs_to_check = vec![categories_dir];
-
-                    while let Some(dir) = dirs_to_check.pop() {
-                        let mut entries = tokio::fs::read_dir(&dir).await?;
-                        let mut has_content = false;
-
-                        while let Some(entry) = entries.next_entry().await? {
-                            let path = entry.path();
-                            if path.is_dir() {
-                                dirs_to_check.push(path);
-                                has_content = true;
-                            } else {
-                                has_content = true;
-                            }
-                        }
-
-                        if !has_content {
-                            tokio::fs::remove_dir(&dir).await?;
-                            info!(
-                                "{}: {}",
-                                "Cleaned empty category directory".bold(),
-                                dir.display()
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 pub fn get_elapsed_time(instant: Instant) -> String {
     let duration = instant.elapsed();
     let secs = duration.as_secs_f64();
@@ -243,71 +175,54 @@ pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Resul
 /// If the file cannot be read or parsed, it logs the error and returns an empty table.
 ///
 /// # Arguments
-/// * `path` - The path to the metadata file.
-/// * `rel_path` - Relative path to the metadata file without the build directory prefix.
+/// * `path` - The path to the norg file.
+/// * `rel_path` - Relative path to the norg file without the content directory prefix.
 /// * `routes_url` - The URL used for routing.
 ///
 /// # Returns
 /// * `toml::Value` - The parsed metadata or an empty table if an error occurs.
 pub async fn load_metadata(path: PathBuf, rel_path: PathBuf, routes_url: &str) -> toml::Value {
-    match tokio::fs::read_to_string(&path).await {
-        Ok(content) => {
-            let mut value = toml::from_str(&content).unwrap_or_else(|e| {
-                error!("{}: {}", "Metadata parse error".bold(), e);
-                toml::Value::Table(toml::map::Map::new())
-            });
-
-            // Convert TOML datetimes to RFC3339 strings
-            if let Some(table) = value.as_table_mut() {
-                for (_k, v) in table.iter_mut() {
-                    if let toml::Value::Datetime(dt) = v {
-                        *v = toml::Value::String(dt.to_string());
-                    }
-                }
-            }
-
-            // Generate permalink from file structure
-            // Remove .meta.toml
-            let mut permalink_path = rel_path.with_extension("").with_extension("");
-
-            // Handle index pages
-            if let Some(file_name) = permalink_path.file_name() {
-                if file_name == "index" {
-                    permalink_path = permalink_path
-                        .parent()
-                        .unwrap_or_else(|| Path::new(""))
-                        .to_path_buf();
-                }
-            }
-
-            // Convert to URL path
-            let permalink_str = permalink_path
-                .to_string_lossy()
-                .trim_start_matches('/')
-                .to_string();
-
-            let permalink = if permalink_str.is_empty() {
-                format!("{}/", routes_url)
-            } else {
-                format!("{}/{}/", routes_url, permalink_str)
-            };
-
-            // Add permalink and html content to metadata
-            if let toml::Value::Table(ref mut table) = value {
-                table.insert("permalink".to_string(), toml::Value::String(permalink));
-            }
-
-            value
+    let Ok(content) = tokio::fs::read_to_string(&path).await else {
+        error!(
+            "{} {}",
+            "Metadata file not found for".bold(),
+            rel_path.display()
+        );
+        return toml::Value::Table(toml::map::Map::new());
+    };
+    let (html, toc) = converter::html::convert(&content, routes_url);
+    let mut metadata = converter::meta::convert(&content, Some(converter::html::toc_to_toml(&toc)))
+        .unwrap_or(toml::Value::Table(toml::map::Map::new()));
+    let permalink = {
+        let mut permalink_path = rel_path.with_extension("");
+        if permalink_path
+            .file_name()
+            .is_some_and(|name| name == "index")
+        {
+            permalink_path = permalink_path
+                .parent()
+                .unwrap_or(Path::new(""))
+                .to_path_buf();
         }
-        Err(_) => {
-            error!(
-                "{} {}",
-                "Metadata file not found for".bold(),
-                rel_path.display()
-            );
-            toml::Value::Table(toml::map::Map::new())
+        let permalink = permalink_path.to_string_lossy();
+        if permalink.is_empty() {
+            format!("{}/", routes_url)
+        } else {
+            format!("{}/{}/", routes_url, permalink)
         }
+    };
+    if let toml::Value::Table(ref mut table) = metadata {
+        // Convert TOML datetimes to RFC3339 strings
+        for (_k, v) in table.iter_mut() {
+            if let toml::Value::Datetime(dt) = v {
+                *v = toml::Value::String(dt.to_string());
+            }
+        }
+        table.insert("raw".to_string(), toml::Value::String(html));
+        table.insert("permalink".to_string(), toml::Value::String(permalink));
     }
+
+    metadata
 }
 
 /// Validates content metadata against a schema.
@@ -382,37 +297,28 @@ pub async fn collect_all_posts_categories(posts: &[toml::Value]) -> HashSet<Stri
 }
 
 pub async fn collect_all_posts_metadata(
-    build_dir: &Path,
+    content_dir: &Path,
     routes_url: &str,
 ) -> Result<Vec<toml::Value>> {
     let mut posts = Vec::new();
 
-    for entry in WalkDir::new(build_dir)
+    for entry in WalkDir::new(content_dir)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
             let path = e.path();
-            let file_name = path.file_name().and_then(|name| name.to_str());
-            let is_meta_file = file_name.is_some_and(|name| name.ends_with(".meta.toml"));
+            let is_norg_file = path.extension().is_some_and(|ext| ext == "norg");
             let is_post = path
-                .strip_prefix(build_dir)
-                .is_ok_and(|p| p.starts_with("posts") && !p.ends_with("posts/index.meta.toml"));
-            is_post && is_meta_file
+                .strip_prefix(content_dir)
+                .is_ok_and(|p| p.starts_with("posts") && *p != PathBuf::from("posts/index.norg"));
+            is_norg_file && is_post
         })
     {
-        let meta_path = entry.path();
-        let rel_path = meta_path.strip_prefix(build_dir)?.to_path_buf();
-        let mut metadata = load_metadata(entry.path().to_path_buf(), rel_path, routes_url).await;
+        let path = entry.path().to_path_buf();
+        let rel_path = path.strip_prefix(content_dir)?.to_path_buf();
 
-        // TODO: this won't hot reload if the content changes, should be passed as an argument instead
-        // Get the raw html content
-        let html_file = entry.path().with_extension("").with_extension("html");
-        let html = tokio::fs::read_to_string(&html_file).await?;
+        let metadata = load_metadata(path, rel_path, routes_url).await;
 
-        // Add html content to metadata
-        if let toml::Value::Table(ref mut table) = metadata {
-            table.insert("raw".to_string(), toml::Value::String(html));
-        }
         posts.push(metadata);
     }
 

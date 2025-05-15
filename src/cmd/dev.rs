@@ -35,7 +35,6 @@ use crate::{config, converter, fs, shared};
 /// to organize and manage the file structure of the site.
 #[derive(Debug)]
 struct SitePaths {
-    build: PathBuf,
     content: PathBuf,
     assets: PathBuf,
     templates: PathBuf,
@@ -59,7 +58,6 @@ impl SitePaths {
     fn new(root: PathBuf) -> Self {
         debug!("Initializing site paths");
         let paths = Self {
-            build: root.join(".build"),
             content: root.join("content"),
             assets: root.join("assets"),
             theme_assets: root.join("theme/assets"),
@@ -339,7 +337,7 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     }
 
     if actions.reload_content {
-        match shared::collect_all_posts_metadata(&state.paths.build, &state.routes_url).await {
+        match shared::collect_all_posts_metadata(&state.paths.content, &state.routes_url).await {
             Ok(new_posts) => {
                 let mut posts_lock = state.posts.write().await;
                 *posts_lock = new_posts;
@@ -960,7 +958,7 @@ async fn setup_server_state(
 
     let (reload_tx, _) = broadcast::channel(16);
 
-    let posts = shared::collect_all_posts_metadata(&paths.build, &routes_url).await?;
+    let posts = shared::collect_all_posts_metadata(&paths.content, &routes_url).await?;
 
     Ok(Arc::new(ServerState {
         reload_tx: Arc::new(reload_tx),
