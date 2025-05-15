@@ -13,32 +13,6 @@ use crate::config::SiteConfig;
 use crate::converter;
 use crate::schema::{format_errors, validate_metadata, ContentSchema};
 
-pub async fn get_content(name: &str) -> Result<(String, PathBuf)> {
-    let build_path = Path::new(".build");
-    let mut candidates: Vec<PathBuf> = Vec::new();
-
-    // Normalize path by trimming slashes
-    let clean_name = name.trim_matches('/');
-
-    if clean_name.is_empty() {
-        // Root path
-        candidates.push(build_path.join("index.html"));
-    } else {
-        // Generate potential file paths
-        candidates.push(build_path.join(format!("{}.html", clean_name))); // /docs -> docs.html
-        candidates.push(build_path.join(clean_name).join("index.html")); // /docs -> docs/index.html
-    }
-
-    // Try candidates in order
-    for path in &candidates {
-        if tokio::fs::try_exists(path).await? {
-            return Ok((tokio::fs::read_to_string(path).await?, path.to_path_buf()));
-        }
-    }
-
-    Err(eyre::eyre!("Content not found for path: {}", name))
-}
-
 /// Recursively converts all the norg files in the content directory
 pub async fn convert_content(
     content_dir: &Path,
@@ -78,9 +52,12 @@ pub async fn convert_document(
     convert_drafts: bool,
     root_url: &str,
 ) -> Result<()> {
-    if file_path.extension().unwrap_or_default() == "norg"
-        && tokio::fs::try_exists(file_path).await?
-    {
+    if file_path.extension().unwrap_or_default() != "norg" {
+        return Ok(())
+    }
+    if !tokio::fs::try_exists(file_path).await? {
+        return Ok(())
+    }
         let mut should_convert = true;
         let mut should_write_meta = true;
 
@@ -100,7 +77,7 @@ pub async fn convert_document(
 
         // Convert html content
         let norg_document = tokio::fs::read_to_string(file_path).await?;
-        let (norg_html, toc) = converter::html::convert(norg_document.clone(), root_url);
+        let (norg_html, toc) = converter::html::convert(&norg_document, root_url);
 
         // Convert metadata
         let norg_meta =
@@ -144,7 +121,6 @@ pub async fn convert_document(
                 tokio::fs::write(&meta_file_path, meta_toml).await?;
             }
         }
-    }
 
     Ok(())
 }
@@ -164,7 +140,7 @@ pub async fn cleanup_orphaned_build_files(content_dir: &Path) -> Result<()> {
 
             if path.is_dir() {
                 stack.push(path);
-            } else if path.extension().map(|e| e == "html").unwrap_or(false) {
+            } else if path.extension().is_some_and(|ext| ext == "html") {
                 let relative_path = path.strip_prefix(build_dir)?;
                 let norg_path = content_dir.join(relative_path).with_extension("norg");
 
