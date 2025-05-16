@@ -13,116 +13,83 @@ use crate::config::SiteConfig;
 use crate::converter;
 use crate::schema::{format_errors, validate_metadata, ContentSchema};
 
-/// Recursively converts all the norg files in the content directory
-pub async fn convert_content(
-    content_dir: &Path,
-    convert_drafts: bool,
-    root_url: &str,
-) -> Result<()> {
-    async fn process_entry(
-        entry: tokio::fs::DirEntry,
-        content_dir: &Path,
-        convert_drafts: bool,
-        root_url: &str,
-    ) -> Result<()> {
-        let path = entry.path();
-        if path.is_dir() {
-            // Process directory recursively
-            let mut content_stream = tokio::fs::read_dir(&path).await?;
-            while let Some(entry) = content_stream.next_entry().await? {
-                Box::pin(process_entry(entry, content_dir, convert_drafts, root_url)).await?;
+/// Render full norg page by converting it to HTML and applying tera template
+pub async fn render_norg_page(
+    tera: &Tera,
+    metadata: &toml::Value,
+    posts: &[toml::Value],
+    config: &SiteConfig,
+) -> Result<String> {
+    let content = metadata.get("raw").and_then(|v| v.as_str()).unwrap_or("");
+    let layout = metadata
+        .get("layout")
+        .and_then(|v| v.as_str())
+        .unwrap_or("default");
+
+    let mut context = Context::new();
+    context.insert("config", config);
+    context.insert("content", content);
+    context.insert("metadata", metadata);
+    context.insert("posts", posts);
+
+    tera
+        .render(&format!("{}.html", layout), &context)
+        .map_err(|e| {
+            // Store the reason why Tera failed to render the template
+            let msg = format!("Failed to render template for '{}'", "").bold();
+            if let Some(source) = e.source() {
+                eyre!("{msg}: {source}")
+            } else {
+                eyre!(msg)
             }
-        } else {
-            convert_document(&path, content_dir, convert_drafts, root_url).await?;
-        }
-        Ok(())
-    }
-
-    let mut content_stream = tokio::fs::read_dir(content_dir).await?;
-    while let Some(entry) = content_stream.next_entry().await? {
-        Box::pin(process_entry(entry, content_dir, convert_drafts, root_url)).await?;
-    }
-
-    Ok(())
+        })
 }
 
-pub async fn convert_document(
-    file_path: &Path,
-    content_dir: &Path,
-    convert_drafts: bool,
-    root_url: &str,
-) -> Result<()> {
-    if file_path.extension().unwrap_or_default() != "norg" {
-        return Ok(())
-    }
-    if !tokio::fs::try_exists(file_path).await? {
-        return Ok(())
-    }
-        let mut should_convert = true;
-        let mut should_write_meta = true;
+pub async fn render_category_index(
+    tera: &Tera,
+    posts: &[toml::Value],
+    config: &SiteConfig,
+) -> Result<String> {
+    let categories = collect_all_posts_categories(posts).await;
+    let context = {
+        let mut ctx = Context::new();
+        ctx.insert("config", config);
+        ctx.insert("posts", posts);
+        ctx.insert("categories", &categories.iter().collect::<Vec<_>>());
+        ctx
+    };
 
-        // Preserve directory structure relative to content directory
-        let relative_path = file_path.strip_prefix(content_dir).map_err(|_| {
-            eyre!(
-                "File {:?} is not in content directory {:?}",
-                file_path,
-                content_dir
-            )
-        })?;
+    tera.render("categories.html", &context).map_err(|e| {
+        let internal_err = e.source().unwrap();
+        eyre!(
+            "{}: {}",
+            "Failed to render categories index".bold(),
+            internal_err
+        )
+    })
+}
 
-        let html_file_path = Path::new(".build")
-            .join(relative_path)
-            .with_extension("html");
-        let meta_file_path = html_file_path.with_extension("meta.toml");
-
-        // Convert html content
-        let norg_document = tokio::fs::read_to_string(file_path).await?;
-        let (norg_html, toc) = converter::html::convert(&norg_document, root_url);
-
-        // Convert metadata
-        let norg_meta =
-            converter::meta::convert(&norg_document, Some(converter::html::toc_to_toml(&toc)))?;
-        let meta_toml = toml::to_string_pretty(&norg_meta)?;
-
-        // Check if the current document is a draft post and also whether we should finish the conversion
-        // NOTE: content is not marked as draft by default
-        if toml::Value::as_bool(norg_meta.get("draft").unwrap_or(&toml::Value::from(false)))
-            .expect("draft metadata field should be a boolean")
-            && !convert_drafts
-        {
-            return Ok(());
-        }
-
-        // Check existing metadata only if file exists
-        if tokio::fs::try_exists(&meta_file_path).await? {
-            let meta_content = tokio::fs::read_to_string(&meta_file_path).await?;
-            should_write_meta = meta_toml != meta_content;
-        }
-
-        // Check existing content only if file exists
-        if tokio::fs::try_exists(&html_file_path).await? {
-            let html_content = tokio::fs::read_to_string(&html_file_path).await?;
-            should_convert = norg_html != html_content;
-        }
-
-        if should_convert || should_write_meta {
-            // Create parent directories if needed
-            if let Some(parent) = html_file_path.parent() {
-                tokio::fs::create_dir_all(parent).await?;
-            }
-
-            // XXX: maybe these info makes stuff too verbose? Modifying a norg file already triggers two stdout messages
-            if should_convert {
-                // info!("[server] Converting norg file: {}", relative_path.display());
-                tokio::fs::write(&html_file_path, norg_html).await?;
-            }
-            if should_write_meta {
-                // info!("[server] Converting norg meta: {}", relative_path.display());
-                tokio::fs::write(&meta_file_path, meta_toml).await?;
-            }
-        }
-
-    Ok(())
+pub async fn render_category_page(
+    tera: &Tera,
+    name: &str,
+    cat_posts: &[&toml::Value],
+    config: &SiteConfig,
+) -> Result<String> {
+    let context = {
+        let mut ctx = Context::new();
+        ctx.insert("config", config);
+        ctx.insert("category", name);
+        ctx.insert("posts", cat_posts);
+        ctx
+    };
+    tera.render("category.html", &context).map_err(|e| {
+        let internal_err = e.source().unwrap();
+        eyre!(
+            "{}: {}",
+            "Failed to render category page".bold(),
+            internal_err
+        )
+    })
 }
 
 pub fn get_elapsed_time(instant: Instant) -> String {
@@ -185,7 +152,7 @@ pub async fn load_metadata(path: PathBuf, rel_path: PathBuf, routes_url: &str) -
     let Ok(content) = tokio::fs::read_to_string(&path).await else {
         error!(
             "{} {}",
-            "Metadata file not found for".bold(),
+            "Norg file not found for".bold(),
             rel_path.display()
         );
         return toml::Value::Table(toml::map::Map::new());
@@ -231,30 +198,22 @@ pub async fn load_metadata(path: PathBuf, rel_path: PathBuf, routes_url: &str) -
 /// If validation errors are found, they are logged in a user-friendly format.
 ///
 /// # Arguments
-/// * `path` - The path to the content file.
-/// * `build_dir` - The build directory.
 /// * `content_dir` - The content directory.
+/// * `path` - The path to the content file.
 /// * `schema` - The schema to validate the metadata against.
 /// * `as_warnings` - Whether to format errors as warnings or errors.
 ///
 /// # Returns
 /// * `Result<String>` - Empty String if the validation did not find any error, an String containing all the errors otherwise.
 pub async fn validate_content_metadata(
-    path: &Path,
-    build_dir: &Path,
     content_dir: &Path,
+    path: &Path,
+    metadata: &toml::Value,
     schema: &ContentSchema,
     as_warnings: bool,
 ) -> Result<String> {
     let relative_path = path.strip_prefix(content_dir).unwrap();
-    let meta_path = build_dir.join(relative_path).with_extension("meta.toml");
-
-    let rel_path = meta_path
-        .clone()
-        .strip_prefix(build_dir)
-        .map(|p| p.to_path_buf())?;
     // We do not need to do anything with the metadata permalink here so we pass an empty string to it
-    let metadata = load_metadata(meta_path, rel_path, "").await;
     let metadata_map = metadata
         .as_table()
         .unwrap()
@@ -350,19 +309,7 @@ pub async fn generate_category_pages(
 
     // Generate main categories index only if the site has posts
     if !posts.is_empty() {
-        let mut context = Context::new();
-        context.insert("config", config);
-        context.insert("posts", &posts);
-        context.insert("categories", &categories.iter().collect::<Vec<_>>());
-
-        let content = tera.render("categories.html", &context).map_err(|e| {
-            let internal_err = e.source().unwrap();
-            eyre!(
-                "{}: {}",
-                "Failed to render categories index".bold(),
-                internal_err
-            )
-        })?;
+        let content = render_category_index(tera, posts, config).await?;
 
         tokio::fs::create_dir_all(&categories_dir).await?;
         tokio::fs::write(categories_dir.join("index.html"), content).await?;
@@ -380,22 +327,10 @@ pub async fn generate_category_pages(
             })
             .collect();
 
-        let mut context = Context::new();
-        context.insert("config", config);
-        context.insert("category", &category);
-        context.insert("posts", &cat_posts);
+        let content = render_category_page(tera, &category, &cat_posts, config).await?;
 
         let cat_dir = categories_dir.join(&category);
         tokio::fs::create_dir_all(&cat_dir).await?;
-
-        let content = tera.render("category.html", &context).map_err(|e| {
-            let internal_err = e.source().unwrap();
-            eyre!(
-                "{}: {}",
-                "Failed to render category page".bold(),
-                internal_err
-            )
-        })?;
 
         tokio::fs::write(cat_dir.join("index.html"), content).await?;
     }
