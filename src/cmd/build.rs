@@ -302,7 +302,7 @@ pub async fn build_category_pages(
 fn determine_public_path(public_dir: &Path, rel_path: &Path) -> PathBuf {
     let stem = rel_path.file_stem().and_then(|s| s.to_str()).unwrap();
     if stem == "index" {
-        public_dir.join(rel_path)
+        public_dir.join(rel_path).with_extension("html")
     } else {
         public_dir
             .join(rel_path.parent().unwrap_or(Path::new(""))) // Handle root path parent gracefully
@@ -520,25 +520,25 @@ async fn copy_asset_file(src_path: &Path, dest_path: &Path, minify: bool) -> Res
 /// # Arguments
 /// * `site_assets_dir` - Path to the site's assets directory.
 /// * `theme_assets_dir` - Path to the theme's assets directory.
-/// * `root_path` - Root directory of the site.
+/// * `public_path` - Target directory to paste assets.
 /// * `minify` - Whether to minify supported assets during copying.
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if all assets are copied successfully, otherwise an error.
-#[instrument(skip(site_assets_dir, theme_assets_dir, root_path, minify))]
+#[instrument(skip(site_assets_dir, theme_assets_dir, public_path, minify))]
 async fn copy_all_assets(
     site_assets_dir: &Path,
     theme_assets_dir: &Path,
-    root_path: &Path,
+    public_path: &Path,
     minify: bool,
 ) -> Result<()> {
     // Copy theme assets first
     if theme_assets_dir.exists() {
-        copy_assets(theme_assets_dir, root_path, minify).await?;
+        copy_assets(theme_assets_dir, public_path, minify).await?;
     }
 
     // Copy site assets (overrides theme assets)
-    copy_assets(site_assets_dir, root_path, minify).await?;
+    copy_assets(site_assets_dir, public_path, minify).await?;
 
     Ok(())
 }
@@ -657,7 +657,7 @@ pub async fn build(minify: bool) -> Result<()> {
     }
 
     // Copy site assets
-    copy_all_assets(&paths.assets, &paths.theme_assets, &root_dir, minify).await?;
+    copy_all_assets(&paths.assets, &paths.theme_assets, &paths.public, minify).await?;
 
     info!(
         "Finished site build in {}",
