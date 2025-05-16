@@ -492,18 +492,13 @@ async fn copy_binary_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
 /// * `Result<()>` - `Ok(())` if the file is processed successfully, otherwise an error.
 #[instrument(skip(src_path, dest_path, minify))]
 async fn copy_asset_file(src_path: &Path, dest_path: &Path, minify: bool) -> Result<()> {
-    if minify {
-        if should_minify_asset(src_path) {
-            let file_ext = src_path.extension().unwrap().to_str().unwrap();
+    if minify && should_minify_asset(src_path) {
+        let file_ext = src_path.extension().unwrap().to_str().unwrap();
 
-            match file_ext {
-                "js" => minify_js_asset(src_path, dest_path).await?,
-                "css" => minify_css_asset(src_path, dest_path).await?,
-                _ => copy_binary_asset(src_path, dest_path).await?,
-            }
-        } else {
-            // Copy file as binary, this lets us write images and some other formats as well instead of only text files
-            copy_binary_asset(src_path, dest_path).await?;
+        match file_ext {
+            "js" => minify_js_asset(src_path, dest_path).await?,
+            "css" => minify_css_asset(src_path, dest_path).await?,
+            _ => copy_binary_asset(src_path, dest_path).await?,
         }
     } else {
         // Copy file as binary, this lets us write images and some other formats as well instead of only text files
@@ -527,18 +522,16 @@ async fn copy_asset_file(src_path: &Path, dest_path: &Path, minify: bool) -> Res
 /// * `Result<()>` - `Ok(())` if all assets are copied successfully, otherwise an error.
 #[instrument(skip(assets_dir, target_dir, minify))]
 async fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Result<()> {
-    let public_assets = target_dir.join("assets");
-
     for entry in WalkDir::new(assets_dir)
         .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
     {
         let rel_path = entry.path().strip_prefix(assets_dir).unwrap();
-        let target_path = public_assets.join(rel_path);
-        if rel_path.is_dir() {
+        let target_path = target_dir.join(rel_path);
+        if entry.path().is_dir() {
             if !target_path.exists() {
-                tokio::fs::create_dir_all(rel_path).await?;
+                tokio::fs::create_dir_all(target_path).await?;
             }
         } else {
             copy_asset_file(entry.path(), &target_path, minify).await?;
