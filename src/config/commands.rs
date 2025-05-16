@@ -11,7 +11,7 @@ fn default_minify() -> bool {
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
-pub struct ServeConfig {
+pub struct DevConfig {
     #[serde(default = "default_port")]
     pub port: u16,
     #[serde(default = "default_drafts")]

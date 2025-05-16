@@ -644,8 +644,8 @@ pub fn toc_to_toml(toc: &[TocEntry]) -> toml::Value {
     toml::Value::Array(items)
 }
 
-pub fn convert(document: String, root_url: &str) -> (String, Vec<TocEntry>) {
-    let ast = parse_tree(&document).unwrap();
+pub fn convert(document: &str, root_url: &str) -> (String, Vec<TocEntry>) {
+    let ast = parse_tree(document).unwrap();
     let mut toc = Vec::<TocEntry>::new();
     // We do not have any carryover tag when starting to convert the document
     let html = to_html(&ast, &[], &[], root_url, &mut toc);
