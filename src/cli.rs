@@ -127,6 +127,28 @@ enum Commands {
         #[arg(long = "no-minify")]
         _no_minify: bool,
     },
+    /// Preview from build result
+    Preview {
+        #[arg(short = 'p', long, default_value_t = 3030, help = "Port to be used")]
+        port: u16,
+
+        // TODO: add SocketAddr parsing if host is a String, similar to Vite
+        #[arg(
+            short = 'e',
+            long,
+            default_value_t = false,
+            help = "Expose site to LAN network"
+        )]
+        host: bool,
+
+        #[arg(
+            short = 'o',
+            long,
+            default_value_t = false,
+            help = "Open the development server in your browser"
+        )]
+        open: bool,
+    },
 }
 
 /// Asynchronously parse the command-line arguments and executes the corresponding subcommand
@@ -159,6 +181,7 @@ pub async fn start() -> Result<()> {
             _no_minify,
         } => build_site(!_no_minify).await?,
         Commands::New { kind, name, open } => new_asset(kind.as_ref(), name.as_ref(), open).await?,
+        Commands::Preview { port, host, open } => preview(port, open, host).await?,
     }
 
     Ok(())
@@ -203,6 +226,11 @@ async fn build_site(minify: bool) -> Result<()> {
     // config has higher priority than defaults
     let minify = minify || build_config.minify;
     cmd::build(minify).await
+}
+
+async fn preview(port: u16, open: bool, host: bool) -> Result<()> {
+    // TODO: merge config
+    cmd::preview(port, open, host).await
 }
 
 /// Checks port availability and starts the development server.
