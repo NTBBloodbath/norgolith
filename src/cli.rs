@@ -175,7 +175,7 @@ pub async fn start() -> Result<()> {
             _no_drafts,
             host,
             open,
-        } => check_and_serve(port, !_no_drafts, open, host).await?,
+        } => run_dev_server(port, !_no_drafts, open, host).await?,
         Commands::Build {
             minify: _,
             _no_minify,
@@ -244,15 +244,15 @@ async fn preview(port: u16, open: bool, host: bool) -> Result<()> {
 /// # Returns:
 ///   A `Result<()>` indicating success or error. On error, the context message
 ///   will provide information on why the development server could not be initialized.
-async fn check_and_serve(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
-    let serve_config = match crate::fs::find_config_file().await? {
+async fn run_dev_server(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
+    let dev_config = match crate::fs::find_config_file().await? {
         Some(config_path) => {
             let config_content = tokio::fs::read_to_string(config_path).await?;
             toml::from_str(&config_content)?
         }
         None => crate::config::SiteConfig::default(),
     }
-    .serve
+    .dev
     .unwrap_or_default();
 
     // Merge CLI and config values
@@ -260,14 +260,14 @@ async fn check_and_serve(port: u16, drafts: bool, open: bool, host: bool) -> Res
     // config has higher priority than defaults
     let port = if port != 3030 {
         port
-    } else if serve_config.port == 0 {
+    } else if dev_config.port == 0 {
         3030
     } else {
-        serve_config.port
+        dev_config.port
     };
-    let drafts = drafts || serve_config.drafts;
-    let host = host || serve_config.host;
-    let open = open || serve_config.open;
+    let drafts = drafts || dev_config.drafts;
+    let host = host || dev_config.host;
+    let open = open || dev_config.open;
 
     if !net::is_port_available(port) {
         let port_msg = if port == 3030 {
@@ -392,7 +392,7 @@ mod tests {
 
         std::env::set_current_dir(path)?;
 
-        let result = check_and_serve(port, false, false, false).await;
+        let result = run_dev_server(port, false, false, false).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
