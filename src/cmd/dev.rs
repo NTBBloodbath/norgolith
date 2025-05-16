@@ -617,9 +617,7 @@ async fn handle_content(request_path: &str, state: Arc<ServerState>) -> Result<R
     let req_path = PathBuf::from(request_path.trim_start_matches('/'));
     debug!(?req_path);
     match resolve_url_norg_path(&state.paths.content, &req_path).await {
-        Ok(path) => {
-            return handle_norg_content(path, state).await;
-        }
+        Ok(path) => handle_norg_content(path, state).await,
         Err(io_err) => match io_err.kind() {
             std::io::ErrorKind::NotFound => Ok(handle_not_found()),
             std::io::ErrorKind::PermissionDenied => Ok(Response::builder()
