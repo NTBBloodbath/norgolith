@@ -158,9 +158,7 @@ pub async fn start() -> Result<()> {
             minify: _,
             _no_minify,
         } => build_site(!_no_minify).await?,
-        Commands::New { kind, name, open } => {
-            new_asset(kind.as_ref(), name.as_ref(), open).await?
-        }
+        Commands::New { kind, name, open } => new_asset(kind.as_ref(), name.as_ref(), open).await?,
     }
 
     Ok(())

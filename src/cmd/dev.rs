@@ -264,10 +264,10 @@ async fn is_asset_change(event: &notify::Event) -> bool {
     // can hold assets like css, javascript, images, etc and we want to
     // trigger a reload when any asset file is created, modified or removed.
     let Some(path) = event.paths.first() else {
-        return false
+        return false;
     };
     let Some(parent_dir) = path.parent() else {
-        return false
+        return false;
     };
 
     // FIXME: find from given path instad of traversing file system
@@ -312,9 +312,7 @@ async fn process_debounced_events(result: DebounceEventResult, state: Arc<Server
 async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     debug!(
         "Executing actions: templates={}, assets={}, reload={}",
-        actions.reload_templates,
-        actions.reload_assets,
-        actions.reload_content,
+        actions.reload_templates, actions.reload_assets, actions.reload_content,
     );
 
     // Handle asset reloads
@@ -444,7 +442,7 @@ async fn handle_single_event(
     state: &Arc<ServerState>,
 ) {
     if !is_relevant_event(event) {
-        return
+        return;
     }
     debug!(event = ?event.kind, path = %path.display(), "Processing file event");
 
@@ -584,7 +582,7 @@ async fn handle_static_asset(content: &str, path: &Path) -> Result<Response<Body
 
 async fn resolve_url_norg_path(content_dir: &Path, path: &Path) -> std::io::Result<PathBuf> {
     use tokio::fs;
-    let mut path = content_dir.join(&path);
+    let mut path = content_dir.join(path);
     debug!(?path);
     // try "{path}.norg"
     if path.file_name().is_some() {
@@ -599,7 +597,7 @@ async fn resolve_url_norg_path(content_dir: &Path, path: &Path) -> std::io::Resu
     if metadata.is_dir() {
         path.push("index.norg");
     }
-    return Ok(path);
+    Ok(path)
 }
 
 /// Handles requests for content, either static or dynamic.
@@ -647,10 +645,7 @@ async fn handle_content(request_path: &str, state: Arc<ServerState>) -> Result<R
 /// # Returns
 /// * `Result<Response<Body>>` - A `Response` containing the rendered HTML or an error if
 ///   rendering fails.
-async fn handle_norg_content(
-    path: PathBuf,
-    state: Arc<ServerState>,
-) -> Result<Response<Body>> {
+async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<Response<Body>> {
     let tera = state.tera.read().await;
 
     let rel_path = path.strip_prefix(&state.paths.content)?.to_path_buf();
@@ -1023,112 +1018,111 @@ pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> 
         );
     };
 
-        debug!(path = %root.display(), "Found site root");
+    debug!(path = %root.display(), "Found site root");
 
-        // Early set the development URL to the site routes
-        let local_ip =
-            local_ip_address::local_ip().unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
-        let routes_url = if host {
-            format!("http://{}:{}", local_ip, port)
-        } else {
-            format!("http://localhost:{}", port)
-        };
-        let state = setup_server_state(root, drafts, routes_url).await?;
-        let server_start = std::time::Instant::now();
-        let rt = Handle::current();
+    // Early set the development URL to the site routes
+    let local_ip = local_ip_address::local_ip().unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let routes_url = if host {
+        format!("http://{}:{}", local_ip, port)
+    } else {
+        format!("http://localhost:{}", port)
+    };
+    let state = setup_server_state(root, drafts, routes_url).await?;
+    let server_start = std::time::Instant::now();
+    let rt = Handle::current();
 
-        // Create initial receiver to always keep channel alive, this way
-        // any "channel closed" errors are prevented from happening
-        let _guard_receiver = state.reload_tx.subscribe();
+    // Create initial receiver to always keep channel alive, this way
+    // any "channel closed" errors are prevented from happening
+    let _guard_receiver = state.reload_tx.subscribe();
 
-        // WebSocket server
-        let reload_tx = state.reload_tx.clone();
-        tokio::spawn(async move {
-            let listener = TcpListener::bind(format!("127.0.0.1:{}", LIVE_RELOAD_PORT))
-                .await
-                .unwrap();
-            while let Ok((stream, _)) = listener.accept().await {
-                tokio::spawn(handle_websocket(stream, reload_tx.clone()));
-            }
-        });
+    // WebSocket server
+    let reload_tx = state.reload_tx.clone();
+    tokio::spawn(async move {
+        let listener = TcpListener::bind(format!("127.0.0.1:{}", LIVE_RELOAD_PORT))
+            .await
+            .unwrap();
+        while let Ok((stream, _)) = listener.accept().await {
+            tokio::spawn(handle_websocket(stream, reload_tx.clone()));
+        }
+    });
 
-        // File watcher and event processing
-        let (debouncer, mut debouncer_rx) = setup_file_watcher(state.clone(), rt.clone()).await?;
-        let state_clone = Arc::clone(&state);
-        tokio::spawn(async move {
-            // Move debouncer into the async block, otherwise the file watcher does not work at all.
-            // I spent at least hour and a half debugging this and the solution was really this simple...
-            let _debouncer = debouncer;
+    // File watcher and event processing
+    let (debouncer, mut debouncer_rx) = setup_file_watcher(state.clone(), rt.clone()).await?;
+    let state_clone = Arc::clone(&state);
+    tokio::spawn(async move {
+        // Move debouncer into the async block, otherwise the file watcher does not work at all.
+        // I spent at least hour and a half debugging this and the solution was really this simple...
+        let _debouncer = debouncer;
 
-            while let Some(result) = debouncer_rx.next().await {
-                process_debounced_events(result, state_clone.clone()).await;
-            }
-        });
+        while let Some(result) = debouncer_rx.next().await {
+            process_debounced_events(result, state_clone.clone()).await;
+        }
+    });
 
-        // HTTP server
-        let state_clone = Arc::clone(&state);
-        let make_svc = make_service_fn(move |_| {
-            let state = state_clone.clone();
-            async move {
-                Ok::<_, Infallible>(service_fn(move |req| {
-                    handle_server_request(req, state.clone())
-                }))
-            }
-        });
+    // HTTP server
+    let state_clone = Arc::clone(&state);
+    let make_svc = make_service_fn(move |_| {
+        let state = state_clone.clone();
+        async move {
+            Ok::<_, Infallible>(service_fn(move |req| {
+                handle_server_request(req, state.clone())
+            }))
+        }
+    });
 
-        let addr = if host {
-            ([0, 0, 0, 0], port).into()
-        } else {
-            ([127, 0, 0, 1], port).into()
-        };
-        let server = Server::bind(&addr).serve(make_svc);
+    let addr = if host {
+        ([0, 0, 0, 0], port).into()
+    } else {
+        ([127, 0, 0, 1], port).into()
+    };
+    let server = Server::bind(&addr).serve(make_svc);
 
-        let localhost_address = format!(
-            "{} {}   {}",
+    let localhost_address = format!(
+        "{} {}   {}",
+        "•".green(),
+        "Local:".bold(),
+        format!("http://localhost:{}/", port.to_string().cyan().bold()).blue()
+    );
+    let lan_address = if host {
+        format!(
+            "{} {} {}",
             "•".green(),
-            "Local:".bold(),
-            format!("http://localhost:{}/", port.to_string().cyan().bold()).blue()
-        );
-        let lan_address = if host {
-            format!(
-                "{} {} {}",
-                "•".green(),
-                "Network:".bold(),
-                format!("http://{}:{}/", local_ip, port.to_string().cyan().bold()).blue()
-            )
-        } else {
-            format!(
-                "{} {} {} {} {}",
-                "•".green().dimmed(),
-                "Network:".bold().dimmed(),
-                "use".dimmed(),
-                "--host".bold(),
-                "to expose".dimmed()
-            )
+            "Network:".bold(),
+            format!("http://{}:{}/", local_ip, port.to_string().cyan().bold()).blue()
+        )
+    } else {
+        format!(
+            "{} {} {} {} {}",
+            "•".green().dimmed(),
+            "Network:".bold().dimmed(),
+            "use".dimmed(),
+            "--host".bold(),
+            "to expose".dimmed()
+        )
+    };
+    println!(
+        "Server started in {}\n{}\n{}\n",
+        shared::get_elapsed_time(server_start),
+        localhost_address,
+        lan_address,
+    );
+
+    if open {
+        match open::that_detached(format!("http://localhost:{}/", port)) {
+            Ok(()) => {
+                info!("Opening the development server page using your browser ...");
+            }
+            Err(e) => bail!(
+                "{}: {}",
+                "Could not open the development server page".bold(),
+                e
+            ),
         };
-        println!(
-            "Server started in {}\n{}\n{}\n",
-            shared::get_elapsed_time(server_start),
-            localhost_address,
-            lan_address,
-        );
+    }
 
-        if open {
-            match open::that_detached(format!("http://localhost:{}/", port)) {
-                Ok(()) => {
-                    info!("Opening the development server page using your browser ...");
-                }
-                Err(e) => bail!(
-                    "{}: {}",
-                    "Could not open the development server page".bold(),
-                    e
-                ),
-            };
-        }
-
-        if let Err(e) = server.await {
-            bail!("{}: {}", "Server error".bold(), e);
-        }
+    if let Err(e) = server.await {
+        bail!("{}: {}", "Server error".bold(), e);
+    }
 
     Ok(())
 }

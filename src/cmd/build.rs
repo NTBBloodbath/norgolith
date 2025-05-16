@@ -185,66 +185,61 @@ async fn build_content_entry(
     validation_errors: Arc<Mutex<Vec<String>>>,
     posts: &[toml::Value],
 ) -> Result<()> {
-        let rel_path = path
-            .strip_prefix(&paths.content)
-            .wrap_err("Failed to strip prefix")?;
+    let rel_path = path
+        .strip_prefix(&paths.content)
+        .wrap_err("Failed to strip prefix")?;
 
-        // Determine output path
-        let public_path = determine_public_path(&paths.public, rel_path);
+    // Determine output path
+    let public_path = determine_public_path(&paths.public, rel_path);
 
-        let metadata = shared::load_metadata(
-            path.to_path_buf(),
-            rel_path.to_path_buf(),
-            &site_config.root_url,
-        )
-        .await;
+    let metadata = shared::load_metadata(
+        path.to_path_buf(),
+        rel_path.to_path_buf(),
+        &site_config.root_url,
+    )
+    .await;
 
-        // Metadata schema validation
-        if let Some(schema) = &site_config.content_schema {
-            // Do not try to validate generated categories
-            if !rel_path.starts_with("categories") {
-                let errors = shared::validate_content_metadata(
-                    &paths.content,
-                    path,
-                    &metadata,
-                    schema,
-                    false,
-                )
-                .await?;
-                if !errors.is_empty() {
-                    validation_errors.lock().await.push(errors);
-                }
+    // Metadata schema validation
+    if let Some(schema) = &site_config.content_schema {
+        // Do not try to validate generated categories
+        if !rel_path.starts_with("categories") {
+            let errors =
+                shared::validate_content_metadata(&paths.content, path, &metadata, schema, false)
+                    .await?;
+            if !errors.is_empty() {
+                validation_errors.lock().await.push(errors);
             }
         }
+    }
 
-        // Do not try to build draft content for production builds
-        if toml::Value::as_bool(metadata.get("draft").unwrap_or(&toml::Value::from(false)))
-            .expect("draft metadata field should be a boolean")
-        {
-            return Ok(());
-        }
+    // Do not try to build draft content for production builds
+    if toml::Value::as_bool(metadata.get("draft").unwrap_or(&toml::Value::from(false)))
+        .expect("draft metadata field should be a boolean")
+    {
+        return Ok(());
+    }
 
-        let mut rendered = shared::render_norg_page(tera, &metadata, posts, site_config).await?;
+    let mut rendered = shared::render_norg_page(tera, &metadata, posts, site_config).await?;
 
-        // Convert all '/' references to the site root URL in links and assets, e.g.,
-        // - `<a href="/docs" ...` -> `<a href="https://foobar.com/docs" ...`
-        // - `<link rel... href="/assets/..." ...` -> `<link rel... href="https://foobar.com/assets/..." ...`
-        let href_re = regex::Regex::new(r#"href="(/|&#x2F;)"#)?;
-        rendered = href_re
-            .replace_all(&rendered, format!("href=\"{}/", site_config.root_url))
-            .into_owned();
+    // Convert all '/' references to the site root URL in links and assets, e.g.,
+    // - `<a href="/docs" ...` -> `<a href="https://foobar.com/docs" ...`
+    // - `<link rel... href="/assets/..." ...` -> `<link rel... href="https://foobar.com/assets/..." ...`
+    let href_re = regex::Regex::new(r#"href="(/|&#x2F;)"#)?;
+    rendered = href_re
+        .replace_all(&rendered, format!("href=\"{}/", site_config.root_url))
+        .into_owned();
 
-        // If no errors occurred then rendered should not be empty and we should proceed
-        if !rendered.is_empty() {
-            let rendered = if minify {
-                minify_html_content(rendered)?
-            } else {
-                rendered
-            };
+    // If no errors occurred then rendered should not be empty and we should proceed
+    if !rendered.is_empty() {
+        let rendered = if minify {
+            minify_html_content(rendered)?
+        } else {
+            rendered
+        };
 
-            // Write rendered output to public path
-            write_public_file(&public_path, &rendered).await?;
-        }
+        // Write rendered output to public path
+        write_public_file(&public_path, &rendered).await?;
+    }
     Ok(())
 }
 
@@ -305,10 +300,7 @@ pub async fn build_category_pages(
 /// * `PathBuf` - The final public path for the HTML file.
 #[instrument]
 fn determine_public_path(public_dir: &Path, rel_path: &Path) -> PathBuf {
-    let stem = rel_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap();
+    let stem = rel_path.file_stem().and_then(|s| s.to_str()).unwrap();
     if stem == "index" {
         public_dir.join(rel_path)
     } else {
@@ -334,8 +326,7 @@ fn determine_public_path(public_dir: &Path, rel_path: &Path) -> PathBuf {
 #[instrument(skip(rendered))]
 async fn write_public_file(public_path: &Path, rendered: &str) -> Result<()> {
     if let Some(parent) = public_path.parent() {
-        tokio::fs::create_dir_all(parent).await
-        .wrap_err(
+        tokio::fs::create_dir_all(parent).await.wrap_err(
             format!(
                 "{}: {}",
                 "Failed to create parent directory for".bold(),
@@ -627,59 +618,51 @@ pub async fn build(minify: bool) -> Result<()> {
         );
     };
 
-        let build_start = std::time::Instant::now();
-        info!(minify = minify, "Starting build process");
+    let build_start = std::time::Instant::now();
+    info!(minify = minify, "Starting build process");
 
-        // Load site configuration, root already contains the norgolith.toml path
-        let config_content = tokio::fs::read_to_string(&root)
-            .await
-            .wrap_err("Failed to read config file")?;
-        let site_config: config::SiteConfig =
-            toml::from_str(&config_content).wrap_err("Failed to parse site configuration")?;
-        debug!(?site_config, "Loaded site configuration");
+    // Load site configuration, root already contains the norgolith.toml path
+    let config_content = tokio::fs::read_to_string(&root)
+        .await
+        .wrap_err("Failed to read config file")?;
+    let site_config: config::SiteConfig =
+        toml::from_str(&config_content).wrap_err("Failed to parse site configuration")?;
+    debug!(?site_config, "Loaded site configuration");
 
-        let root_dir = root.parent().unwrap().to_path_buf();
+    let root_dir = root.parent().unwrap().to_path_buf();
 
-        // Tera wants a `dir: &str` parameter for some reason instead of asking for a `&Path` or `&PathBuf`...
-        let paths = SitePaths::new(root_dir.clone());
+    // Tera wants a `dir: &str` parameter for some reason instead of asking for a `&Path` or `&PathBuf`...
+    let paths = SitePaths::new(root_dir.clone());
 
-        // Initialize Tera once
-        debug!("Initializing template engine");
-        let tera =
-            shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates).await?;
+    // Initialize Tera once
+    debug!("Initializing template engine");
+    let tera = shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates).await?;
 
-        // Prepare the public build directory
-        prepare_build_directory(&paths.public).await?;
+    // Prepare the public build directory
+    prepare_build_directory(&paths.public).await?;
 
-        let posts =
-            shared::collect_all_posts_metadata(&paths.content, &site_config.root_url).await?;
+    let posts = shared::collect_all_posts_metadata(&paths.content, &site_config.root_url).await?;
 
-        // Build all norg content (& run validation)
-        build_contents(&tera, &paths, &posts, &site_config, minify).await?;
+    // Build all norg content (& run validation)
+    build_contents(&tera, &paths, &posts, &site_config, minify).await?;
 
-        // Build all category pages
-        build_category_pages(&tera, &paths.public, &posts, &site_config).await?;
+    // Build all category pages
+    build_category_pages(&tera, &paths.public, &posts, &site_config).await?;
 
-        // Generate RSS feed after building content if enabled
-        if site_config.rss.as_ref().is_some_and(|rss| rss.enable) {
-            debug!("Generating RSS feed");
-            let rss_path = paths.public.join("rss.xml");
-            generate_rss_feed(&tera, &site_config, &posts, &rss_path).await?;
-        }
+    // Generate RSS feed after building content if enabled
+    if site_config.rss.as_ref().is_some_and(|rss| rss.enable) {
+        debug!("Generating RSS feed");
+        let rss_path = paths.public.join("rss.xml");
+        generate_rss_feed(&tera, &site_config, &posts, &rss_path).await?;
+    }
 
-        // Copy site assets
-        copy_all_assets(
-            &paths.assets,
-            &paths.theme_assets,
-            &root_dir,
-            minify,
-        )
-        .await?;
+    // Copy site assets
+    copy_all_assets(&paths.assets, &paths.theme_assets, &root_dir, minify).await?;
 
-        info!(
-            "Finished site build in {}",
-            shared::get_elapsed_time(build_start)
-        );
+    info!(
+        "Finished site build in {}",
+        shared::get_elapsed_time(build_start)
+    );
 
     Ok(())
 }

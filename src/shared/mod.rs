@@ -32,8 +32,7 @@ pub async fn render_norg_page(
     context.insert("metadata", metadata);
     context.insert("posts", posts);
 
-    tera
-        .render(&format!("{}.html", layout), &context)
+    tera.render(&format!("{}.html", layout), &context)
         .map_err(|e| {
             // Store the reason why Tera failed to render the template
             let msg = format!("Failed to render template for '{}'", "").bold();

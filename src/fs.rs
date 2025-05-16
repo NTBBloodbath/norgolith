@@ -115,10 +115,7 @@ mod tests {
         // Look for the temporal test file
         let result = find_in_previous_dirs("file", test_file, &mut dir.path().to_path_buf()).await;
         assert!(result.is_ok());
-        assert_eq!(
-            result.unwrap(),
-            Some(test_file_path)
-        );
+        assert_eq!(result.unwrap(), Some(test_file_path));
 
         Ok(())
     }
@@ -135,12 +132,8 @@ mod tests {
         File::create(&test_file).await?;
 
         // Look for the temporal test file
-        let result = find_in_previous_dirs(
-            "file",
-            test_file_name,
-            &mut test_directory.clone()
-        )
-        .await;
+        let result =
+            find_in_previous_dirs("file", test_file_name, &mut test_directory.clone()).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(test_file.clone()));
 
@@ -169,17 +162,10 @@ mod tests {
         create_dir(&test_directory).await?;
 
         // Look for the temporal directory
-        let result = find_in_previous_dirs(
-            "dir",
-            test_directory_name,
-            &mut dir.path().to_path_buf(),
-        )
-        .await;
+        let result =
+            find_in_previous_dirs("dir", test_directory_name, &mut dir.path().to_path_buf()).await;
         assert!(result.is_ok());
-        assert_eq!(
-            result.unwrap(),
-            Some(test_directory)
-        );
+        assert_eq!(result.unwrap(), Some(test_directory));
 
         Ok(())
     }

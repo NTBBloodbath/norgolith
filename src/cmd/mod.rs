@@ -1,9 +1,12 @@
 mod build;
+mod dev;
 mod init;
 mod new;
-mod dev;
 mod theme;
 
-pub use self::{
-    build::build, init::init, new::new, dev::dev, theme::handle as theme, theme::ThemeCommands,
-};
+pub use build::build;
+pub use dev::dev;
+pub use init::init;
+pub use new::new;
+pub use theme::handle as theme;
+pub use theme::ThemeCommands;
