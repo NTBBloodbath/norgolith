@@ -248,6 +248,49 @@ async fn build_content_entry(
     Ok(())
 }
 
+/// Generates category listing pages
+pub async fn build_category_pages(
+    tera: &Tera,
+    public_dir: &Path,
+    posts: &[toml::Value],
+    config: &config::SiteConfig,
+) -> Result<()> {
+    let categories = shared::collect_all_posts_categories(posts).await;
+    let categories_dir = public_dir.join("categories");
+
+    // Generate category pages only if the site has posts
+    if posts.is_empty() {
+        return Ok(());
+    }
+
+    let content = shared::render_category_index(tera, posts, config).await?;
+
+    tokio::fs::create_dir_all(&categories_dir).await?;
+    tokio::fs::write(categories_dir.join("index.html"), content).await?;
+
+    // Generate individual category pages
+    for category in categories {
+        let cat_posts: Vec<_> = posts
+            .iter()
+            .filter(|post| {
+                post.get("categories")
+                    .and_then(|c| c.as_array())
+                    .map(|cats| cats.iter().any(|c| c.as_str() == Some(category.as_str())))
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        let content = shared::render_category_page(tera, &category, &cat_posts, config).await?;
+
+        let cat_dir = categories_dir.join(&category);
+        tokio::fs::create_dir_all(&cat_dir).await?;
+
+        tokio::fs::write(cat_dir.join("index.html"), content).await?;
+    }
+
+    Ok(())
+}
+
 /// Determines the final public path for an HTML file based on its name and location.
 ///
 /// This function creates SEO-friendly URLs by nesting non-index files in directories.
@@ -577,8 +620,13 @@ async fn copy_assets(assets_dir: &Path, public_dir: &Path, minify: bool) -> Resu
 /// * `minify` - Enable minification of HTML/CSS/JS outputs
 #[instrument(skip(minify))]
 pub async fn build(minify: bool) -> Result<()> {
-    let root = fs::find_config_file().await?;
-    if let Some(root) = root {
+    let Some(root) = fs::find_config_file().await? else {
+        bail!(
+            "{}: not in a Norgolith site directory",
+            "Could not build the site".bold()
+        );
+    };
+
         let build_start = std::time::Instant::now();
         info!(minify = minify, "Starting build process");
 
@@ -609,8 +657,8 @@ pub async fn build(minify: bool) -> Result<()> {
         // Build all norg content (& run validation)
         build_contents(&tera, &paths, &posts, &site_config, minify).await?;
 
-        // Generate category pages
-        shared::generate_category_pages(&tera, &paths.public, &posts, &site_config).await?;
+        // Build all category pages
+        build_category_pages(&tera, &paths.public, &posts, &site_config).await?;
 
         // Generate RSS feed after building content if enabled
         if site_config.rss.as_ref().is_some_and(|rss| rss.enable) {
@@ -632,12 +680,6 @@ pub async fn build(minify: bool) -> Result<()> {
             "Finished site build in {}",
             shared::get_elapsed_time(build_start)
         );
-    } else {
-        bail!(
-            "{}: not in a Norgolith site directory",
-            "Could not build the site".bold()
-        );
-    }
 
     Ok(())
 }
