@@ -512,37 +512,6 @@ async fn copy_asset_file(src_path: &Path, dest_path: &Path, minify: bool) -> Res
     Ok(())
 }
 
-/// Copies all site and theme assets to the public directory.
-///
-/// Theme assets are copied first, followed by site assets, allowing site assets to override
-/// theme assets with the same name. Supports optional minification of JS and CSS files.
-///
-/// # Arguments
-/// * `site_assets_dir` - Path to the site's assets directory.
-/// * `theme_assets_dir` - Path to the theme's assets directory.
-/// * `public_path` - Target directory to paste assets.
-/// * `minify` - Whether to minify supported assets during copying.
-///
-/// # Returns
-/// * `Result<()>` - `Ok(())` if all assets are copied successfully, otherwise an error.
-#[instrument(skip(site_assets_dir, theme_assets_dir, public_path, minify))]
-async fn copy_all_assets(
-    site_assets_dir: &Path,
-    theme_assets_dir: &Path,
-    public_path: &Path,
-    minify: bool,
-) -> Result<()> {
-    // Copy theme assets first
-    if theme_assets_dir.exists() {
-        copy_assets(theme_assets_dir, public_path, minify).await?;
-    }
-
-    // Copy site assets (overrides theme assets)
-    copy_assets(site_assets_dir, public_path, minify).await?;
-
-    Ok(())
-}
-
 /// Recursively copies assets from a source directory to the public assets directory.
 ///
 /// This function processes all files and subdirectories in the source directory,
@@ -551,49 +520,30 @@ async fn copy_all_assets(
 ///
 /// # Arguments
 /// * `assets_dir` - The source directory containing the assets to copy.
-/// * `public_dir` - build target directory of the site
+/// * `target_dir` - Target assets directory to paste in.
 /// * `minify` - Whether to minify supported assets (e.g., JS and CSS) during the copy process.
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if all assets are copied successfully, otherwise an error.
-#[instrument(skip(assets_dir, public_dir, minify))]
-async fn copy_assets(assets_dir: &Path, public_dir: &Path, minify: bool) -> Result<()> {
-    let public_assets = public_dir.join("assets");
+#[instrument(skip(assets_dir, target_dir, minify))]
+async fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Result<()> {
+    let public_assets = target_dir.join("assets");
 
-    /// Recursively processes a directory entry and copies it to the destination.
-    ///
-    /// This helper function is used by `copy_assets` to handle individual files and directories.
-    /// For directories, it recursively processes their contents. For files, it copies them
-    /// to the destination with optional minification.
-    ///
-    /// # Arguments
-    /// * `src_path` - The source path of the file or directory to process.
-    /// * `dest_path` - The destination path where the file or directory should be copied.
-    /// * `minify` - Whether to minify supported assets during the copy process.
-    ///
-    /// # Returns
-    /// * `Result<()>` - `Ok(())` if the entry is processed successfully, otherwise an error.
-    async fn process_entry(src_path: &Path, dest_path: &Path, minify: bool) -> Result<()> {
-        if src_path.is_dir() {
-            // Create destination directory
-            tokio::fs::create_dir_all(dest_path).await?;
-
-            // Process all entries in the directory
-            let mut entries = tokio::fs::read_dir(src_path).await?;
-            while let Some(entry) = entries.next_entry().await? {
-                let entry_path = entry.path();
-                let entry_name = entry.file_name();
-                let new_dest = dest_path.join(entry_name);
-
-                Box::pin(process_entry(&entry_path, &new_dest, minify)).await?;
+    for entry in WalkDir::new(assets_dir)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let rel_path = entry.path().strip_prefix(assets_dir).unwrap();
+        let target_path = public_assets.join(rel_path);
+        if rel_path.is_dir() {
+            if !target_path.exists() {
+                tokio::fs::create_dir_all(rel_path).await?;
             }
         } else {
-            copy_asset_file(src_path, dest_path, minify).await?;
+            copy_asset_file(entry.path(), &target_path, minify).await?;
         }
-        Ok(())
     }
-
-    Box::pin(process_entry(assets_dir, &public_assets, minify)).await?;
 
     Ok(())
 }
@@ -657,7 +607,11 @@ pub async fn build(minify: bool) -> Result<()> {
     }
 
     // Copy site assets
-    copy_all_assets(&paths.assets, &paths.theme_assets, &paths.public, minify).await?;
+    let public_assets_dir = paths.public.join("assets");
+    if paths.theme_assets.exists() {
+        copy_assets(&paths.theme_assets, &public_assets_dir, minify).await?;
+    }
+    copy_assets(&paths.assets, &public_assets_dir, minify).await?;
 
     info!(
         "Finished site build in {}",
