@@ -1,5 +1,4 @@
 use std::{
-    error::Error,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -12,9 +11,9 @@ use rss::Channel;
 use tera::{Context, Tera};
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, instrument, warn};
-use walkdir::{DirEntry, WalkDir};
+use walkdir::WalkDir;
 
-use crate::{config, fs, schema::ContentSchema, shared};
+use crate::{config, fs, shared};
 
 /// Represents the directory structure of a Norgolith site.
 ///
@@ -22,7 +21,6 @@ use crate::{config, fs, schema::ContentSchema, shared};
 /// including build artifacts, public output, content sources, and theme resources.
 #[derive(Debug)]
 struct SitePaths {
-    build: PathBuf,
     public: PathBuf,
     content: PathBuf,
     assets: PathBuf,
@@ -43,7 +41,6 @@ impl SitePaths {
     fn new(root: PathBuf) -> Self {
         debug!("Initializing site paths");
         let paths = Self {
-            build: root.join(".build"),
             public: root.join("public"),
             content: root.join("content"),
             assets: root.join("assets"),
@@ -59,10 +56,9 @@ impl SitePaths {
 /// Prepares the build directory by cleaning existing artifacts
 ///
 /// # Arguments
-/// * `root_path` - Root directory of the site
-#[instrument(skip(root_path))]
-async fn prepare_build_directory(root_path: &Path) -> Result<()> {
-    let public_dir = root_path.join("public");
+/// * `public_dir` - build target directory of the site
+#[instrument(skip(public_dir))]
+async fn prepare_build_directory(public_dir: &Path) -> Result<()> {
     debug!(path = %public_dir.display(), "Preparing build directory");
     if public_dir.exists() {
         debug!(path = %public_dir.display(), "Removing existing public directory");
@@ -125,16 +121,17 @@ async fn generate_rss_feed(
 /// * `site_config` - Site configuration
 /// * `minify` - Enable minification of output
 #[instrument(level = "debug", skip(tera, paths, site_config))]
-async fn generate_public_build(
+async fn build_contents(
     tera: &Tera,
     paths: &SitePaths,
+    posts: &[toml::Value],
     site_config: &config::SiteConfig,
     minify: bool,
 ) -> Result<()> {
-    let posts = shared::collect_all_posts_metadata(&paths.content, &site_config.root_url).await?;
-    let entries = WalkDir::new(&paths.build)
+    let entries = WalkDir::new(&paths.content)
         .into_iter()
-        .filter_map(|e| e.ok());
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "norg"));
 
     // Shared error state for concurrent validation
     let validation_errors = Arc::new(Mutex::new(Vec::new()));
@@ -142,19 +139,18 @@ async fn generate_public_build(
     // Parallel processing
     futures_util::stream::iter(entries)
         .for_each_concurrent(num_cpus::get(), |entry| {
-            let posts = posts.clone();
-            let site_config = site_config.clone();
             let validation_errors = Arc::clone(&validation_errors);
 
             async move {
-                if let Err(e) = process_build_entry(
-                    entry,
+                let path = entry.path();
+                if let Err(e) = build_content_entry(
+                    path,
                     tera,
                     paths,
-                    &site_config,
+                    site_config,
                     minify,
-                    &validation_errors,
-                    &posts,
+                    validation_errors,
+                    posts,
                 )
                 .await
                 {
@@ -180,57 +176,44 @@ async fn generate_public_build(
     level = "debug",
     skip(tera, paths, site_config, validation_errors, posts)
 )]
-async fn process_build_entry(
-    entry: DirEntry,
+async fn build_content_entry(
+    path: &Path,
     tera: &Tera,
     paths: &SitePaths,
     site_config: &config::SiteConfig,
     minify: bool,
-    validation_errors: &Arc<Mutex<Vec<String>>>,
+    validation_errors: Arc<Mutex<Vec<String>>>,
     posts: &[toml::Value],
 ) -> Result<()> {
-    let path = entry.path();
-
-    if path.is_file() && path.extension().map(|e| e == "html").unwrap_or(false) {
         let rel_path = path
-            .strip_prefix(&paths.build)
+            .strip_prefix(&paths.content)
             .wrap_err("Failed to strip prefix")?;
-        let stem = rel_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| eyre!("No file stem"))?;
 
         // Determine output path
-        let public_path = determine_public_path(&paths.public, rel_path, stem);
+        let public_path = determine_public_path(&paths.public, rel_path);
 
-        // Read content and metadata
-        let html = tokio::fs::read_to_string(path)
-            .await
-            .wrap_err_with(|| format!("{}: {:?}", "Failed to read HTML file".bold(), path))?;
-        let meta_path = path.with_extension("meta.toml");
-        let meta_rel_path = meta_path.strip_prefix(&paths.build)?.to_path_buf();
-
-        // Handle metadata loading with proper error fallback
-        //
-        // The /categories routes does not have a metadata file by design so we return an empty TOML table for them
-        let metadata = if !rel_path.starts_with("categories") {
-            shared::load_metadata(meta_path, meta_rel_path, &site_config.root_url).await
-        } else {
-            toml::Value::Table(toml::map::Map::new())
-        };
+        let metadata = shared::load_metadata(
+            path.to_path_buf(),
+            rel_path.to_path_buf(),
+            &site_config.root_url,
+        )
+        .await;
 
         // Metadata schema validation
         if let Some(schema) = &site_config.content_schema {
             // Do not try to validate generated categories
             if !rel_path.starts_with("categories") {
-                validate_metadata(
-                    path,
-                    &paths.build,
+                let errors = shared::validate_content_metadata(
                     &paths.content,
+                    path,
+                    &metadata,
                     schema,
-                    validation_errors,
+                    false,
                 )
                 .await?;
+                if !errors.is_empty() {
+                    validation_errors.lock().await.push(errors);
+                }
             }
         }
 
@@ -241,36 +224,7 @@ async fn process_build_entry(
             return Ok(());
         }
 
-        // Get the layout (template) to render the content, fallback to default if not found.
-        let layout = metadata
-            .get("layout")
-            .unwrap_or(&toml::Value::from("default"))
-            .as_str()
-            .unwrap()
-            .to_owned();
-
-        // Build template context
-        let mut context = Context::new();
-        context.insert("content", &html);
-        context.insert("config", &site_config);
-        context.insert("posts", &posts);
-        context.insert("metadata", &metadata);
-
-        // Render template
-        let mut rendered = match tera.render(&(layout.clone() + ".html"), &context) {
-            Ok(content) => content,
-            Err(e) => {
-                // Store the reason why Tera failed to render the template
-                let internal_err = e.source().unwrap();
-                warn!(
-                    "{}: {} - {}",
-                    format!("Failed to render template for '{}'", rel_path.display()).bold(),
-                    internal_err,
-                    "Excluding from build".bold()
-                );
-                String::new()
-            }
-        };
+        let mut rendered = shared::render_norg_page(tera, &metadata, posts, site_config).await?;
 
         // Convert all '/' references to the site root URL in links and assets, e.g.,
         // - `<a href="/docs" ...` -> `<a href="https://foobar.com/docs" ...`
@@ -289,48 +243,8 @@ async fn process_build_entry(
             };
 
             // Write rendered output to public path
-            write_public_file(&public_path, rendered).await?;
+            write_public_file(&public_path, &rendered).await?;
         }
-    }
-    Ok(())
-}
-
-/// Validates content metadata against a schema
-///
-/// Collects validation errors for aggregated reporting
-#[instrument(skip(path, build_dir, content_dir, schema, validation_errors))]
-async fn validate_metadata(
-    path: &Path,
-    build_dir: &Path,
-    content_dir: &Path,
-    schema: &ContentSchema,
-    validation_errors: &Arc<Mutex<Vec<String>>>,
-) -> Result<()> {
-    // Get relative content path
-    let content_path = path
-        .strip_prefix(build_dir)
-        .wrap_err("Failed to strip build dir prefix for content path")?
-        .with_extension("")
-        .to_str()
-        .ok_or_else(|| eyre!("Failed to convert content path to string"))?
-        .replace('\\', "/"); // Normalize path separators
-
-    let norg_content_path = content_dir.join(content_path).with_extension("norg");
-
-    // Perform validation
-    let errors = shared::validate_content_metadata(
-        &norg_content_path,
-        build_dir,
-        content_dir,
-        schema,
-        false,
-    )
-    .await?;
-
-    // Collect errors
-    if !errors.is_empty() {
-        validation_errors.lock().await.push(errors);
-    }
     Ok(())
 }
 
@@ -343,12 +257,15 @@ async fn validate_metadata(
 /// # Arguments
 /// * `public_dir` - The root public directory where the final build is stored.
 /// * `rel_path` - The relative path of the file within the build directory.
-/// * `stem` - The file stem (name without extension) of the HTML file.
 ///
 /// # Returns
 /// * `PathBuf` - The final public path for the HTML file.
 #[instrument]
-fn determine_public_path(public_dir: &Path, rel_path: &Path, stem: &str) -> PathBuf {
+fn determine_public_path(public_dir: &Path, rel_path: &Path) -> PathBuf {
+    let stem = rel_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap();
     if stem == "index" {
         public_dir.join(rel_path)
     } else {
@@ -372,9 +289,9 @@ fn determine_public_path(public_dir: &Path, rel_path: &Path, stem: &str) -> Path
 /// # Returns
 /// * `Result<()>` - `Ok(())` if the file is written successfully, otherwise an error.
 #[instrument(skip(rendered))]
-async fn write_public_file(public_path: &Path, rendered: String) -> Result<()> {
-    tokio::fs::create_dir_all(public_path.parent().unwrap())
-        .await
+async fn write_public_file(public_path: &Path, rendered: &str) -> Result<()> {
+    if let Some(parent) = public_path.parent() {
+        tokio::fs::create_dir_all(parent).await
         .wrap_err(
             format!(
                 "{}: {}",
@@ -383,6 +300,7 @@ async fn write_public_file(public_path: &Path, rendered: String) -> Result<()> {
             )
             .bold(),
         )?;
+    }
     tokio::fs::write(public_path, rendered)
         .await
         .wrap_err(format!(
@@ -599,14 +517,13 @@ async fn copy_all_assets(
 ///
 /// # Arguments
 /// * `assets_dir` - The source directory containing the assets to copy.
-/// * `root_path` - The root directory of the site, used to determine the public output path.
+/// * `public_dir` - build target directory of the site
 /// * `minify` - Whether to minify supported assets (e.g., JS and CSS) during the copy process.
 ///
 /// # Returns
 /// * `Result<()>` - `Ok(())` if all assets are copied successfully, otherwise an error.
-#[instrument(skip(assets_dir, root_path, minify))]
-async fn copy_assets(assets_dir: &Path, root_path: &Path, minify: bool) -> Result<()> {
-    let public_dir = root_path.join("public");
+#[instrument(skip(assets_dir, public_dir, minify))]
+async fn copy_assets(assets_dir: &Path, public_dir: &Path, minify: bool) -> Result<()> {
     let public_assets = public_dir.join("assets");
 
     /// Recursively processes a directory entry and copies it to the destination.
@@ -653,7 +570,7 @@ async fn copy_assets(assets_dir: &Path, root_path: &Path, minify: bool) -> Resul
 /// 1. Load configuration
 /// 2. Prepare directories
 /// 3. Convert content
-/// 4. Generate public build
+/// 4. Render templates
 /// 5. Copy assets
 ///
 /// # Arguments
@@ -684,26 +601,15 @@ pub async fn build(minify: bool) -> Result<()> {
             shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates).await?;
 
         // Prepare the public build directory
-        prepare_build_directory(Path::new(&root_dir)).await?;
+        prepare_build_directory(&paths.public).await?;
 
-        // Convert the norg documents to html
-        // TODO: convert documents directly to dist folder
-        shared::convert_content(&paths.content, false, &site_config.root_url).await?;
+        let posts =
+            shared::collect_all_posts_metadata(&paths.content, &site_config.root_url).await?;
 
-        // Generate public HTML build
-        generate_public_build(&tera, &paths, &site_config, minify).await?;
-
-        // Copy site assets
-        copy_all_assets(
-            &paths.assets,
-            &paths.theme_assets,
-            Path::new(&root_dir.clone()),
-            minify,
-        )
-        .await?;
+        // Build all norg content (& run validation)
+        build_contents(&tera, &paths, &posts, &site_config, minify).await?;
 
         // Generate category pages
-        let posts = shared::collect_all_posts_metadata(&paths.content, &site_config.root_url).await?;
         shared::generate_category_pages(&tera, &paths.public, &posts, &site_config).await?;
 
         // Generate RSS feed after building content if enabled
@@ -712,6 +618,15 @@ pub async fn build(minify: bool) -> Result<()> {
             let rss_path = paths.public.join("rss.xml");
             generate_rss_feed(&tera, &site_config, &posts, &rss_path).await?;
         }
+
+        // Copy site assets
+        copy_all_assets(
+            &paths.assets,
+            &paths.theme_assets,
+            &root_dir,
+            minify,
+        )
+        .await?;
 
         info!(
             "Finished site build in {}",

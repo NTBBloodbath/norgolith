@@ -155,7 +155,7 @@ async fn create_directories(path: &str) -> Result<()> {
     debug!("Creating site directories");
 
     // Create the site directories and all their parent directories if required
-    let directories = vec!["content", "templates", "assets", "theme", ".build"];
+    let directories = vec!["content", "templates", "assets", "theme"];
     for dir in directories {
         let dir_path = PathBuf::from(path).join(dir);
         debug!(dir_path = %dir_path.display(), "Creating directory");
@@ -247,8 +247,7 @@ pub async fn init(name: &str, prompt: bool) -> Result<()> {
                 Cell::new("Site assets (JS, CSS, images, etc)"),
             ])
             .add_row(vec![Cell::new("theme"), Cell::new("Site theme files")])
-            .add_row(vec![Cell::new("public"), Cell::new("Production artifacts")])
-            .add_row(vec![Cell::new(".build"), Cell::new("Dev server artifacts")]);
+            .add_row(vec![Cell::new("public"), Cell::new("Production artifacts")]);
 
         let init_message = formatdoc!(
             r#"

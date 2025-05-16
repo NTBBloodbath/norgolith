@@ -26,7 +26,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::accept_async;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::{config, converter, fs, shared};
+use crate::{config, fs, shared};
 
 /// Represents the directory structure of a Norgolith site.
 ///
@@ -582,17 +582,16 @@ async fn handle_static_asset(content: &str, path: &Path) -> Result<Response<Body
         .body(Body::from(content.to_owned()))?)
 }
 
-async fn get_norg_content_from_urlpath(path: &Path) -> std::io::Result<(PathBuf, Vec<u8>)> {
+async fn resolve_url_norg_path(content_dir: &Path, path: &Path) -> std::io::Result<PathBuf> {
     use tokio::fs;
-    let content_path = PathBuf::from("./content");
-    let mut path = content_path.join(&path);
+    let mut path = content_dir.join(&path);
     debug!(?path);
     // try "{path}.norg"
-    if let Some(name) = path.file_name().map(|s| s.to_string_lossy()) {
-        let path = path.parent().unwrap().join(format!("{name}.norg"));
+    if path.file_name().is_some() {
+        let path = path.with_extension("norg");
         debug!(?path);
-        if let Ok(content) = fs::read(&path).await {
-            return Ok((path, content));
+        if fs::metadata(&path).await.is_ok_and(|m| m.is_file()) {
+            return Ok(path);
         }
     }
     // try {path}/index.norg
@@ -600,8 +599,7 @@ async fn get_norg_content_from_urlpath(path: &Path) -> std::io::Result<(PathBuf,
     if metadata.is_dir() {
         path.push("index.norg");
     }
-    let content = fs::read(&path).await?;
-    return Ok((path, content));
+    return Ok(path);
 }
 
 /// Handles requests for content, either static or dynamic.
@@ -620,10 +618,9 @@ async fn get_norg_content_from_urlpath(path: &Path) -> std::io::Result<(PathBuf,
 async fn handle_content(request_path: &str, state: Arc<ServerState>) -> Result<Response<Body>> {
     let req_path = PathBuf::from(request_path.trim_start_matches('/'));
     debug!(?req_path);
-    match get_norg_content_from_urlpath(&req_path).await {
-        Ok((path, content)) => {
-            let content = String::from_utf8(content)?;
-            return handle_norg_content(&content, &path, state).await;
+    match resolve_url_norg_path(&state.paths.content, &req_path).await {
+        Ok(path) => {
+            return handle_norg_content(path, state).await;
         }
         Err(io_err) => match io_err.kind() {
             std::io::ErrorKind::NotFound => Ok(handle_not_found()),
@@ -651,14 +648,13 @@ async fn handle_content(request_path: &str, state: Arc<ServerState>) -> Result<R
 /// * `Result<Response<Body>>` - A `Response` containing the rendered HTML or an error if
 ///   rendering fails.
 async fn handle_norg_content(
-    content: &str,
-    path: &Path,
+    path: PathBuf,
     state: Arc<ServerState>,
 ) -> Result<Response<Body>> {
     let tera = state.tera.read().await;
 
-    let (norg_html, toc) = converter::html::convert(content, &state.config.root_url);
-    let metadata = converter::meta::convert(content, Some(converter::html::toc_to_toml(&toc)))?;
+    let rel_path = path.strip_prefix(&state.paths.content)?.to_path_buf();
+    let metadata = shared::load_metadata(path, rel_path, &state.routes_url).await;
     let is_draft = metadata
         .get("draft")
         .map(|v| {
@@ -669,33 +665,9 @@ async fn handle_norg_content(
     if is_draft && !state.build_drafts {
         return Ok(handle_not_found());
     }
-    let layout = metadata
-        .get("layout")
-        .and_then(|v| v.as_str())
-        .unwrap_or("default");
 
-    let context = {
-        let mut ctx = Context::new();
-        ctx.insert("config", &state.config);
-        ctx.insert("content", &norg_html);
-        ctx.insert("metadata", &metadata);
-        // TODO: remove this when macro system is ready
-        let posts = state.posts.read().await.clone();
-        ctx.insert("posts", &posts);
-        ctx
-    };
-
-    let mut body = tera
-        .render(&format!("{}.html", layout), &context)
-        .map_err(|e| {
-            // Store the reason why Tera failed to render the template
-            let msg = format!("Failed to render template for '{}'", path.display()).bold();
-            if let Some(source) = e.source() {
-                eyre!("{msg}: {source}")
-            } else {
-                eyre!(msg)
-            }
-        })?;
+    let posts = state.posts.read().await.clone();
+    let mut body = shared::render_norg_page(&tera, &metadata, &posts, &state.config).await?;
 
     // Always use the proper URL to the development server for template links that refers
     // to the local URL, this is useful when running the server exposed to LAN network
