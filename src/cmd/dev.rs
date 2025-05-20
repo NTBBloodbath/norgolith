@@ -8,6 +8,7 @@ use std::time::Duration;
 use colored::Colorize;
 use eyre::{bail, eyre, Result};
 use futures_util::{SinkExt, Stream, StreamExt};
+use hyper::header::{CACHE_CONTROL, EXPIRES, PRAGMA};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{
     header::{HeaderValue, CONTENT_TYPE},
@@ -35,7 +36,6 @@ use crate::{config, fs, shared};
 /// to organize and manage the file structure of the site.
 #[derive(Debug)]
 struct SitePaths {
-    build: PathBuf,
     content: PathBuf,
     assets: PathBuf,
     templates: PathBuf,
@@ -59,7 +59,6 @@ impl SitePaths {
     fn new(root: PathBuf) -> Self {
         debug!("Initializing site paths");
         let paths = Self {
-            build: root.join(".build"),
             content: root.join("content"),
             assets: root.join("assets"),
             theme_assets: root.join("theme/assets"),
@@ -157,8 +156,7 @@ impl ServerState {
 struct FileActions {
     reload_templates: bool,
     reload_assets: bool,
-    rebuild_paths: Vec<PathBuf>,
-    cleanup_paths: Vec<PathBuf>,
+    reload_content: bool,
 }
 
 /// LiveReload script to be injected into HTML pages.
@@ -202,21 +200,22 @@ fn is_relevant_event(event: &notify::Event) -> bool {
 /// * `event` - The file system event to check.
 ///
 /// # Returns
-/// * `Result<bool>` - `true` if the event is a template change, `false` otherwise.
-///   Returns an error if the event paths are empty or if the parent directory cannot be determined.
-async fn is_template_change(event: &notify::Event) -> Result<bool> {
-    let path = event.paths.first().ok_or(eyre!("Empty event paths"))?;
-
+/// * `bool` - `true` if the event is a template change, `false` otherwise.
+#[instrument(level = "debug", skip(event))]
+async fn is_template_change(event: &notify::Event) -> bool {
+    let Some(path) = event.paths.first() else {
+        return false;
+    };
     let is_template = path.extension().is_some_and(|ext| ext == "html");
-    let parent_dir = path.parent().ok_or(eyre!("Path has no parent"))?;
+    let Some(parent_dir) = path.parent() else {
+        return false;
+    };
 
-    Ok(
-        fs::find_in_previous_dirs("dir", "templates", &mut parent_dir.to_path_buf())
+    is_relevant_event(event)
+        && is_template
+        && fs::find_in_previous_dirs("dir", "templates", &mut parent_dir.to_path_buf())
             .await
             .is_ok()
-            && is_template
-            && is_relevant_event(event),
-    )
 }
 
 /// Checks if a file system event corresponds to a content change.
@@ -230,21 +229,23 @@ async fn is_template_change(event: &notify::Event) -> Result<bool> {
 /// * `event` - The file system event to check.
 ///
 /// # Returns
-/// * `Result<bool>` - `true` if the event is a content change, `false` otherwise.
-///   Returns an error if the event paths are empty or if the parent directory cannot be determined.
-async fn is_content_change(event: &notify::Event) -> Result<bool> {
+/// * `bool` - `true` if the event is a content change, `false` otherwise.
+#[instrument(level = "debug", skip(event))]
+async fn is_content_change(event: &notify::Event) -> bool {
     // NOTE: we do not check for the norg filetype here because content directory
     // can also hold assets like images, and we want to also trigger a reload when
     // an asset file is created, modified or removed.
-    let path = event.paths.first().ok_or(eyre!("Empty event paths"))?;
-    let parent_dir = path.parent().ok_or(eyre!("Path has no parent"))?;
+    let Some(path) = event.paths.first() else {
+        return false;
+    };
+    let Some(parent_dir) = path.parent() else {
+        return false;
+    };
 
-    Ok(
-        fs::find_in_previous_dirs("dir", "content", &mut parent_dir.to_path_buf())
+    is_relevant_event(event)
+        && fs::find_in_previous_dirs("dir", "content", &mut parent_dir.to_path_buf())
             .await
             .is_ok()
-            && is_relevant_event(event),
-    )
 }
 
 /// Checks if a file system event corresponds to an asset change.
@@ -257,21 +258,24 @@ async fn is_content_change(event: &notify::Event) -> Result<bool> {
 /// * `event` - The file system event to check.
 ///
 /// # Returns
-/// * `Result<bool>` - `true` if the event is an asset change, `false` otherwise.
-///   Returns an error if the event paths are empty or if the parent directory cannot be determined.
-async fn is_asset_change(event: &notify::Event) -> Result<bool> {
+/// * `bool` - `true` if the event is an asset change, `false` otherwise.
+#[instrument(level = "debug", skip(event))]
+async fn is_asset_change(event: &notify::Event) -> bool {
     // NOTE: we do not check for any filetype here because assets directory
     // can hold assets like css, javascript, images, etc and we want to
     // trigger a reload when any asset file is created, modified or removed.
-    let path = event.paths.first().ok_or(eyre!("Empty event paths"))?;
-    let parent_dir = path.parent().ok_or(eyre!("Path has no parent"))?;
+    let Some(path) = event.paths.first() else {
+        return false;
+    };
+    let Some(parent_dir) = path.parent() else {
+        return false;
+    };
 
-    Ok(
-        fs::find_in_previous_dirs("dir", "assets", &mut parent_dir.to_path_buf())
+    // FIXME: find from given path instad of traversing file system
+    is_relevant_event(event)
+        && fs::find_in_previous_dirs("dir", "assets", &mut parent_dir.to_path_buf())
             .await
             .is_ok()
-            && is_relevant_event(event),
-    )
 }
 
 /// Processes debounced file system events and triggers appropriate actions.
@@ -308,11 +312,8 @@ async fn process_debounced_events(result: DebounceEventResult, state: Arc<Server
 #[instrument(level = "debug", skip(actions, state))]
 async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     debug!(
-        "Executing actions: templates={}, assets={}, rebuild={}, cleanup={}",
-        actions.reload_templates,
-        actions.reload_assets,
-        actions.rebuild_paths.len(),
-        actions.cleanup_paths.len()
+        "Executing actions: templates={}, assets={}, reload={}",
+        actions.reload_templates, actions.reload_assets, actions.reload_content,
     );
 
     // Handle asset reloads
@@ -334,120 +335,19 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
         }
     }
 
-    // Clean up deleted files
-    for path in &actions.cleanup_paths {
-        if let Err(e) = tokio::fs::remove_file(path).await {
-            error!("Failed to clean up file {}: {}", path.display(), e);
-        } else {
-            info!("Cleaned up orphaned file: {}", path.display());
-        }
-    }
-
-    // Rebuild changed content
-    for path in &actions.rebuild_paths {
-        let path = path.clone();
-        let state = Arc::clone(&state);
-        let content_path = match path.strip_prefix(&state.paths.content) {
-            Ok(p) => p.to_path_buf(),
-            Err(_) => continue,
-        };
-
-        tokio::spawn(async move {
-            let start = std::time::Instant::now();
-
-            match shared::convert_document(
-                &path,
-                &state.paths.content,
-                state.build_drafts,
-                &state.routes_url,
-            )
-            .await
-            {
-                Ok(_) => {
-                    info!(
-                        "Regenerated content: {} ({:.1?})",
-                        content_path.display(),
-                        start.elapsed()
-                    );
-
-                    // Validate metadata if schema exists
-                    if let Some(schema) = &state.config.content_schema {
-                        let validation_warnings = shared::validate_content_metadata(
-                            &path,
-                            &state.paths.build,
-                            &state.paths.content,
-                            schema,
-                            true,
-                        )
-                        .await
-                        .unwrap();
-
-                        if !validation_warnings.is_empty() {
-                            warn!("{validation_warnings}");
-                        }
-                    }
-
-                    if let Err(e) = state.send_reload() {
-                        error!("Reload signal error: {}", e);
-                    }
-                }
-                Err(e) => error!("Content conversion failed: {}", e),
-            }
-        });
-    }
-
-    // Re-collect pages metadata on content changes
-    if !actions.rebuild_paths.is_empty() || !actions.cleanup_paths.is_empty() {
-        match shared::collect_all_posts_metadata(&state.paths.build, &state.routes_url).await {
+    if actions.reload_content {
+        match shared::collect_all_posts_metadata(&state.paths.content, &state.routes_url).await {
             Ok(new_posts) => {
-                // Update categories
-                let tera = state.tera.read().await;
-                if let Err(e) = shared::generate_category_pages(
-                    &tera,
-                    &state.paths.build,
-                    &new_posts,
-                    &state.config,
-                )
-                .await
-                {
-                    error!("Failed to regenerate categories: {}", e);
-                }
-
                 let mut posts_lock = state.posts.write().await;
                 *posts_lock = new_posts;
             }
             Err(e) => error!("Failed to update pages metadata: {}", e),
         }
     }
-}
 
-/// Helper function to handle content retrieval errors.
-///
-/// This function retrieves content from a given path and handles errors gracefully.
-/// If the content is not found, it returns a custom error message. For other errors,
-/// it provides detailed error information.
-///
-/// # Arguments
-/// * `request_path` - The path to the content to retrieve.
-///
-/// # Returns
-/// * `Result<(String, PathBuf)>` - A tuple containing the content and its path if successful.
-///   Returns an error if the content cannot be retrieved.
-#[instrument(skip(request_path))]
-async fn get_content_or_error(request_path: &str) -> Result<(String, PathBuf)> {
-    debug!(path = %request_path, "Retrieving content");
-
-    shared::get_content(request_path).await.map_err(|e| {
-        if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-            if io_err.kind() == std::io::ErrorKind::NotFound {
-                eyre!("Path not found: {}", request_path)
-            } else {
-                eyre!("Error reading '{}': {}", request_path, io_err)
-            }
-        } else {
-            eyre!("Unexpected error for '{}': {}", request_path, e)
-        }
-    })
+    if let Err(e) = state.send_reload() {
+        error!("Reload signal error: {}", e);
+    }
 }
 
 /// Injects the LiveReload script into HTML content.
@@ -542,6 +442,9 @@ async fn handle_single_event(
     actions: &mut FileActions,
     state: &Arc<ServerState>,
 ) {
+    if !is_relevant_event(event) {
+        return;
+    }
     debug!(event = ?event.kind, path = %path.display(), "Processing file event");
 
     // We are excluding these fucking temp (Neo)vim backup files because they trigger
@@ -553,7 +456,7 @@ async fn handle_single_event(
         return;
     }
 
-    if is_template_change(event).await.unwrap_or(false)
+    if is_template_change(event).await
         && (path.strip_prefix(&state.paths.templates).is_ok()
             || path.strip_prefix(&state.paths.theme_templates).is_ok())
     {
@@ -567,7 +470,7 @@ async fn handle_single_event(
         actions.reload_templates = true;
     }
 
-    if is_asset_change(event).await.unwrap_or(false)
+    if is_asset_change(event).await
         && (path.strip_prefix(&state.paths.assets).is_ok()
             || path.strip_prefix(&state.paths.theme_assets).is_ok())
     {
@@ -581,41 +484,14 @@ async fn handle_single_event(
         actions.reload_assets = true;
     }
 
-    match event.kind {
-        notify::EventKind::Remove(_) => {
-            handle_removed_file(path, actions, state).await;
-        }
-        _ => {
-            if is_content_change(event).await.unwrap_or(false)
-                && path.strip_prefix(&state.paths.content).is_ok()
-            {
-                debug!(path = %path.display(), "Content modified, adding to rebuild paths");
-                actions.rebuild_paths.push(path.to_owned());
-            }
-        }
-    }
-}
-
-/// Handles the removal of a file and updates the cleanup actions.
-///
-/// This function processes the removal of a file and updates the `FileActions` struct
-/// to include cleanup actions for associated build files (e.g., HTML and metadata files).
-///
-/// # Arguments
-/// * `path` - The path of the removed file.
-/// * `actions` - The actions to update based on the removal.
-/// * `state` - The shared server state.
-#[instrument(skip(path, state))]
-async fn handle_removed_file(path: &Path, actions: &mut FileActions, state: &Arc<ServerState>) {
-    debug!(path = %path.display(), "Handling removed file");
-    if let Ok(relative_path) = path.strip_prefix(&state.paths.content) {
-        if relative_path.extension().is_some_and(|ext| ext == "norg") {
-            let build_path = Path::new(".build").join(relative_path);
-            actions.cleanup_paths.extend([
-                build_path.with_extension("html"),
-                build_path.with_extension("meta.toml"),
-            ]);
-        }
+    // PERF: don't check for other content files as we will reload all clients anyways
+    debug!(?actions.reload_content, "reload_content");
+    if !actions.reload_content
+        && is_content_change(event).await
+        && path.strip_prefix(&state.paths.content).is_ok()
+    {
+        debug!(path = %path.display(), "Content modified");
+        actions.reload_content = true;
     }
 }
 
@@ -640,35 +516,45 @@ async fn handle_asset(request_path: &str, paths: &SitePaths) -> Result<Response<
     let site_path = paths.assets.join(asset_path);
 
     debug!(site_assets = %site_path.display(), "Checking site assets path");
-    match read_asset(&site_path).await {
-        Ok((content, mime_type)) => {
+    let (content, mime_type) = match read_asset(&site_path).await {
+        Ok(asset) => {
             debug!("Asset found in site directory");
-            Ok(Response::builder()
-                .header(CONTENT_TYPE, mime_type)
-                .status(StatusCode::OK)
-                .body(Body::from(content))?)
+            asset
         }
         Err(_) => {
             // Fallback to theme assets
             debug!("Asset not found in site directory, checking theme assets");
             let theme_path = paths.theme_assets.join(asset_path);
             match read_asset(&theme_path).await {
-                Ok((content, mime_type)) => {
+                Ok(asset) => {
                     debug!("Asset found in theme directory");
-                    Ok(Response::builder()
-                        .header(CONTENT_TYPE, mime_type)
-                        .status(StatusCode::OK)
-                        .body(Body::from(content))?)
+                    asset
                 }
                 Err(_) => {
                     error!(asset_path = %request_path, "Asset not found in site or theme directories");
-                    Ok(Response::builder()
-                        .status(StatusCode::NOT_FOUND)
-                        .body(Body::from("404 Asset Not Found"))?)
+                    return Ok(handle_not_found());
                 }
             }
         }
-    }
+    };
+    Ok(Response::builder()
+        .header(CONTENT_TYPE, mime_type)
+        .status(StatusCode::OK)
+        .header(
+            CACHE_CONTROL,
+            "no-store, no-cache, must-revalidate, proxy-revalidate",
+        )
+        .header(PRAGMA, "no-cache")
+        .header(EXPIRES, 0)
+        .body(Body::from(content))?)
+}
+
+fn handle_not_found() -> Response<Body> {
+    // TODO: try load from templates
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::from("not found"))
+        .expect("Could not build Not Found response")
 }
 
 /// Handles requests for static assets with a given content and path.
@@ -686,20 +572,37 @@ async fn handle_asset(request_path: &str, paths: &SitePaths) -> Result<Response<
 async fn handle_static_asset(content: &str, path: &Path) -> Result<Response<Body>> {
     debug!(path = %path.display(), "Handling static asset");
 
-    let mime_type = mime_guess::from_path(path)
-        .first_or_octet_stream()
-        .as_ref()
-        .to_string();
+    let mime_type = mime_guess::from_path(path).first_or_octet_stream();
 
     debug!(mime_type = %mime_type, "Serving static asset");
     Ok(Response::builder()
         .header(
             CONTENT_TYPE,
-            HeaderValue::from_str(&mime_type)
+            HeaderValue::from_str(mime_type.as_ref())
                 .unwrap_or_else(|_| HeaderValue::from_static("text/plain")),
         )
         .status(StatusCode::OK)
         .body(Body::from(content.to_owned()))?)
+}
+
+async fn resolve_url_norg_path(content_dir: &Path, path: &Path) -> std::io::Result<PathBuf> {
+    use tokio::fs;
+    let mut path = content_dir.join(path);
+    debug!(?path);
+    // try "{path}.norg"
+    if path.file_name().is_some() {
+        let path = path.with_extension("norg");
+        debug!(?path);
+        if fs::metadata(&path).await.is_ok_and(|m| m.is_file()) {
+            return Ok(path);
+        }
+    }
+    // try {path}/index.norg
+    let metadata = fs::metadata(&path).await?;
+    if metadata.is_dir() {
+        path.push("index.norg");
+    }
+    Ok(path)
 }
 
 /// Handles requests for content, either static or dynamic.
@@ -716,13 +619,18 @@ async fn handle_static_asset(content: &str, path: &Path) -> Result<Response<Body
 /// * `Result<Response<Body>>` - A `Response` containing the content or an error if the
 ///   content cannot be retrieved or rendered.
 async fn handle_content(request_path: &str, state: Arc<ServerState>) -> Result<Response<Body>> {
-    let normalized_path = request_path.trim_end_matches('/');
-    let (content, path) = get_content_or_error(normalized_path).await?;
-
-    if normalized_path.contains('.') {
-        handle_static_asset(&content, &path).await
-    } else {
-        handle_html_content(&content, &path, state).await
+    let req_path = PathBuf::from(request_path.trim_start_matches('/'));
+    debug!(?req_path);
+    match resolve_url_norg_path(&state.paths.content, &req_path).await {
+        Ok(path) => handle_norg_content(path, state).await,
+        Err(io_err) => match io_err.kind() {
+            std::io::ErrorKind::NotFound => Ok(handle_not_found()),
+            std::io::ErrorKind::PermissionDenied => Ok(Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .body(Body::empty())
+                .unwrap()),
+            _ => Err(eyre!("Error reading '{}': {}", req_path.display(), io_err)),
+        },
     }
 }
 
@@ -740,55 +648,24 @@ async fn handle_content(request_path: &str, state: Arc<ServerState>) -> Result<R
 /// # Returns
 /// * `Result<Response<Body>>` - A `Response` containing the rendered HTML or an error if
 ///   rendering fails.
-#[instrument(skip(content, path, state))]
-async fn handle_html_content(
-    content: &str,
-    path: &Path,
-    state: Arc<ServerState>,
-) -> Result<Response<Body>> {
-    debug!(path = %path.display(), "Rendering HTML content");
-    let meta_path = path.with_extension("meta.toml");
-    let rel_path = meta_path.strip_prefix(".build")?.to_path_buf();
-    let metadata = shared::load_metadata(meta_path, rel_path, &state.routes_url).await;
-    let layout = metadata
-        .get("layout")
-        .and_then(|v| v.as_str())
-        .unwrap_or("default");
-    let posts = state.posts.read().await.clone();
-
-    let mut context = Context::new();
-    context.insert("content", content);
-    context.insert("config", &state.config);
-    context.insert("posts", &posts);
-    context.insert("metadata", &metadata);
-
+async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<Response<Body>> {
     let tera = state.tera.read().await;
-    let mut body = tera
-        .render(&format!("{}.html", layout), &context)
-        .map_err(|e| {
-            // Store the reason why Tera failed to render the template
-            if e.source().is_some() {
-                let internal_err = e.source().unwrap();
-                eyre!(
-                    "{}: {}",
-                    format!(
-                        "Failed to render template for '{}'",
-                        path.strip_prefix(".build").unwrap().display()
-                    )
-                    .bold(),
-                    internal_err
-                )
-            } else {
-                eyre!(
-                    "{}",
-                    format!(
-                        "Failed to render template for '{}'",
-                        path.strip_prefix(".build").unwrap().display()
-                    )
-                    .bold()
-                )
-            }
-        })?;
+
+    let rel_path = path.strip_prefix(&state.paths.content)?.to_path_buf();
+    let metadata = shared::load_metadata(path, rel_path, &state.routes_url).await;
+    let is_draft = metadata
+        .get("draft")
+        .map(|v| {
+            v.as_bool()
+                .expect("draft metadata field should be a boolean")
+        })
+        .unwrap_or(false);
+    if is_draft && !state.build_drafts {
+        return Ok(handle_not_found());
+    }
+
+    let posts = state.posts.read().await.clone();
+    let mut body = shared::render_norg_page(&tera, &metadata, &posts, &state.config).await?;
 
     // Always use the proper URL to the development server for template links that refers
     // to the local URL, this is useful when running the server exposed to LAN network
@@ -980,7 +857,7 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
 /// # Returns
 /// * `Result<Response<Body>, Infallible>` - A `Response` or an error if the request
 ///   cannot be handled.
-#[instrument(name = "serve", skip(req, state))]
+#[instrument(name = "serve_request", skip(req, state))]
 async fn handle_server_request(
     req: Request<Body>,
     state: Arc<ServerState>,
@@ -1051,7 +928,7 @@ async fn setup_server_state(
 
     let (reload_tx, _) = broadcast::channel(16);
 
-    let posts = shared::collect_all_posts_metadata(&paths.build, &routes_url).await?;
+    let posts = shared::collect_all_posts_metadata(&paths.content, &routes_url).await?;
 
     Ok(Arc::new(ServerState {
         reload_tx: Arc::new(reload_tx),
@@ -1133,126 +1010,121 @@ async fn setup_file_watcher(
 /// # Returns
 /// * `Result<()>` - `Ok(())` if the server runs successfully, otherwise an error.
 #[instrument(skip(port, drafts, open, host))]
-pub async fn serve(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
+pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
     info!("Starting development server...");
 
     let root = fs::find_config_file().await?;
-    if let Some(root) = root {
-        debug!(path = %root.display(), "Found site root");
-
-        // Early set the development URL to the site routes
-        let local_ip =
-            local_ip_address::local_ip().unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
-        let routes_url = if host {
-            format!("http://{}:{}", local_ip, port)
-        } else {
-            format!("http://localhost:{}", port)
-        };
-        let state = setup_server_state(root, drafts, routes_url).await?;
-        let server_start = std::time::Instant::now();
-        let rt = Handle::current();
-
-        // Create initial receiver to always keep channel alive, this way
-        // any "channel closed" errors are prevented from happening
-        let _guard_receiver = state.reload_tx.subscribe();
-
-        // WebSocket server
-        let reload_tx = state.reload_tx.clone();
-        tokio::spawn(async move {
-            let listener = TcpListener::bind(format!("127.0.0.1:{}", LIVE_RELOAD_PORT))
-                .await
-                .unwrap();
-            while let Ok((stream, _)) = listener.accept().await {
-                tokio::spawn(handle_websocket(stream, reload_tx.clone()));
-            }
-        });
-
-        // File watcher and event processing
-        let (debouncer, mut debouncer_rx) = setup_file_watcher(state.clone(), rt.clone()).await?;
-        let state_clone = Arc::clone(&state);
-        tokio::spawn(async move {
-            // Move debouncer into the async block, otherwise the file watcher does not work at all.
-            // I spent at least hour and a half debugging this and the solution was really this simple...
-            let _debouncer = debouncer;
-
-            while let Some(result) = debouncer_rx.next().await {
-                process_debounced_events(result, state_clone.clone()).await;
-            }
-        });
-
-        // HTTP server
-        let state_clone = Arc::clone(&state);
-        let make_svc = make_service_fn(move |_| {
-            let state = state_clone.clone();
-            async move {
-                Ok::<_, Infallible>(service_fn(move |req| {
-                    handle_server_request(req, state.clone())
-                }))
-            }
-        });
-
-        let addr = if host {
-            ([0, 0, 0, 0], port).into()
-        } else {
-            ([127, 0, 0, 1], port).into()
-        };
-        let server = Server::bind(&addr).serve(make_svc);
-
-        // Initial build
-        shared::convert_content(&state.paths.content, drafts, &state.routes_url).await?;
-        shared::cleanup_orphaned_build_files(&state.paths.content).await?;
-
-        let localhost_address = format!(
-            "{} {}   {}",
-            "•".green(),
-            "Local:".bold(),
-            format!("http://localhost:{}/", port.to_string().cyan().bold()).blue()
-        );
-        let lan_address = if host {
-            format!(
-                "{} {} {}",
-                "•".green(),
-                "Network:".bold(),
-                format!("http://{}:{}/", local_ip, port.to_string().cyan().bold()).blue()
-            )
-        } else {
-            format!(
-                "{} {} {} {} {}",
-                "•".green().dimmed(),
-                "Network:".bold().dimmed(),
-                "use".dimmed(),
-                "--host".bold(),
-                "to expose".dimmed()
-            )
-        };
-        println!(
-            "Server started in {}\n{}\n{}\n",
-            shared::get_elapsed_time(server_start),
-            localhost_address,
-            lan_address,
-        );
-
-        if open {
-            match open::that_detached(format!("http://localhost:{}/", port)) {
-                Ok(()) => {
-                    info!("Opening the development server page using your browser ...");
-                }
-                Err(e) => bail!(
-                    "{}: {}",
-                    "Could not open the development server page".bold(),
-                    e
-                ),
-            };
-        }
-
-        if let Err(e) = server.await {
-            bail!("{}: {}", "Server error".bold(), e);
-        }
-    } else {
+    let Some(root) = root else {
         bail!(
             "{}: not in a Norgolith site directory",
             "Could not initialize the development server".bold()
         );
+    };
+
+    debug!(path = %root.display(), "Found site root");
+
+    // Early set the development URL to the site routes
+    let local_ip = local_ip_address::local_ip().unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    let routes_url = if host {
+        format!("http://{}:{}", local_ip, port)
+    } else {
+        format!("http://localhost:{}", port)
+    };
+    let state = setup_server_state(root, drafts, routes_url).await?;
+    let server_start = std::time::Instant::now();
+    let rt = Handle::current();
+
+    // Create initial receiver to always keep channel alive, this way
+    // any "channel closed" errors are prevented from happening
+    let _guard_receiver = state.reload_tx.subscribe();
+
+    // WebSocket server
+    let reload_tx = state.reload_tx.clone();
+    tokio::spawn(async move {
+        let listener = TcpListener::bind(format!("127.0.0.1:{}", LIVE_RELOAD_PORT))
+            .await
+            .unwrap();
+        while let Ok((stream, _)) = listener.accept().await {
+            tokio::spawn(handle_websocket(stream, reload_tx.clone()));
+        }
+    });
+
+    // File watcher and event processing
+    let (debouncer, mut debouncer_rx) = setup_file_watcher(state.clone(), rt.clone()).await?;
+    let state_clone = Arc::clone(&state);
+    tokio::spawn(async move {
+        // Move debouncer into the async block, otherwise the file watcher does not work at all.
+        // I spent at least hour and a half debugging this and the solution was really this simple...
+        let _debouncer = debouncer;
+
+        while let Some(result) = debouncer_rx.next().await {
+            process_debounced_events(result, state_clone.clone()).await;
+        }
+    });
+
+    // HTTP server
+    let state_clone = Arc::clone(&state);
+    let make_svc = make_service_fn(move |_| {
+        let state = state_clone.clone();
+        async move {
+            Ok::<_, Infallible>(service_fn(move |req| {
+                handle_server_request(req, state.clone())
+            }))
+        }
+    });
+
+    let addr = if host {
+        ([0, 0, 0, 0], port).into()
+    } else {
+        ([127, 0, 0, 1], port).into()
+    };
+    let server = Server::bind(&addr).serve(make_svc);
+
+    let localhost_address = format!(
+        "{} {}   {}",
+        "•".green(),
+        "Local:".bold(),
+        format!("http://localhost:{}/", port.to_string().cyan().bold()).blue()
+    );
+    let lan_address = if host {
+        format!(
+            "{} {} {}",
+            "•".green(),
+            "Network:".bold(),
+            format!("http://{}:{}/", local_ip, port.to_string().cyan().bold()).blue()
+        )
+    } else {
+        format!(
+            "{} {} {} {} {}",
+            "•".green().dimmed(),
+            "Network:".bold().dimmed(),
+            "use".dimmed(),
+            "--host".bold(),
+            "to expose".dimmed()
+        )
+    };
+    println!(
+        "Server started in {}\n{}\n{}\n",
+        shared::get_elapsed_time(server_start),
+        localhost_address,
+        lan_address,
+    );
+
+    if open {
+        match open::that_detached(format!("http://localhost:{}/", port)) {
+            Ok(()) => {
+                info!("Opening the development server page using your browser ...");
+            }
+            Err(e) => bail!(
+                "{}: {}",
+                "Could not open the development server page".bold(),
+                e
+            ),
+        };
+    }
+
+    if let Err(e) = server.await {
+        bail!("{}: {}", "Server error".bold(), e);
     }
 
     Ok(())

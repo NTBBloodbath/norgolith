@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::ContentSchema;
-use commands::{BuildConfig, ServeConfig};
+use commands::{BuildConfig, DevConfig};
 
 pub mod commands;
 
@@ -31,7 +31,7 @@ pub struct SiteConfig {
     #[serde(default)]
     pub build: Option<BuildConfig>,
     #[serde(default)]
-    pub serve: Option<ServeConfig>,
+    pub dev: Option<DevConfig>,
     #[serde(default)]
     pub content_schema: Option<ContentSchema>,
     pub highlighter: Option<SiteConfigHighlighter>,

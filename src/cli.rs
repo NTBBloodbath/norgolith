@@ -46,15 +46,15 @@ enum Commands {
         _no_prompt: bool,
 
         /// Site name
-        name: Option<String>,
+        name: String,
     },
     /// Theme management
     Theme {
         #[command(subcommand)]
         subcommand: cmd::ThemeCommands,
     },
-    /// Build a site for development
-    Serve {
+    /// Run a site in development mode
+    Dev {
         #[arg(short = 'p', long, default_value_t = 3030, help = "Port to be used")]
         port: u16,
 
@@ -127,6 +127,28 @@ enum Commands {
         #[arg(long = "no-minify")]
         _no_minify: bool,
     },
+    /// Preview from build result
+    Preview {
+        #[arg(short = 'p', long, default_value_t = 3030, help = "Port to be used")]
+        port: u16,
+
+        // TODO: add SocketAddr parsing if host is a String, similar to Vite
+        #[arg(
+            short = 'e',
+            long,
+            default_value_t = false,
+            help = "Expose site to LAN network"
+        )]
+        host: bool,
+
+        #[arg(
+            short = 'o',
+            long,
+            default_value_t = false,
+            help = "Open the development server in your browser"
+        )]
+        open: bool,
+    },
 }
 
 /// Asynchronously parse the command-line arguments and executes the corresponding subcommand
@@ -140,27 +162,26 @@ pub async fn start() -> Result<()> {
         set_current_dir(dir)?;
     }
 
-    match &cli.command {
+    match cli.command {
         Commands::Init {
             name,
             prompt: _,
             _no_prompt,
-        } => init_site(name.as_ref(), !_no_prompt).await?,
-        Commands::Theme { subcommand } => theme_handle(subcommand).await?,
-        Commands::Serve {
+        } => init_site(name, !_no_prompt).await?,
+        Commands::Theme { subcommand } => theme_handle(&subcommand).await?,
+        Commands::Dev {
             port,
             drafts: _,
             _no_drafts,
             host,
             open,
-        } => check_and_serve(*port, !_no_drafts, *open, *host).await?,
+        } => run_dev_server(port, !_no_drafts, open, host).await?,
         Commands::Build {
             minify: _,
             _no_minify,
         } => build_site(!_no_minify).await?,
-        Commands::New { kind, name, open } => {
-            new_asset(kind.as_ref(), name.as_ref(), *open).await?
-        } // _ => bail!("Unsupported command"),
+        Commands::New { kind, name, open } => new_asset(kind.as_ref(), name.as_ref(), open).await?,
+        Commands::Preview { port, host, open } => preview(port, open, host).await?,
     }
 
     Ok(())
@@ -173,12 +194,12 @@ pub async fn start() -> Result<()> {
 ///
 /// # Returns:
 ///   A `Result<()>` indicating success or error. On error, the context message will provide information on why the site could not be initialized.
-async fn init_site(name: Option<&String>, prompt: bool) -> Result<()> {
-    if let Some(name) = name {
-        cmd::init(name, prompt).await?;
-    } else {
-        bail!("Missing name for the site: could not initialize the new Norgolith site");
-    }
+async fn init_site(name: String, prompt: bool) -> Result<()> {
+    cmd::init(&name, prompt).await?;
+    // if let Some(name) = name {
+    // } else {
+    //     bail!("Missing name for the site: could not initialize the new Norgolith site");
+    // }
     Ok(())
 }
 
@@ -207,6 +228,11 @@ async fn build_site(minify: bool) -> Result<()> {
     cmd::build(minify).await
 }
 
+async fn preview(port: u16, open: bool, host: bool) -> Result<()> {
+    // TODO: merge config
+    cmd::preview(port, open, host).await
+}
+
 /// Checks port availability and starts the development server.
 ///
 /// # Arguments:
@@ -218,15 +244,15 @@ async fn build_site(minify: bool) -> Result<()> {
 /// # Returns:
 ///   A `Result<()>` indicating success or error. On error, the context message
 ///   will provide information on why the development server could not be initialized.
-async fn check_and_serve(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
-    let serve_config = match crate::fs::find_config_file().await? {
+async fn run_dev_server(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
+    let dev_config = match crate::fs::find_config_file().await? {
         Some(config_path) => {
             let config_content = tokio::fs::read_to_string(config_path).await?;
             toml::from_str(&config_content)?
         }
         None => crate::config::SiteConfig::default(),
     }
-    .serve
+    .dev
     .unwrap_or_default();
 
     // Merge CLI and config values
@@ -234,14 +260,14 @@ async fn check_and_serve(port: u16, drafts: bool, open: bool, host: bool) -> Res
     // config has higher priority than defaults
     let port = if port != 3030 {
         port
-    } else if serve_config.port == 0 {
+    } else if dev_config.port == 0 {
         3030
     } else {
-        serve_config.port
+        dev_config.port
     };
-    let drafts = drafts || serve_config.drafts;
-    let host = host || serve_config.host;
-    let open = open || serve_config.open;
+    let drafts = drafts || dev_config.drafts;
+    let host = host || dev_config.host;
+    let open = open || dev_config.open;
 
     if !net::is_port_available(port) {
         let port_msg = if port == 3030 {
@@ -253,7 +279,7 @@ async fn check_and_serve(port: u16, drafts: bool, open: bool, host: bool) -> Res
         bail!("Could not initialize the development server: failed to open listener, perhaps the {} is busy?", port_msg);
     }
 
-    cmd::serve(port, drafts, open, host).await
+    cmd::dev(port, drafts, open, host).await
 }
 
 async fn theme_handle(subcommand: &cmd::ThemeCommands) -> Result<()> {
@@ -317,24 +343,12 @@ mod tests {
         std::env::set_current_dir(dir.path())?;
 
         let test_name = String::from("my-site");
-        let result = init_site(Some(&test_name), false).await;
+        let result = init_site(test_name, false).await;
         assert!(result.is_ok());
 
         std::env::set_current_dir(origin)?;
 
         Ok(())
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn test_init_site_without_name() {
-        let result = init_site(None, false).await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .root_cause()
-            .to_string()
-            .contains("Missing name for the site"));
     }
 
     #[cfg_attr(test, automock)]
@@ -370,15 +384,15 @@ mod tests {
         let port = temp_listener.local_addr()?.port();
 
         // Create temporal site
-        let test_site_dir = String::from("my-unavailable-site");
-        init_site(Some(&test_site_dir), false).await.unwrap();
+        let test_site_name = String::from("my-unavailable-site");
+        init_site(test_site_name.clone(), false).await.unwrap();
 
         // Enter the test directory
-        let path = dir.path().join(&test_site_dir);
+        let path = dir.path().join(&test_site_name);
 
         std::env::set_current_dir(path)?;
 
-        let result = check_and_serve(port, false, false, false).await;
+        let result = run_dev_server(port, false, false, false).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()

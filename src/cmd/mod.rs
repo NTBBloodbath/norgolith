@@ -1,9 +1,14 @@
 mod build;
+mod dev;
 mod init;
 mod new;
-mod serve;
 mod theme;
+mod preview;
 
-pub use self::{
-    build::build, init::init, new::new, serve::serve, theme::handle as theme, theme::ThemeCommands,
-};
+pub use build::build;
+pub use dev::dev;
+pub use init::init;
+pub use new::new;
+pub use preview::preview;
+pub use theme::handle as theme;
+pub use theme::ThemeCommands;
