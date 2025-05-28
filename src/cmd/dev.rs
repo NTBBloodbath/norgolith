@@ -8,6 +8,7 @@ use std::time::Duration;
 use colored::Colorize;
 use eyre::{bail, eyre, Result};
 use futures_util::{SinkExt, Stream, StreamExt};
+use hyper::header::{CACHE_CONTROL, EXPIRES, PRAGMA};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{
     header::{HeaderValue, CONTENT_TYPE},
@@ -515,33 +516,37 @@ async fn handle_asset(request_path: &str, paths: &SitePaths) -> Result<Response<
     let site_path = paths.assets.join(asset_path);
 
     debug!(site_assets = %site_path.display(), "Checking site assets path");
-    match read_asset(&site_path).await {
-        Ok((content, mime_type)) => {
+    let (content, mime_type) = match read_asset(&site_path).await {
+        Ok(asset) => {
             debug!("Asset found in site directory");
-            Ok(Response::builder()
-                .header(CONTENT_TYPE, mime_type)
-                .status(StatusCode::OK)
-                .body(Body::from(content))?)
+            asset
         }
         Err(_) => {
             // Fallback to theme assets
             debug!("Asset not found in site directory, checking theme assets");
             let theme_path = paths.theme_assets.join(asset_path);
             match read_asset(&theme_path).await {
-                Ok((content, mime_type)) => {
+                Ok(asset) => {
                     debug!("Asset found in theme directory");
-                    Ok(Response::builder()
-                        .header(CONTENT_TYPE, mime_type)
-                        .status(StatusCode::OK)
-                        .body(Body::from(content))?)
+                    asset
                 }
                 Err(_) => {
                     error!(asset_path = %request_path, "Asset not found in site or theme directories");
-                    Ok(handle_not_found())
+                    return Ok(handle_not_found());
                 }
             }
         }
-    }
+    };
+    Ok(Response::builder()
+        .header(CONTENT_TYPE, mime_type)
+        .status(StatusCode::OK)
+        .header(
+            CACHE_CONTROL,
+            "no-store, no-cache, must-revalidate, proxy-revalidate",
+        )
+        .header(PRAGMA, "no-cache")
+        .header(EXPIRES, 0)
+        .body(Body::from(content))?)
 }
 
 fn handle_not_found() -> Response<Body> {
