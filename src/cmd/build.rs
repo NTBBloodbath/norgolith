@@ -584,7 +584,21 @@ pub async fn build(minify: bool) -> Result<()> {
     // Prepare the public build directory
     prepare_build_directory(&paths.public).await?;
 
-    let posts = shared::collect_all_posts_metadata(&paths.content, &site_config.root_url).await?;
+    let posts: Vec<_> = shared::collect_all_posts_metadata(&paths.content, &site_config.root_url)
+        .await?
+        .into_iter()
+        .filter(|post| {
+            !post
+                .get("draft")
+                .map(|v| {
+                    v.as_bool()
+                        .expect("draft metadata field should be a boolean")
+                })
+                .unwrap_or(false)
+        })
+        .collect();
+
+    dbg!(&posts);
 
     // Build all norg content (& run validation)
     build_contents(&tera, &paths, &posts, &site_config, minify).await?;

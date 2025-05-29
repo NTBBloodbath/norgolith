@@ -1004,7 +1004,7 @@ async fn setup_file_watcher(
 ///
 /// # Arguments
 /// * `port` - The port on which the server will run.
-/// * `drafts` - Whether to build draft content.
+/// * `drafts` - Whether to serve draft content.
 /// * `open` - Whether to open the site in the browser after starting the server.
 ///
 /// # Returns
