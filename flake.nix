@@ -32,6 +32,7 @@
 
           nativeBuildInputs = with pkgs; [
             pkg-config
+            perl
           ];
           buildInputs = with pkgs; [
             openssl
