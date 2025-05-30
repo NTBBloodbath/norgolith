@@ -211,25 +211,10 @@ async fn init_site(name: String, prompt: bool) -> Result<()> {
 /// # Returns:
 ///   A `Result<()>` indicating success or error.
 async fn build_site(minify: bool) -> Result<()> {
-    let build_config = match crate::fs::find_config_file().await? {
-        Some(config_path) => {
-            let config_content = tokio::fs::read_to_string(config_path).await?;
-            toml::from_str(&config_content)?
-        }
-        None => crate::config::SiteConfig::default(),
-    }
-    .build
-    .unwrap_or_default();
-
-    // Merge CLI and config values
-    // CLI options have higher priority than config
-    // config has higher priority than defaults
-    let minify = minify || build_config.minify;
     cmd::build(minify).await
 }
 
 async fn preview(port: u16, open: bool, host: bool) -> Result<()> {
-    // TODO: merge config
     cmd::preview(port, open, host).await
 }
 
@@ -245,30 +230,6 @@ async fn preview(port: u16, open: bool, host: bool) -> Result<()> {
 ///   A `Result<()>` indicating success or error. On error, the context message
 ///   will provide information on why the development server could not be initialized.
 async fn run_dev_server(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
-    let dev_config = match crate::fs::find_config_file().await? {
-        Some(config_path) => {
-            let config_content = tokio::fs::read_to_string(config_path).await?;
-            toml::from_str(&config_content)?
-        }
-        None => crate::config::SiteConfig::default(),
-    }
-    .dev
-    .unwrap_or_default();
-
-    // Merge CLI and config values
-    // CLI options have higher priority than config
-    // config has higher priority than defaults
-    let port = if port != 3030 {
-        port
-    } else if dev_config.port == 0 {
-        3030
-    } else {
-        dev_config.port
-    };
-    let drafts = drafts || dev_config.drafts;
-    let host = host || dev_config.host;
-    let open = open || dev_config.open;
-
     if !net::is_port_available(port) {
         let port_msg = if port == 3030 {
             "default Norgolith port (3030)".to_string()
