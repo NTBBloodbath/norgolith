@@ -343,10 +343,10 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
             }
             Err(e) => error!("Failed to update pages metadata: {}", e),
         }
-    }
 
-    if let Err(e) = state.send_reload() {
-        error!("Reload signal error: {}", e);
+        if let Err(e) = state.send_reload() {
+            error!("Reload signal error: {}", e);
+        }
     }
 }
 
