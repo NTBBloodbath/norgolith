@@ -598,8 +598,6 @@ pub async fn build(minify: bool) -> Result<()> {
         })
         .collect();
 
-    dbg!(&posts);
-
     // Build all norg content (& run validation)
     build_contents(&tera, &paths, &posts, &site_config, minify).await?;
 
