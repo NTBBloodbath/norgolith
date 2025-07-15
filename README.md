@@ -71,9 +71,15 @@ Options:
 
 Run `cargo install --release --path .` to compile and install Norgolith in your `~/.cargo/bin` directory.
 
+### 🔨 AUR
+
+Use Arch User Repository helper to install `norgolith-git`.
+
+`paru -S norgolith-git`
+
 ### 📦 Nix Package
 
-You can add norgolith to your NixOS configuration with flakes
+You can add norgolith to your NixOS configuration with flakes.
 
 <details>
 <summary>Minimal flake.nix for a NixOS configuration:</summary>
