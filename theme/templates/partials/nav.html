@@ -4,16 +4,18 @@
     <div x-data="theme" class="flex items-center shrink-0">
       <a href="/" class="flex items-center space-x-2">
         <!-- <img src="{{ config.rootUrl }}/assets/norgolith.svg" alt="Norgolith Logo" class="h-8 w-8"> -->
-        <span class="text-xl font-bold text-text">{{ config.title | title }}</span>
+        <span class="text-lg md:text-xl font-bold text-text">{{ config.title | title }}</span>
       </a>
       <button
         @click="toggle()"
         type="button"
-        class="ml-2 md:ml-4 rounded-lg transition-colors flex items-center"
+        class="ml-4 rounded-lg flex items-center"
         :aria-label="current === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
       >
-        <i x-show="current === 'light'" class="ti ti-moon text-2xl text-grey hover:text-blue"></i>
-        <i x-show="current === 'dark'" class="ti ti-sun text-2xl text-grey hover:text-yellow"></i>
+        <i
+          :class="current === 'dark' ? 'ti-sun hover:text-yellow' : 'ti-moon hover:text-blue'"
+          class="ti text-xl md:text-2xl text-grey transition-colors duration-200 ease-in-out"
+        ></i>
       </button>
     </div>
 
@@ -30,14 +32,14 @@
 
     <!-- Mobile Menu Button -->
     <div class="md:hidden">
-      <button @click="toggleMobile" type="button" class="inline-flex items-center justify-center p-2 rounded-md text-dark-grey hover:text-text-alt focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white" aria-controls="mobile-menu" aria-expanded="false">
+      <button @click="toggleMobile" type="button" class="inline-flex items-center justify-center p-2 rounded-md text-dark-grey hover:text-text-alt focus:outline-none" aria-controls="mobile-menu" aria-expanded="false">
         <span class="sr-only">Open main menu</span>
         <!-- Hamburger Icon -->
-        <svg x-show="!openMobile" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg x-show="!openMobile" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
         <!-- Close Icon -->
-        <svg x-show="openMobile" class="h-6 w-6 text-red" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg x-show="openMobile" class="h-5 w-5 text-red" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
         </svg>
       </button>
@@ -45,8 +47,19 @@
   </div>
 
   <!-- Mobile Menu -->
-  <div x-show="openMobile" @click.outside="openMobile = false" class="md:hidden" id="mobile-menu">
-    <div class="flex flex-row items-center justify-between px-2 pt-2 pb-3 space-y-1 sm:px-3">
+  <div
+    x-show="openMobile"
+    x-transition:enter="transition ease-out duration-300"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="transition ease-in duration-300"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+    @click.outside="openMobile = false"
+    class="md:hidden"
+    id="mobile-menu"
+  >
+    <div class="flex flex-row items-center justify-between pt-2 pb-4">
       {% for name, link in config.extra.nav %}
       <a
         :class="{ 'text-blue!': currentPage.startsWith('{{ link }}') }"

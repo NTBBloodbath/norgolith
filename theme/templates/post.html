@@ -4,23 +4,25 @@
 <div>
   <h1>{{ metadata.title }}</h1>
 </div>
-<div class="flex flex-row">
-  <div class="flex flex-1 items-center justify-between">
+<div class="flex flex-col md:flex-row">
+  <div class="flex flex-col md:flex-row flex-1 justify-between">
     <div>
       {# Date, reading time #}
-      <span>
-        <time
-          class="text-grey text-sm md:text-md lg:text-lg tabular-nums text-opacity-70 dark:text-opacity-100"
-          datetime="{{ metadata.created }}"
-        >{{ metadata.created | date(format="%B %e, %Y") }}</time>
+      {% set created = metadata.created | date(format="%B %e, %Y") %}
+      {% set updated = metadata.updated | date(format="%B %e, %Y") %}
+      <span class="text-grey text-sm tabular-nums text-opacity-70 dark:text-opacity-100 space-x-1">
+        <time datetime="{{ metadata.created }}">{{ created }}</time>
+        {% if created != updated %}
+        (Last edit: <time datetime="{{ metadata.updated }}">{{ metadata.updated | date(format="%B %e, %Y") }}</time>)
+        {% endif %}
       </span>
     </div>
     {% if metadata.categories | length > 0 %}
-      <div class="flex items-center">
-        <span class="font-semibold">Tags:&nbsp;</span>
+      <div class="flex flex-wrap items-center max-w-[50%]">
+        <span class="font-semibold mr-px">Tags:&nbsp;</span>
         {% for category in metadata.categories %}
           <a
-            class="bg-grey hover:bg-blue text-base hover:text-base! no-underline! hover:no-underline! text-sm mr-2 last:mr-0 md:py-1 px-1 md:px-2 rounded-md"
+            class="w-fit bg-grey hover:bg-blue text-base hover:text-base! no-underline! hover:no-underline! text-sm mr-2 last:mr-0 px-1 rounded-sm"
             href="/categories/{{ category }}"
           >
             {{ category | capitalize }}
@@ -30,26 +32,34 @@
     {% endif %}
   </div>
 </div>
-<div x-data="toc" class="mt-4">
-  {% if metadata.toc %}
+{% if metadata.toc %}
+  <div x-data="toc" class="mt-4">
     {% set toc_html = generate_toc(toc=metadata.toc, list_type="ol") %}
-    <button @click="toggle" type="button" class="inline-flex items-center">
+    <button @click="toggle()" type="button" class="inline-flex items-center">
       <span class="sr-only">Close Table of Contents</span>
       <h3 class="mt-0! mr-1">
         Table of Contents
       </h3>
       <span
-        :class="{ 'ti-arrow-badge-up-filled': open }"
-        class="text-2xl hover:text-blue ti ti-arrow-badge-down-filled"
+        id="toc-toggle-icon"
+        class="transition-all duration-300 ease-in-out text-2xl hover:text-blue ti ti-arrow-badge-right-filled"
       ></span>
     </button>
-    <nav x-show="open" class="toc">
+    <nav
+      x-transition:enter="transition ease-out duration-300"
+      x-transition:enter-start="opacity-0"
+      x-transition:enter-end="opacity-100"
+      x-transition:leave="transition ease-in duration-300"
+      x-transition:leave-start="opacity-100"
+      x-transition:leave-end="opacity-0"
+      x-show="open"
+      class="toc"
+    >
       {{ toc_html | safe }}
     </nav>
-  {% endif %}
-</div>
-<hr class="text-base-alt mt-12 lg:mt-14" />
-<div class="mt-12 lg:mt-14 break-keep">
+  </div>
+{% endif %}
+<div id="content" class="mt-12 break-keep pt-10 border-t border-t-base-alt dark:border-t-[#39394b]">
   {{ content | safe }}
 </div>
 {% endblock content %}

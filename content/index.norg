@@ -6,7 +6,7 @@ authors: [
 ]
 categories: []
 created: 2025-02-17T03:36:04-04:00
-updated: 2025-02-17T03:36:04-04:00
+updated: 2025-08-02T19:22:40-0400
 layout: default
 draft: false
 version: 1.1.1
@@ -14,10 +14,10 @@ version: 1.1.1
 
 * Welcome to Norgolith!
   @embed html
-  <div class="flex items-center mt-2">
+  <div class="flex flex-col md:flex-row items-center mt-2">
   @end
-  +html.width 120
-  +html.height 120
+  +html.width 180
+  +html.height 180
   .image /assets/norgolith.svg
 
   +html.class font-mono px-4

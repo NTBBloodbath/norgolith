@@ -1,1 +1,23 @@
-<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Norgolith</title><link>https://ntbbloodbath.github.io/norgolith</link><description>Latest posts</description><language>en-us</language><lastBuildDate>Sun, 23 Mar 2025 09:59:47 +0000</lastBuildDate><generator>Norgolith</generator><ttl>60</ttl><image><url>https://ntbbloodbath.github.io/norgolith/assets/norgolith.svg</url><title>Norgolith</title><link>https://ntbbloodbath.github.io/norgolith</link><width>144</width><height>144</height></image><atom:link href="https://ntbbloodbath.github.io/norgolith/rss.xml" rel="self" type="application/rss+xml"></atom:link></channel></rss>
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Norgolith</title>
+    <link>https://norgolith.amartin.beer</link>
+    <description>Latest posts</description>
+    <generator>Norgolith</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sat, 02 Aug 2025 23:30:35 +0000</lastBuildDate>
+    <ttl>60</ttl>
+    <atom:link href="https:&#x2F;&#x2F;norgolith.amartin.beer/rss.xml" rel="self" type="application/rss+xml" />
+
+    <image>
+      <url>https://norgolith.amartin.beer&#x2F;assets&#x2F;norgolith.svg</url>
+      <title>Norgolith</title>
+      <link>https://norgolith.amartin.beer</link>
+      <width>144</width>
+      <height>144</height>
+    </image>
+
+    
+  </channel>
+</rss>

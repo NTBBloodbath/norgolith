@@ -4,6 +4,7 @@
 {{ content | safe }}
 
 {# Latest 5 non-draft blog posts, ordered automatically by date #}
+{% if posts | filter(attribute="draft", value=false) | length > 0 %}
 <section>
   <h2>Recent posts</h2>
   {% for post in posts | filter(attribute="draft", value=false) | slice(end=5) %}
@@ -14,11 +15,19 @@
         <span class="text-sm text-grey italic">{{ post.description }}</span>
       </div>
       <div class="flex flex-col">
-        <p>{{ post.raw | striptags | truncate(length=100) | safe }}</p>
+        <p>
+          {% if post.truncate_char and post.truncate_char is matching("^nil$") %}
+            {% set truncate_char = "" %}
+          {% else %}
+            {% set truncate_char = "…" %}
+          {% endif %}
+          {{ post.raw | striptags | truncate(length=post.truncate | default(value=100), end=truncate_char) | safe }}
+        </p>
         <a class="no-underline! text-dark-grey font-semibold" href="{{ post.permalink }}">Read more …</a>
       </div>
     </div>
   {% endfor %}
 </section>
+{% endif %}
 
 {% endblock content %}

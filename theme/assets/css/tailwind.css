@@ -1,5 +1,10 @@
 @import "tailwindcss";
-@source "../../../../norgolith/my-site/.build";
+/* User content */
+@source "../../../content";
+/* User templates */
+@source "../../../templates";
+/* Theme templates */
+@source "../../templates";
 
 /* Custom fonts */
 @font-face {
@@ -12,20 +17,12 @@
 }
 
 @font-face {
-  font-family: "JetBrains Mono";
+  font-family: "Martian Mono";
   font-style: normal;
   font-display: swap;
   font-weight: 100 800;
-  src: url(https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono:vf@latest/latin-wght-normal.woff2) format('woff2-variations');
-  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
-}
-
-@font-face {
-  font-family: "JetBrains Mono Italic";
-  font-style: italic;
-  font-display: swap;
-  font-weight: 100 800;
-  src: url(https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono:vf@latest/latin-wght-italic.woff2) format('woff2-variations');
+  font-stretch: 75% 112.5%;
+  src: url(https://cdn.jsdelivr.net/fontsource/fonts/martian-mono:vf@latest/latin-wdth-normal.woff2) format('woff2-variations');
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
 
@@ -90,8 +87,7 @@
 
 @theme static {
   --font-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --font-mono-italic: "JetBrains Mono Italic", monospace;
+  --font-mono: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
   --color-base: var(--base);
   --color-base-alt: var(--base-alt);
@@ -113,11 +109,12 @@
 
 /* Overall design */
 html {
+  scrollbar-color: var(--blue) var(--surface);
   @apply scroll-smooth tabular-nums font-sans;
 }
 
 body {
-  @apply bg-base text-text antialiased font-medium lg:text-lg xl:text-xl;
+  @apply bg-base text-text antialiased font-medium;
 }
 
 main a {
@@ -126,6 +123,15 @@ main a {
 
 a.icon {
   @apply no-underline;
+}
+
+a {
+  @apply transition-colors duration-200 ease-in-out;
+}
+
+hr {
+  /* brightness-120 = #39394b */
+  @apply text-base-alt dark:brightness-120;
 }
 
 header,
@@ -139,32 +145,37 @@ h3,
 h4,
 h5,
 h6 {
-  @apply font-bold text-xl;
+  @apply font-bold;
 }
 
 h1 {
-  @apply text-4xl;
+  @apply text-3xl;
 }
 
 h2 {
-  @apply text-3xl;
+  @apply text-2xl;
   counter-increment: h2;
   counter-reset: h3;
 }
 
 h3 {
-  @apply text-2xl;
+  @apply text-xl;
   counter-increment: h3;
   counter-reset: h4;
 }
 
 h4 {
-  @apply text-xl;
+  @apply text-lg;
   counter-increment: h4;
 }
 
+h5 {
+  counter-increment: h5;
+}
+
 h6 {
-  @apply font-normal;
+  @apply font-semibold;
+  counter-increment: h6;
 }
 
 p {
@@ -176,47 +187,79 @@ strong {
 }
 
 ul {
-  @apply p-1 list-disc;
+  @apply list-disc;
 }
 
 ol {
-  @apply p-2 list-decimal;
+  @apply list-decimal;
 }
 
 ul,
 ol {
-  @apply space-y-1 leading-relaxed;
+  @apply leading-relaxed;
 }
 
 nav ul,
 nav ol {
-  @apply mx-4 space-y-0 list-none;
+  @apply mx-2 space-y-0 list-none;
 }
 
 main ul {
   @apply pl-4;
 }
 
-main h2,
-main h3,
-main h4,
-main h5,
-main h6,
-article h2,
-article h3,
-article h4,
-article h5,
-article h6,
-section h2,
-section h3,
-section h4,
-section h5,
-section h6 {
+/* Margins */
+main h2, article h2, section h2 {
   @apply mt-10;
+}
+main h3, article h3, section h3 {
+  @apply mt-8;
+}
+main h4, article h4, section h4 {
+  @apply mt-6;
+}
+main h5, article h5, section h5 {
+  @apply mt-4;
+}
+main h6, article h6, section h6 {
+  @apply mt-2;
+}
+
+/* Visual flair */
+main div#content h2:not(:first-child) {
+  @apply border-t border-t-base-alt dark:border-t-[#39394b] pt-5;
+}
+main div#content h3:not(:first-child) {
+  @apply border-t border-t-base-alt dark:border-t-[#39394b] pt-4;
+}
+main div#content h4:not(:first-child) {
+  @apply border-t border-t-base-alt dark:border-t-[#39394b] pt-3;
+}
+main div#content h5:not(:first-child) {
+  @apply border-t border-t-base-alt dark:border-t-[#39394b] pt-2;
+}
+main div#content h6:not(:first-child) {
+  @apply border-t border-t-base-alt dark:border-t-[#39394b] pt-1;
 }
 
 blockquote {
-  @apply p-4 my-4 border-s-4 rounded-r-md border-base-alt bg-surface dark:border-surface dark:bg-base-alt;
+  @apply p-4 my-4 border-s-4 rounded-r-sm border-base-alt bg-surface dark:border-surface dark:bg-base-alt;
+}
+
+blockquote.tip {
+  @apply border-green bg-green/30;
+}
+blockquote.note {
+  @apply border-blue bg-blue/30;
+}
+blockquote.important {
+  @apply border-violet bg-violet/30;
+}
+blockquote.warning {
+  @apply border-yellow bg-yellow/30;
+}
+blockquote.error {
+  @apply border-red bg-red/30;
 }
 
 blockquote > p {
@@ -224,9 +267,8 @@ blockquote > p {
 }
 
 /* Inline verbatim `` */
-code {
-  @apply font-mono rounded-md bg-base-alt dark:bg-surface;
-  padding: 0px 4px;
+code:not([class*="language-"]) {
+  @apply px-1 py-px font-mono text-sm rounded-md bg-base-alt dark:bg-surface dark:brightness-80;
 }
 
 /* Table of Contents */
@@ -265,48 +307,41 @@ nav.toc ul li ul {
 /* PrismJS specific css */
 pre[class*="language-"],
 code[class*="language-"] {
-  text-shadow: unset !important;
-  @apply font-mono;
+  font-variant-ligatures: common-ligatures !important;
+  @apply bg-surface! dark:bg-base-alt font-mono! text-shadow-none!;
 }
 
 /* PrismJS line-numbers plugin */
 pre[class*="language-"].line-numbers {
-  position: relative;
-  padding-left: 3.4em;
   counter-reset: linenumber;
+  @apply relative pl-13;
 }
 
 pre[class*="language-"].line-numbers > code {
-  position: relative;
   white-space: inherit;
+  @apply relative;
 }
 
 .line-numbers .line-numbers-rows {
-  position: absolute;
-  pointer-events: none;
-  top: 0;
-  font-size: 100%;
-  left: -3.8em;
-  width: 3em; /* works for line-numbers below 1000 lines */
-  letter-spacing: -1px;
-  border-right: 1px solid #999;
-
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
+  @apply absolute flex flex-col top-[-1.5px] -left-12 w-10 pointer-events-none select-none border-r! border-r-grey!;
 }
 
 .line-numbers-rows > span {
-  display: block;
-  padding-bottom: 0.38px;
   counter-increment: linenumber;
+  @apply block leading-[1.5];
 }
 
 .line-numbers-rows > span:before {
   content: counter(linenumber);
-  color: #999;
-  display: block;
-  padding-right: 0.8em;
-  text-align: right;
+  @apply text-grey! text-right pr-2 block;
+}
+
+/* Center MermaidJS charts and diagrams */
+pre.mermaid {
+  @apply flex justify-center;
+}
+
+/* Automatic dark theme for MermaidJS */
+.dark .mermaid {
+  filter: invert(0.9) hue-rotate(180deg);
 }

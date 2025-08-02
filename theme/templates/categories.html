@@ -3,9 +3,8 @@
 {% block content %}
 <div>
   <h1>Categories</h1>
-  <p class="text-lg"><i>All the categories used in posts.</i></p>
-  <hr class="text-base-alt mt-6 lg:mt-8" />
-  <ul class="mt-6 lg:mt-8">
+  <p class="text-sm text-text/70"><i>All the categories used in posts.</i></p>
+  <ul class="mt-6 pt-6 border-t border-t-base-alt dark:border-t-[#39394b]">
     {% for category in categories | sort %}
       {%- set_global cat_posts = 0 -%}
       {% for post in posts %}
@@ -14,7 +13,7 @@
         {% endif %}
       {% endfor %}
       <li>
-        <a class="font-mono text-xl no-underline! hover:underline! hover:decoration-dashed" href="/categories/{{ category }}">{{ category }}</a>
+        <a class="font-mono text-lg no-underline! hover:underline! hover:decoration-dashed" href="/categories/{{ category }}">{{ category }}</a>
         <span class="text-grey">({{ cat_posts }} post{{ cat_posts | pluralize }})</span>
       </li>
     {% endfor %}

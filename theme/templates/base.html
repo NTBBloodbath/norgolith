@@ -29,14 +29,14 @@
       />
       #}
       <link rel="stylesheet" href="/assets/css/prism-sweetie.min.css" />
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+      <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+      <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+      <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
     {% elif config.highlighter.engine is defined
         and config.highlighter.engine == "hljs" %}
       {# Highlight.js #}
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+      <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
       <script>hljs.highlightAll();</script> #}
       {# Enable this one instead if you want all the `<code>` tags to be highlighted
       <script>
@@ -56,6 +56,7 @@
   {% endif %}
 
   {# AlpineJS #}
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script>
       document.addEventListener("alpine:init", () => {
@@ -70,10 +71,11 @@
           }));
 
           Alpine.data("toc", () => ({
-            open: true,
+            open: false,
 
             toggle() {
               this.open = !this.open;
+              document.querySelector("#toc-toggle-icon").classList.toggle("rotate-90");
             }
           }));
 
@@ -104,27 +106,39 @@
           }));
       });
   </script>
+
+  {# MermaidJS #}
+  {% if config.extra.enable_mermaid %}
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.9.0/mermaid.min.js"></script>
+  {% endif %}
+
   {# Icons #}
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.28.1/tabler-icons.min.css">
 
   {# Styling and favicon #}
   <link rel="stylesheet" href="/assets/css/styles.min.css" />
+  {% if config.extra.favicon_path is defined and config.extra.favicon_path is string %}
+  <link rel="icon" href={{ config.extra.favicon_path }} />
+  {% else %}
   <link rel="icon" href="/assets/norgolith.svg" />
+  {% endif %}
 
   <title>{% block title %}{% endblock title %} - {{ config.title | title }}</title>
   {% endblock head %}
 </head>
 <body>
-  <header class="relative shadow-sm">
-    {% include "partials/nav.html" %}
-  </header>
+  <div class="transition-colors duration-150 ease-linear">
+    <header class="relative shadow-sm">
+      {% include "partials/nav.html" %}
+    </header>
 
-  <main class="container mx-auto min-h-screen pt-8 px-4 md:px-0">
-    {% block content %}{% endblock content %}
-  </main>
+    <main class="container mx-auto min-h-screen pt-8 px-4 md:px-0">
+      {% block content %}{% endblock content %}
+    </main>
 
-  <footer class="mt-8 py-4 px-6 w-full font-mono">
-    {% include "partials/footer.html" %}
-  </footer>
+    <footer class="mt-8 py-4 px-6 w-full font-mono">
+      {% include "partials/footer.html" %}
+    </footer>
+  </div>
 </body>
 </html>
