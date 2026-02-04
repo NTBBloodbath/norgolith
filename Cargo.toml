@@ -41,7 +41,7 @@ num_cpus = "1.16.0"
 minify-js = "0.6.0"
 regex = "1.11.1"
 semver = { version = "1.0.25", features = ["serde"] }
-git2 = { version = "0.20.0", features = ["vendored-libgit2", "vendored-openssl"] }
+git2 = { version = "0.20.4", features = ["vendored-libgit2", "vendored-openssl"] }
 tempfile = "3.17.1"
 inquire = { version = "0.7.5", features = ["chrono", "date"] }
 spinoff = "0.8.0"
