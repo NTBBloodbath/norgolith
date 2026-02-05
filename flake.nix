@@ -2,8 +2,8 @@
   description = "The monolithic Norg static site generator built with Rust";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable&shallow=1";
-    flake-utils.url = "github:numtide/flake-utils?shallow=1";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
   };
 
   outputs = {
@@ -12,12 +12,12 @@
     flake-utils,
     ...
   }:
-    flake-utils.lib.eachDefaultSystem (system: let
+    flake-utils.lib.eachDefaultSystem (
+      system: let
         pkgs = import nixpkgs {inherit system;};
         toolchain = pkgs.rustPlatform;
         cargoPackage = (pkgs.lib.importTOML "${self}/Cargo.toml").package;
-      in rec
-      {
+      in rec {
         # nix build
         packages.default = toolchain.buildRustPackage {
           pname = cargoPackage.name;
@@ -32,12 +32,19 @@
 
           nativeBuildInputs = with pkgs; [
             pkg-config
-            perl
           ];
           buildInputs = with pkgs; [
+            libgit2
             openssl
+            zlib
           ];
-          PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
+
+          env = {
+            LIBGIT2_NO_VENDOR = true;
+            OPENSSL_NO_VENDOR = true;
+          };
+
+          __darwinAllowLocalNetworking = true;
 
           meta = {
             description = cargoPackage.description;
@@ -75,10 +82,13 @@
 
           PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
         };
-      });
+      }
+    );
 
-    nixConfig = {
-      extra-substituters = ["https://ntbbloodbath.cachix.org"];
-      extra-trusted-public-keys = ["ntbbloodbath.cachix.org-1:L4DjjGwDB6O3BJ4SmtYTZbvWKLi+1v/hRlLWKOtq+f0="];
-    };
+  nixConfig = {
+    extra-substituters = ["https://ntbbloodbath.cachix.org"];
+    extra-trusted-public-keys = [
+      "ntbbloodbath.cachix.org-1:L4DjjGwDB6O3BJ4SmtYTZbvWKLi+1v/hRlLWKOtq+f0="
+    ];
+  };
 }
