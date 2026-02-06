@@ -49,12 +49,12 @@ Norgolith provides a powerful CLI for managing your static sites and themes. Thi
      lith init my-site --no-prompt
      @end
 
-*** `lith serve`
+*** `lith dev`
     Start development server.
 
 **** Usage
      @code bash
-     lith serve [OPTIONS]
+     lith dev [OPTIONS]
      @end
 
 **** Options
@@ -69,10 +69,10 @@ Norgolith provides a powerful CLI for managing your static sites and themes. Thi
 **** Examples
      @code bash
      # Start server on port 8080 and open browser
-     lith serve --port 8080 --open
+     lith dev --port 8080 --open
 
      # Serve excluding drafts
-     lith serve --no-drafts
+     lith dev --no-drafts
      @end
 
 *** `lith new`
@@ -115,6 +115,26 @@ Norgolith provides a powerful CLI for managing your static sites and themes. Thi
      @code bash
      # Build with minification
      lith build --minify
+     @end
+
+*** `lith preview`
+     Preview from build result
+
+**** Usage
+     @code bash
+     lith preview [OPTIONS]
+     @end
+
+**** Options
+     @code bash
+     -p, --port <PORT>    Set server port (default: 3030)
+     -e, --host           Expose server to LAN
+     -o, --open           Open browser automatically
+     @end
+
+**** Example
+     @code bash
+     lith preview --open
      @end
 
 ** Theme Management

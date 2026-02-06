@@ -39,12 +39,12 @@ Norgolith uses a `norgolith.toml` file to manage site-wide settings, content sch
      - `description`: A short description of your site.
 
 ** Commands Configuration
-   Norgolith lets you set some defaults for the `build` and `serve` command options and flags directly from the site configuration file. That way, if the site has many contributors everyone will have the exact same commands setup. These configuration sections will have less priority than CLI passed flags/options but higher priority than the Norgolith defaults.
+   Norgolith lets you set some defaults for the `build` and `dev` command options and flags directly from the site configuration file. That way, if the site has many contributors everyone will have the exact same commands setup. These configuration sections will have less priority than CLI passed flags/options but higher priority than the Norgolith defaults.
 
 *** Example: Automatically Open And Expose Server Page
     @code toml
-    # Equivalent to `serve --open --host`
-    [serve]
+    # Equivalent to `dev --open --host`
+    [dev]
     open = true
     host = true
     @end

@@ -46,7 +46,6 @@ This guide assumes that you’ve already {:/docs/installation:}[installed Norgol
 
     @code bash
     mysite/
-    ├── .build/          # Dev server artifacts
     ├── content/         # Norg documents go here
     ├── static/          # Static assets (CSS, JS, images)
     ├── templates/       # Tera templates for HTML generation
@@ -124,7 +123,7 @@ This guide assumes that you’ve already {:/docs/installation:}[installed Norgol
 *** Previewing Your Site
 **** Start the Development Server
      @code bash
-     lith serve --open
+     lith dev --open
      @end
 
      This will:
@@ -214,7 +213,7 @@ This guide assumes that you’ve already {:/docs/installation:}[installed Norgol
 ** Troubleshooting
 *** Common Issues
 **** Site Not Updating
-     - Ensure you’re running `lith serve` in the correct directory.
+     - Ensure you’re running `lith dev` in the correct directory.
      - Check for errors in your Norg files in the server logs.
      - Check for issues with your web browser cache.
 
