@@ -79,7 +79,9 @@ Use Arch User Repository helper to install `norgolith-git`.
 
 ### 📦 Nix Package
 
-You can add norgolith to your NixOS configuration with flakes.
+For latest release version: `nix-shell -p norgolith`.
+
+For git version you can add Norgolith to NixOS configuration with flakes.
 
 <details>
 <summary>Minimal flake.nix for a NixOS configuration:</summary>
