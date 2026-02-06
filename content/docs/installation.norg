@@ -55,6 +55,18 @@ The Norgolith binary is called `lith` and not `norgolith`, this is for ergonomic
     lith --version
     @end
 
+*** via Nixpkgs
+    Stable releases are available in nixpkgs repository.
+
+    To temporally install `nix-shell -p norgolith`.
+
+    Or add `pkgs.norgolith` to your Nix configuration.
+
+*** via Arch User Repository
+    Latest development version is also available as AUR package for Arch Linux.
+
+    `paru -S norgolith-git`
+
 ** Nix Flake
    You can add Norgolith to your NixOS configuration with Nix flakes.
 
