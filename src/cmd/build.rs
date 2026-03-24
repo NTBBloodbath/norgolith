@@ -61,24 +61,62 @@ impl SitePaths {
 async fn prepare_build_directory(public_dir: &Path) -> Result<()> {
     debug!(path = %public_dir.display(), "Preparing build directory");
     if public_dir.exists() {
-        debug!(path = %public_dir.display(), "Removing existing public directory");
-        tokio::fs::remove_dir_all(&public_dir)
+        let mut entries = tokio::fs::read_dir(public_dir)
             .await
             .wrap_err(format!(
                 "{}: {}",
-                "Failed to remove existing public directory".bold(),
+                "Failed to read existing public directory".bold(),
+                public_dir.display()
+            ))?;
+
+        while let Some(entry) = entries.next_entry().await.wrap_err(format!(
+            "{}: {}",
+            "Failed to iterate existing public directory".bold(),
+            public_dir.display()
+        ))? {
+            let path = entry.path();
+            let file_name = path.file_name().and_then(|name| name.to_str());
+
+            // Keep git metadata so users can treat ./public as a separate repository.
+            if file_name == Some(".git") {
+                debug!(path = %path.display(), "Keeping git metadata directory");
+                continue;
+            }
+
+            let metadata = entry.metadata().await.wrap_err(format!(
+                "{}: {}",
+                "Failed to stat existing public entry".bold(),
+                path.display()
+            ))?;
+
+            if metadata.is_dir() {
+                tokio::fs::remove_dir_all(&path)
+                    .await
+                    .wrap_err(format!(
+                        "{}: {}",
+                        "Failed to remove existing public directory entry".bold(),
+                        path.display()
+                    ))?;
+            } else {
+                tokio::fs::remove_file(&path)
+                    .await
+                    .wrap_err(format!(
+                        "{}: {}",
+                        "Failed to remove existing public file entry".bold(),
+                        path.display()
+                    ))?;
+            }
+        }
+    } else {
+        debug!(path = %public_dir.display(), "Creating public directory");
+        tokio::fs::create_dir_all(&public_dir)
+            .await
+            .wrap_err(format!(
+                "{}: {}",
+                "Failed to create public directory".bold(),
                 public_dir.display()
             ))?;
     }
-
-    debug!(path = %public_dir.display(), "Creating public directory");
-    tokio::fs::create_dir_all(&public_dir)
-        .await
-        .wrap_err(format!(
-            "{}: {}",
-            "Failed to create public directory".bold(),
-            public_dir.display()
-        ))?;
 
     debug!("Build directory prepared successfully");
     Ok(())
