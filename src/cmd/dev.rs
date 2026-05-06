@@ -877,7 +877,7 @@ async fn handle_server_request(
         } else {
             duration_str.dimmed()
         };
-        println!("  {} {:<35}  {}  {}", method_colored, path, status_colored, duration_colored);
+        println!("  {} {:<60}  {}  {}", method_colored, path, status_colored, duration_colored);
     }
 
     Ok(response)
