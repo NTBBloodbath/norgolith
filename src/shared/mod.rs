@@ -286,11 +286,11 @@ pub async fn collect_all_posts_metadata(
     }
 
     posts.sort_by(|a, b| {
-        let a_date = a.get("date").and_then(|v| v.as_str()).unwrap_or_default();
-        let b_date = b.get("date").and_then(|v| v.as_str()).unwrap_or_default();
+        let a_date = a.get("created").and_then(|v| v.as_str()).unwrap_or_default();
+        let b_date = b.get("created").and_then(|v| v.as_str()).unwrap_or_default();
 
         let parse_date = |s: &str| {
-            chrono::DateTime::parse_from_str(s, "%Y-%m-%d")
+            chrono::DateTime::parse_from_rfc3339(s)
                 .unwrap_or_else(|_| chrono::DateTime::from_timestamp(0, 0).unwrap().into())
                 .with_timezone(&chrono::Utc)
         };
