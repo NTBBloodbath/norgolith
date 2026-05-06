@@ -411,7 +411,7 @@ impl NorgToHtml for NorgAST {
                     | NestableDetachedModifier::OrderedList => {
                         let mut list = Vec::<String>::new();
                         if *level == 1 {
-                            list.push(get_list_tag(modifier_type.clone(), true));
+                            list.push(get_list_tag(*modifier_type, true));
                         }
                         list.push("<li".to_string());
                         if !weak_carry.is_empty() {
@@ -425,12 +425,12 @@ impl NorgToHtml for NorgAST {
                         list.push(format!(">{}", mod_text));
                         list.push("</li>".to_string());
                         if !content.is_empty() {
-                            list.push(get_list_tag(modifier_type.clone(), true));
+                            list.push(get_list_tag(*modifier_type, true));
                             list.push(to_html(content, &strong_carry, &weak_carry, root_url, toc));
-                            list.push(get_list_tag(modifier_type.clone(), false));
+                            list.push(get_list_tag(*modifier_type, false));
                         }
                         if *level == 1 {
-                            list.push(get_list_tag(modifier_type.clone(), false));
+                            list.push(get_list_tag(*modifier_type, false));
                         }
                         list.join(" ")
                     }
