@@ -59,12 +59,12 @@ pub async fn render_category_index(
     };
 
     tera.render("categories.html", &context).map_err(|e| {
-        let internal_err = e.source().unwrap();
-        eyre!(
-            "{}: {}",
-            "Failed to render categories index".bold(),
-            internal_err
-        )
+        let msg = "Failed to render categories index".bold();
+        if let Some(source) = e.source() {
+            eyre!("{msg}: {source}")
+        } else {
+            eyre!(msg)
+        }
     })
 }
 
@@ -82,12 +82,12 @@ pub async fn render_category_page(
         ctx
     };
     tera.render("category.html", &context).map_err(|e| {
-        let internal_err = e.source().unwrap();
-        eyre!(
-            "{}: {}",
-            "Failed to render category page".bold(),
-            internal_err
-        )
+        let msg = "Failed to render category page".bold();
+        if let Some(source) = e.source() {
+            eyre!("{msg}: {source}")
+        } else {
+            eyre!(msg)
+        }
     })
 }
 
