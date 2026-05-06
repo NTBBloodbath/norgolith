@@ -199,7 +199,7 @@ impl FieldDefinition {
                     }
                 }
                 if let Some(min) = min_items {
-                    if !arr.len() < *min {
+                    if arr.len() < *min {
                         return Err(ValidationError::ConstraintViolation {
                             field: String::new(),
                             message: format!("Must contain at least {} value(s)", *min),
@@ -207,7 +207,7 @@ impl FieldDefinition {
                     }
                 }
                 if let Some(max) = max_items {
-                    if !arr.len() < *max {
+                    if arr.len() > *max {
                         return Err(ValidationError::ConstraintViolation {
                             field: String::new(),
                             message: format!("Exceeds values limit (expected {} value(s))", *max),
@@ -312,4 +312,313 @@ pub fn format_errors(
         output.push_str(&format!("  {} {}\n", "→".blue(), error));
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    fn str_array(items: &[&str]) -> toml::Value {
+        toml::Value::Array(
+            items
+                .iter()
+                .map(|s| toml::Value::String(s.to_string()))
+                .collect(),
+        )
+    }
+
+    fn bare_schema(required: &[&str]) -> ContentSchema {
+        ContentSchema {
+            required: required.iter().map(|s| s.to_string()).collect(),
+            fields: HashMap::new(),
+            rules: Vec::new(),
+            paths: HashMap::new(),
+        }
+    }
+
+    // FieldDefinition::String
+
+    #[test]
+    fn string_valid() {
+        let def = FieldDefinition::String { max_length: None, pattern: None };
+        assert!(def.validate(&toml::Value::String("hello".into())).is_ok());
+    }
+
+    #[test]
+    fn string_within_max_length_ok() {
+        let def = FieldDefinition::String { max_length: Some(10), pattern: None };
+        assert!(def.validate(&toml::Value::String("hello".into())).is_ok());
+    }
+
+    #[test]
+    fn string_at_exact_max_length_ok() {
+        let def = FieldDefinition::String { max_length: Some(5), pattern: None };
+        assert!(def.validate(&toml::Value::String("hello".into())).is_ok());
+    }
+
+    #[test]
+    fn string_exceeds_max_length() {
+        let def = FieldDefinition::String { max_length: Some(3), pattern: None };
+        let err = def.validate(&toml::Value::String("hello".into())).unwrap_err();
+        assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
+    }
+
+    #[test]
+    fn string_matching_pattern_ok() {
+        let def = FieldDefinition::String { max_length: None, pattern: Some(r"^\d+$".into()) };
+        assert!(def.validate(&toml::Value::String("1234".into())).is_ok());
+    }
+
+    #[test]
+    fn string_non_matching_pattern_errors() {
+        let def = FieldDefinition::String { max_length: None, pattern: Some(r"^\d+$".into()) };
+        let err = def.validate(&toml::Value::String("abc".into())).unwrap_err();
+        assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
+    }
+
+    #[test]
+    fn string_wrong_type_errors() {
+        let def = FieldDefinition::String { max_length: None, pattern: None };
+        let err = def.validate(&toml::Value::Boolean(true)).unwrap_err();
+        assert!(matches!(err, ValidationError::TypeMismatch { .. }));
+    }
+
+    // FieldDefinition::Boolean
+
+    #[test]
+    fn boolean_true_valid() {
+        assert!(FieldDefinition::Boolean.validate(&toml::Value::Boolean(true)).is_ok());
+    }
+
+    #[test]
+    fn boolean_false_valid() {
+        assert!(FieldDefinition::Boolean.validate(&toml::Value::Boolean(false)).is_ok());
+    }
+
+    #[test]
+    fn boolean_string_errors() {
+        let err = FieldDefinition::Boolean
+            .validate(&toml::Value::String("true".into()))
+            .unwrap_err();
+        assert!(matches!(err, ValidationError::TypeMismatch { .. }));
+    }
+
+    // FieldDefinition::Array
+
+    #[test]
+    fn array_valid_no_constraints() {
+        let def = FieldDefinition::Array {
+            items: Box::new(FieldDefinition::String { max_length: None, pattern: None }),
+            min_items: None,
+            max_items: None,
+            must_contain: None,
+        };
+        assert!(def.validate(&str_array(&["a", "b"])).is_ok());
+    }
+
+    #[test]
+    fn array_min_items_exactly_satisfied() {
+        let def = FieldDefinition::Array {
+            items: Box::new(FieldDefinition::Boolean),
+            min_items: Some(2),
+            max_items: None,
+            must_contain: None,
+        };
+        assert!(def.validate(&str_array(&["a", "b"])).is_ok());
+    }
+
+    #[test]
+    fn array_min_items_violated() {
+        let def = FieldDefinition::Array {
+            items: Box::new(FieldDefinition::Boolean),
+            min_items: Some(3),
+            max_items: None,
+            must_contain: None,
+        };
+        let err = def.validate(&str_array(&["a", "b"])).unwrap_err();
+        assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
+    }
+
+    #[test]
+    fn array_max_items_exactly_satisfied() {
+        let def = FieldDefinition::Array {
+            items: Box::new(FieldDefinition::Boolean),
+            min_items: None,
+            max_items: Some(3),
+            must_contain: None,
+        };
+        assert!(def.validate(&str_array(&["a", "b"])).is_ok());
+    }
+
+    #[test]
+    fn array_max_items_violated() {
+        let def = FieldDefinition::Array {
+            items: Box::new(FieldDefinition::Boolean),
+            min_items: None,
+            max_items: Some(2),
+            must_contain: None,
+        };
+        let err = def.validate(&str_array(&["a", "b", "c"])).unwrap_err();
+        assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
+    }
+
+    #[test]
+    fn array_must_contain_present_ok() {
+        let def = FieldDefinition::Array {
+            items: Box::new(FieldDefinition::String { max_length: None, pattern: None }),
+            min_items: None,
+            max_items: None,
+            must_contain: Some(vec![toml::Value::String("norgolith".into())]),
+        };
+        assert!(def.validate(&str_array(&["foo", "norgolith"])).is_ok());
+    }
+
+    #[test]
+    fn array_must_contain_absent_errors() {
+        let def = FieldDefinition::Array {
+            items: Box::new(FieldDefinition::String { max_length: None, pattern: None }),
+            min_items: None,
+            max_items: None,
+            must_contain: Some(vec![toml::Value::String("norgolith".into())]),
+        };
+        let err = def.validate(&str_array(&["foo", "bar"])).unwrap_err();
+        assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
+    }
+
+    #[test]
+    fn array_wrong_type_errors() {
+        let def = FieldDefinition::Array {
+            items: Box::new(FieldDefinition::Boolean),
+            min_items: None,
+            max_items: None,
+            must_contain: None,
+        };
+        let err = def.validate(&toml::Value::String("not an array".into())).unwrap_err();
+        assert!(matches!(err, ValidationError::TypeMismatch { .. }));
+    }
+
+    // ContentSchema::resolve_path
+
+    #[test]
+    fn resolve_path_root_only() {
+        let schema = bare_schema(&["title"]);
+        assert_eq!(schema.resolve_path("about").len(), 1);
+    }
+
+    #[test]
+    fn resolve_path_single_child() {
+        let mut schema = bare_schema(&["title"]);
+        schema.paths.insert("posts".into(), Box::new(bare_schema(&["category"])));
+        let nodes = schema.resolve_path("posts/my-post");
+        assert_eq!(nodes.len(), 2);
+        assert!(nodes[1].required.contains(&"category".to_string()));
+    }
+
+    #[test]
+    fn resolve_path_unknown_component_stays_at_root() {
+        let schema = bare_schema(&["title"]);
+        assert_eq!(schema.resolve_path("nonexistent/deep").len(), 1);
+    }
+
+    #[test]
+    fn resolve_path_partial_match_stops_at_last_known() {
+        let mut schema = bare_schema(&["title"]);
+        schema.paths.insert("posts".into(), Box::new(bare_schema(&["category"])));
+        // "posts" matches, "2025" has no child entry under posts
+        let nodes = schema.resolve_path("posts/2025/my-post");
+        assert_eq!(nodes.len(), 2);
+    }
+
+    // ContentSchema::merge_hierarchy
+
+    #[test]
+    fn merge_single_node_identity() {
+        let schema = bare_schema(&["title", "author"]);
+        let merged = ContentSchema::merge_hierarchy(&[&schema]);
+        assert_eq!(merged.required.len(), 2);
+    }
+
+    #[test]
+    fn merge_deduplicates_required_fields() {
+        let a = bare_schema(&["title", "author"]);
+        let b = bare_schema(&["author", "created"]);
+        let merged = ContentSchema::merge_hierarchy(&[&a, &b]);
+        assert_eq!(merged.required.iter().filter(|f| *f == "author").count(), 1);
+        assert_eq!(merged.required.len(), 3);
+    }
+
+    #[test]
+    fn merge_later_field_definition_overrides_earlier() {
+        let mut a = bare_schema(&[]);
+        a.fields.insert(
+            "title".into(),
+            FieldDefinition::String { max_length: Some(50), pattern: None },
+        );
+        let mut b = bare_schema(&[]);
+        b.fields.insert(
+            "title".into(),
+            FieldDefinition::String { max_length: Some(120), pattern: None },
+        );
+        let merged = ContentSchema::merge_hierarchy(&[&a, &b]);
+        match merged.fields.get("title").unwrap() {
+            FieldDefinition::String { max_length, .. } => assert_eq!(*max_length, Some(120)),
+            _ => panic!("unexpected field definition type"),
+        }
+    }
+
+    #[test]
+    fn merge_rules_accumulate_in_order() {
+        let mut a = bare_schema(&[]);
+        a.rules.push(ValidationRule {
+            condition: HashMap::from([("draft".into(), toml::Value::Boolean(false))]),
+            then: RuleAction { required: Some(vec!["publish_date".into()]), fields: None },
+        });
+        let mut b = bare_schema(&[]);
+        b.rules.push(ValidationRule {
+            condition: HashMap::from([("featured".into(), toml::Value::Boolean(true))]),
+            then: RuleAction { required: Some(vec!["hero_image".into()]), fields: None },
+        });
+        let merged = ContentSchema::merge_hierarchy(&[&a, &b]);
+        assert_eq!(merged.rules.len(), 2);
+    }
+
+    // ValidationRule::applies
+
+    fn draft_rule() -> ValidationRule {
+        ValidationRule {
+            condition: HashMap::from([("draft".into(), toml::Value::Boolean(false))]),
+            then: RuleAction { required: Some(vec!["publish_date".into()]), fields: None },
+        }
+    }
+
+    #[test]
+    fn rule_applies_when_condition_matches() {
+        let meta = HashMap::from([("draft".into(), toml::Value::Boolean(false))]);
+        assert!(matches!(draft_rule().applies(&meta), Ok(true)));
+    }
+
+    #[test]
+    fn rule_does_not_apply_when_value_differs() {
+        let meta = HashMap::from([("draft".into(), toml::Value::Boolean(true))]);
+        assert!(matches!(draft_rule().applies(&meta), Ok(false)));
+    }
+
+    #[test]
+    fn rule_errors_when_condition_field_missing() {
+        assert!(matches!(
+            draft_rule().applies(&HashMap::new()),
+            Err(ValidationError::RuleConditionFailed { .. })
+        ));
+    }
+
+    #[test]
+    fn rule_errors_on_type_mismatch_in_condition() {
+        let meta = HashMap::from([("draft".into(), toml::Value::String("false".into()))]);
+        assert!(matches!(
+            draft_rule().applies(&meta),
+            Err(ValidationError::RuleConditionFailed { .. })
+        ));
+    }
 }
