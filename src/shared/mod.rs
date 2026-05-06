@@ -273,7 +273,7 @@ pub async fn collect_all_posts_metadata(
             let is_norg_file = path.extension().is_some_and(|ext| ext == "norg");
             let is_post = path
                 .strip_prefix(content_dir)
-                .is_ok_and(|p| p.starts_with("posts") && *p != PathBuf::from("posts/index.norg"));
+                .is_ok_and(|p| p.starts_with("posts") && p != Path::new("posts/index.norg"));
             is_norg_file && is_post
         })
     {
