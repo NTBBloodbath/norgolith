@@ -467,9 +467,10 @@ async fn minify_js_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
 /// * `Result<()>` - `Ok(())` if minification and writing succeed, otherwise an error.
 #[instrument(skip(src_path, dest_path))]
 async fn minify_css_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
-    let content = tokio::fs::read_to_string(src_path).await?.leak();
+    let content = tokio::fs::read_to_string(src_path).await?;
 
-    let mut stylesheet = StyleSheet::parse(content, ParserOptions::default())?;
+    let mut stylesheet = StyleSheet::parse(&content, ParserOptions::default())
+        .map_err(|e| eyre!("{}", e))?;
     stylesheet.minify(MinifyOptions::default())?;
     let minified = stylesheet.to_css(PrinterOptions {
         minify: true,
