@@ -112,6 +112,11 @@ pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Resul
         let theme_tera =
             Tera::parse(&theme_glob).map_err(|e| eyre!("Error parsing theme templates: {}", e))?;
         tera.extend(&theme_tera)?;
+
+        let theme_xml_glob = format!("{}/**/*.xml", theme_templates_dir.display());
+        let theme_xml_tera = Tera::parse(&theme_xml_glob)
+            .map_err(|e| eyre!("Error parsing theme XML templates: {}", e))?;
+        tera.extend(&theme_xml_tera)?;
     }
 
     // Load user's templates
@@ -268,7 +273,7 @@ pub async fn collect_all_posts_metadata(
             let is_norg_file = path.extension().is_some_and(|ext| ext == "norg");
             let is_post = path
                 .strip_prefix(content_dir)
-                .is_ok_and(|p| p.starts_with("posts") && *p != PathBuf::from("posts/index.norg"));
+                .is_ok_and(|p| p.starts_with("posts") && p != Path::new("posts/index.norg"));
             is_norg_file && is_post
         })
     {

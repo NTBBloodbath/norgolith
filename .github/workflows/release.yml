@@ -22,13 +22,13 @@ jobs:
             os: ubuntu-24.04
             target: aarch64-unknown-linux-musl
           - os_name: Darwin-x86_64
-            os: macos-13
+            os: macos-latest-large
             target: x86_64-apple-darwin
           - os_name: Darwin-aarch64
             os: macos-latest
             target: aarch64-apple-darwin
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build
         uses: houseabsolute/actions-rust-cross@v0
         with:
