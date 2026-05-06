@@ -858,7 +858,26 @@ async fn handle_server_request(
     let status = response.status();
 
     if path != "/livereload.js" {
-        info!("{} {} => {} in {:.1?}", method, path, status, duration);
+        let method_str = method.to_string();
+        let method_colored = if method_str == "GET" {
+            method_str.green().bold()
+        } else {
+            method_str.yellow().bold()
+        };
+        let status_code = status.as_u16();
+        let status_colored = match status_code {
+            200..=299 => status_code.to_string().green(),
+            300..=399 => status_code.to_string().cyan(),
+            400..=499 => status_code.to_string().yellow(),
+            _ => status_code.to_string().red(),
+        };
+        let duration_str = format!("{:.1?}", duration);
+        let duration_colored = if duration.as_millis() >= 500 {
+            duration_str.yellow()
+        } else {
+            duration_str.dimmed()
+        };
+        println!("  {} {:<35}  {}  {}", method_colored, path, status_colored, duration_colored);
     }
 
     Ok(response)
@@ -980,7 +999,7 @@ async fn setup_file_watcher(
 /// * `Result<()>` - `Ok(())` if the server runs successfully, otherwise an error.
 #[instrument(skip(port, drafts, open, host))]
 pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
-    info!("Starting development server...");
+    println!("{} Starting development server...", "→".cyan().bold());
 
     let root = fs::find_config_file().await?;
     let Some(root) = root else {
