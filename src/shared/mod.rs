@@ -35,7 +35,7 @@ pub async fn render_norg_page(
     tera.render(&format!("{}.html", layout), &context)
         .map_err(|e| {
             // Store the reason why Tera failed to render the template
-            let msg = format!("Failed to render template for '{}'", "").bold();
+            let msg = format!("Failed to render template for '{}'", layout).bold();
             if let Some(source) = e.source() {
                 eyre!("{msg}: {source}")
             } else {
