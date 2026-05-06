@@ -410,9 +410,6 @@ impl NorgToHtml for NorgAST {
                     NestableDetachedModifier::UnorderedList
                     | NestableDetachedModifier::OrderedList => {
                         let mut list = Vec::<String>::new();
-                        if *level == 1 {
-                            list.push(get_list_tag(*modifier_type, true));
-                        }
                         list.push("<li".to_string());
                         if !weak_carry.is_empty() {
                             for weak_carryover in weak_carry.clone() {
@@ -425,12 +422,7 @@ impl NorgToHtml for NorgAST {
                         list.push(format!(">{}", mod_text));
                         list.push("</li>".to_string());
                         if !content.is_empty() {
-                            list.push(get_list_tag(*modifier_type, true));
                             list.push(to_html(content, &strong_carry, &weak_carry, root_url, toc));
-                            list.push(get_list_tag(*modifier_type, false));
-                        }
-                        if *level == 1 {
-                            list.push(get_list_tag(*modifier_type, false));
                         }
                         list.join(" ")
                     }
@@ -606,6 +598,20 @@ impl NorgToHtml for NorgAST {
                     todo!()
                 }
             }
+            NorgAST::List {
+                modifier_type,
+                items,
+            } => match modifier_type {
+                NestableDetachedModifier::UnorderedList | NestableDetachedModifier::OrderedList => {
+                    let list_open = get_list_tag(*modifier_type, true);
+                    let list_close = get_list_tag(*modifier_type, false);
+                    let mut list = list_open;
+                    list.push_str(&to_html(items, &strong_carry, &weak_carry, root_url, toc));
+                    list.push_str(&list_close);
+                    list
+                }
+                _ => to_html(items, &strong_carry, &weak_carry, root_url, toc),
+            },
             _ => {
                 info!("[converter] {:#?}", self);
                 todo!() // Fail on stuff that we cannot parse yet
