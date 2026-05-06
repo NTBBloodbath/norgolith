@@ -11,7 +11,7 @@ use futures_util::{SinkExt, Stream, StreamExt};
 use hyper::header::{CACHE_CONTROL, EXPIRES, PRAGMA};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{
-    header::{HeaderValue, CONTENT_TYPE},
+    header::CONTENT_TYPE,
     Body, Request, Response, Server, StatusCode,
 };
 use notify::{RecommendedWatcher, RecursiveMode};
@@ -555,34 +555,6 @@ fn handle_not_found() -> Response<Body> {
         .status(StatusCode::NOT_FOUND)
         .body(Body::from("not found"))
         .expect("Could not build Not Found response")
-}
-
-/// Handles requests for static assets with a given content and path.
-///
-/// This function serves static assets directly from provided content and path. It determines
-/// the MIME type based on the file extension and returns a `Response` with the content.
-///
-/// # Arguments
-/// * `content` - The content of the asset.
-/// * `path` - The path of the asset.
-///
-/// # Returns
-/// * `Result<Response<Body>>` - A `Response` containing the asset content.
-#[instrument(skip(content, path))]
-async fn handle_static_asset(content: &str, path: &Path) -> Result<Response<Body>> {
-    debug!(path = %path.display(), "Handling static asset");
-
-    let mime_type = mime_guess::from_path(path).first_or_octet_stream();
-
-    debug!(mime_type = %mime_type, "Serving static asset");
-    Ok(Response::builder()
-        .header(
-            CONTENT_TYPE,
-            HeaderValue::from_str(mime_type.as_ref())
-                .unwrap_or_else(|_| HeaderValue::from_static("text/plain")),
-        )
-        .status(StatusCode::OK)
-        .body(Body::from(content.to_owned()))?)
 }
 
 async fn resolve_url_norg_path(content_dir: &Path, path: &Path) -> std::io::Result<PathBuf> {
