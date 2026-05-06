@@ -2,8 +2,8 @@ mod build;
 mod dev;
 mod init;
 mod new;
-mod theme;
 mod preview;
+mod theme;
 
 pub use build::build;
 pub use dev::dev;

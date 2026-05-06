@@ -61,13 +61,11 @@ impl SitePaths {
 async fn prepare_build_directory(public_dir: &Path) -> Result<()> {
     debug!(path = %public_dir.display(), "Preparing build directory");
     if public_dir.exists() {
-        let mut entries = tokio::fs::read_dir(public_dir)
-            .await
-            .wrap_err(format!(
-                "{}: {}",
-                "Failed to read existing public directory".bold(),
-                public_dir.display()
-            ))?;
+        let mut entries = tokio::fs::read_dir(public_dir).await.wrap_err(format!(
+            "{}: {}",
+            "Failed to read existing public directory".bold(),
+            public_dir.display()
+        ))?;
 
         while let Some(entry) = entries.next_entry().await.wrap_err(format!(
             "{}: {}",
@@ -90,21 +88,17 @@ async fn prepare_build_directory(public_dir: &Path) -> Result<()> {
             ))?;
 
             if metadata.is_dir() {
-                tokio::fs::remove_dir_all(&path)
-                    .await
-                    .wrap_err(format!(
-                        "{}: {}",
-                        "Failed to remove existing public directory entry".bold(),
-                        path.display()
-                    ))?;
+                tokio::fs::remove_dir_all(&path).await.wrap_err(format!(
+                    "{}: {}",
+                    "Failed to remove existing public directory entry".bold(),
+                    path.display()
+                ))?;
             } else {
-                tokio::fs::remove_file(&path)
-                    .await
-                    .wrap_err(format!(
-                        "{}: {}",
-                        "Failed to remove existing public file entry".bold(),
-                        path.display()
-                    ))?;
+                tokio::fs::remove_file(&path).await.wrap_err(format!(
+                    "{}: {}",
+                    "Failed to remove existing public file entry".bold(),
+                    path.display()
+                ))?;
             }
         }
     } else {

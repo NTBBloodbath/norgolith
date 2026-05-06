@@ -1,4 +1,7 @@
-use std::{convert::Infallible, path::{Path, PathBuf}};
+use std::{
+    convert::Infallible,
+    path::{Path, PathBuf},
+};
 
 use colored::Colorize as _;
 use eyre::{bail, Result};
@@ -45,7 +48,7 @@ fn sanitize_path(uri_path: &str) -> PathBuf {
     let mut base = PathBuf::from("./public");
     for comp in Path::new(rel_path) {
         if comp == ".." {
-            continue
+            continue;
         }
         base.push(comp);
     }
