@@ -3,14 +3,14 @@ use std::{
     sync::Arc,
 };
 
-use colored::Colorize;
+use colored::{ColoredString, Colorize};
 use eyre::{bail, eyre, Result, WrapErr};
 use futures_util::{self, StreamExt};
 use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions, StyleSheet};
 use rss::Channel;
 use tera::{Context, Tera};
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, instrument};
 use walkdir::WalkDir;
 
 use crate::{config, fs, shared};
@@ -159,7 +159,7 @@ async fn build_contents(
     posts: &[toml::Value],
     site_config: &config::SiteConfig,
     minify: bool,
-) -> Result<()> {
+) -> Result<usize> {
     let entries = WalkDir::new(&paths.content)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -167,11 +167,13 @@ async fn build_contents(
 
     // Shared error state for concurrent validation
     let validation_errors = Arc::new(Mutex::new(Vec::new()));
+    let built_count = Arc::new(Mutex::new(0usize));
 
     // Parallel processing
     futures_util::stream::iter(entries)
         .for_each_concurrent(num_cpus::get(), |entry| {
             let validation_errors = Arc::clone(&validation_errors);
+            let built_count = Arc::clone(&built_count);
 
             async move {
                 let path = entry.path();
@@ -182,6 +184,7 @@ async fn build_contents(
                     site_config,
                     minify,
                     validation_errors,
+                    built_count,
                     posts,
                 )
                 .await
@@ -197,7 +200,8 @@ async fn build_contents(
         bail!(errors.concat());
     }
 
-    Ok(())
+    let count = *built_count.lock().await;
+    Ok(count)
 }
 
 /// Processes a single build entry (HTML file with metadata)
@@ -206,7 +210,7 @@ async fn build_contents(
 /// Skips draft content and applies minification when enabled.
 #[instrument(
     level = "debug",
-    skip(tera, paths, site_config, validation_errors, posts)
+    skip(tera, paths, site_config, validation_errors, built_count, posts)
 )]
 async fn build_content_entry(
     path: &Path,
@@ -215,6 +219,7 @@ async fn build_content_entry(
     site_config: &config::SiteConfig,
     minify: bool,
     validation_errors: Arc<Mutex<Vec<String>>>,
+    built_count: Arc<Mutex<usize>>,
     posts: &[toml::Value],
 ) -> Result<()> {
     let rel_path = path
@@ -271,6 +276,7 @@ async fn build_content_entry(
 
         // Write rendered output to public path
         write_public_file(&public_path, &rendered).await?;
+        *built_count.lock().await += 1;
     }
     Ok(())
 }
@@ -281,19 +287,20 @@ pub async fn build_category_pages(
     public_dir: &Path,
     posts: &[toml::Value],
     config: &config::SiteConfig,
-) -> Result<()> {
+) -> Result<usize> {
     let categories = shared::collect_all_posts_categories(posts).await;
     let categories_dir = public_dir.join("categories");
 
     // Generate category pages only if the site has posts
     if posts.is_empty() {
-        return Ok(());
+        return Ok(0);
     }
 
     let content = shared::render_category_index(tera, posts, config).await?;
 
     tokio::fs::create_dir_all(&categories_dir).await?;
     tokio::fs::write(categories_dir.join("index.html"), content).await?;
+    let mut page_count = 1usize;
 
     // Generate individual category pages
     for category in categories {
@@ -313,9 +320,10 @@ pub async fn build_category_pages(
         tokio::fs::create_dir_all(&cat_dir).await?;
 
         tokio::fs::write(cat_dir.join("index.html"), content).await?;
+        page_count += 1;
     }
 
-    Ok(())
+    Ok(page_count)
 }
 
 /// Determines the final public path for an HTML file based on its name and location.
@@ -469,8 +477,8 @@ async fn minify_js_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
 async fn minify_css_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
     let content = tokio::fs::read_to_string(src_path).await?;
 
-    let mut stylesheet = StyleSheet::parse(&content, ParserOptions::default())
-        .map_err(|e| eyre!("{}", e))?;
+    let mut stylesheet =
+        StyleSheet::parse(&content, ParserOptions::default()).map_err(|e| eyre!("{}", e))?;
     stylesheet.minify(MinifyOptions::default())?;
     let minified = stylesheet.to_css(PrinterOptions {
         minify: true,
@@ -554,7 +562,8 @@ async fn copy_asset_file(src_path: &Path, dest_path: &Path, minify: bool) -> Res
 /// # Returns
 /// * `Result<()>` - `Ok(())` if all assets are copied successfully, otherwise an error.
 #[instrument(skip(assets_dir, target_dir, minify))]
-async fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Result<()> {
+async fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Result<usize> {
+    let mut file_count = 0usize;
     for entry in WalkDir::new(assets_dir)
         .follow_links(true)
         .into_iter()
@@ -568,10 +577,11 @@ async fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Resu
             }
         } else {
             copy_asset_file(entry.path(), &target_path, minify).await?;
+            file_count += 1;
         }
     }
 
-    Ok(())
+    Ok(file_count)
 }
 
 /// Main build entry point
@@ -594,8 +604,12 @@ pub async fn build(minify: bool) -> Result<()> {
         );
     };
 
+    println!(
+        "{} Building site{}...",
+        "→".cyan().bold(),
+        if minify { " (minified)".dimmed() } else { ColoredString::from("") }
+    );
     let build_start = std::time::Instant::now();
-    info!(minify = minify, "Starting build process");
 
     // Load site configuration, root already contains the norgolith.toml path
     let config_content = tokio::fs::read_to_string(&root)
@@ -631,28 +645,67 @@ pub async fn build(minify: bool) -> Result<()> {
         })
         .collect();
 
+    println!();
+
     // Build all norg content (& run validation)
-    build_contents(&tera, &paths, &posts, &site_config, minify).await?;
+    let step_start = std::time::Instant::now();
+    let page_count = build_contents(&tera, &paths, &posts, &site_config, minify).await?;
+    println!(
+        "  {} {}  {:<12}  {}",
+        "•".green(),
+        format!("{:<12}", "Content").bold(),
+        format!("{} pages", page_count),
+        shared::get_elapsed_time(step_start).dimmed()
+    );
 
     // Build all category pages
-    build_category_pages(&tera, &paths.public, &posts, &site_config).await?;
+    let step_start = std::time::Instant::now();
+    let cat_count = build_category_pages(&tera, &paths.public, &posts, &site_config).await?;
+    if cat_count > 0 {
+        println!(
+            "  {} {}  {:<12}  {}",
+            "•".green(),
+            format!("{:<12}", "Categories").bold(),
+            format!("{} pages", cat_count),
+            shared::get_elapsed_time(step_start).dimmed()
+        );
+    }
 
     // Generate RSS feed after building content if enabled
     if site_config.rss.as_ref().is_some_and(|rss| rss.enable) {
         debug!("Generating RSS feed");
+        let step_start = std::time::Instant::now();
         let rss_path = paths.public.join("rss.xml");
         generate_rss_feed(&tera, &site_config, &posts, &rss_path).await?;
+        println!(
+            "  {} {}  {:<12}  {}",
+            "•".green(),
+            format!("{:<12}", "RSS").bold(),
+            "1 file",
+            shared::get_elapsed_time(step_start).dimmed()
+        );
     }
 
     // Copy site assets
+    let step_start = std::time::Instant::now();
     let public_assets_dir = paths.public.join("assets");
+    let mut asset_count = 0usize;
     if paths.theme_assets.exists() {
-        copy_assets(&paths.theme_assets, &public_assets_dir, minify).await?;
+        asset_count += copy_assets(&paths.theme_assets, &public_assets_dir, minify).await?;
     }
-    copy_assets(&paths.assets, &public_assets_dir, minify).await?;
+    asset_count += copy_assets(&paths.assets, &public_assets_dir, minify).await?;
+    println!(
+        "  {} {}  {:<12}  {}",
+        "•".green(),
+        format!("{:<12}", "Assets").bold(),
+        format!("{} files", asset_count),
+        shared::get_elapsed_time(step_start).dimmed()
+    );
 
-    info!(
-        "Finished site build in {}",
+    println!();
+    println!(
+        "{} Built in {}",
+        "✓".green().bold(),
         shared::get_elapsed_time(build_start)
     );
 
