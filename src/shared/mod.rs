@@ -286,8 +286,14 @@ pub async fn collect_all_posts_metadata(
     }
 
     posts.sort_by(|a, b| {
-        let a_date = a.get("created").and_then(|v| v.as_str()).unwrap_or_default();
-        let b_date = b.get("created").and_then(|v| v.as_str()).unwrap_or_default();
+        let a_date = a
+            .get("created")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let b_date = b
+            .get("created")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
 
         let parse_date = |s: &str| {
             chrono::DateTime::parse_from_rfc3339(s)

@@ -10,10 +10,7 @@ use eyre::{bail, eyre, Result};
 use futures_util::{SinkExt, Stream, StreamExt};
 use hyper::header::{CACHE_CONTROL, EXPIRES, PRAGMA};
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{
-    header::CONTENT_TYPE,
-    Body, Request, Response, Server, StatusCode,
-};
+use hyper::{header::CONTENT_TYPE, Body, Request, Response, Server, StatusCode};
 use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
 use tera::{Context, Tera};
