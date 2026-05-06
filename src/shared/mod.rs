@@ -112,6 +112,11 @@ pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Resul
         let theme_tera =
             Tera::parse(&theme_glob).map_err(|e| eyre!("Error parsing theme templates: {}", e))?;
         tera.extend(&theme_tera)?;
+
+        let theme_xml_glob = format!("{}/**/*.xml", theme_templates_dir.display());
+        let theme_xml_tera = Tera::parse(&theme_xml_glob)
+            .map_err(|e| eyre!("Error parsing theme XML templates: {}", e))?;
+        tera.extend(&theme_xml_tera)?;
     }
 
     // Load user's templates
