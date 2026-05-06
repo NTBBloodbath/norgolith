@@ -1066,7 +1066,26 @@ pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> 
     } else {
         ([127, 0, 0, 1], port).into()
     };
-    let server = Server::bind(&addr).serve(make_svc);
+    // Graceful shutdown via Ctrl-D (stdin EOF)
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+        let mut stdin = tokio::io::stdin();
+        let mut buf = [0u8; 1];
+        loop {
+            match stdin.read(&mut buf).await {
+                Ok(0) | Err(_) => {
+                    let _ = shutdown_tx.send(());
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
+
+    let server = Server::bind(&addr).serve(make_svc).with_graceful_shutdown(async {
+        let _ = shutdown_rx.await;
+    });
 
     let localhost_address = format!(
         "{} {}   {}",
@@ -1092,10 +1111,11 @@ pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> 
         )
     };
     println!(
-        "Server started in {}\n{}\n{}\n",
+        "Server started in {}\n{}\n{}\n\n{}\n",
         shared::get_elapsed_time(server_start),
         localhost_address,
         lan_address,
+        "Press Ctrl-D to stop the server".dimmed()
     );
 
     if open {
@@ -1115,5 +1135,6 @@ pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> 
         bail!("{}: {}", "Server error".bold(), e);
     }
 
+    println!("\n{} Development server stopped.", "→".cyan().bold());
     Ok(())
 }
