@@ -342,45 +342,70 @@ mod tests {
 
     #[test]
     fn string_valid() {
-        let def = FieldDefinition::String { max_length: None, pattern: None };
+        let def = FieldDefinition::String {
+            max_length: None,
+            pattern: None,
+        };
         assert!(def.validate(&toml::Value::String("hello".into())).is_ok());
     }
 
     #[test]
     fn string_within_max_length_ok() {
-        let def = FieldDefinition::String { max_length: Some(10), pattern: None };
+        let def = FieldDefinition::String {
+            max_length: Some(10),
+            pattern: None,
+        };
         assert!(def.validate(&toml::Value::String("hello".into())).is_ok());
     }
 
     #[test]
     fn string_at_exact_max_length_ok() {
-        let def = FieldDefinition::String { max_length: Some(5), pattern: None };
+        let def = FieldDefinition::String {
+            max_length: Some(5),
+            pattern: None,
+        };
         assert!(def.validate(&toml::Value::String("hello".into())).is_ok());
     }
 
     #[test]
     fn string_exceeds_max_length() {
-        let def = FieldDefinition::String { max_length: Some(3), pattern: None };
-        let err = def.validate(&toml::Value::String("hello".into())).unwrap_err();
+        let def = FieldDefinition::String {
+            max_length: Some(3),
+            pattern: None,
+        };
+        let err = def
+            .validate(&toml::Value::String("hello".into()))
+            .unwrap_err();
         assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
     }
 
     #[test]
     fn string_matching_pattern_ok() {
-        let def = FieldDefinition::String { max_length: None, pattern: Some(r"^\d+$".into()) };
+        let def = FieldDefinition::String {
+            max_length: None,
+            pattern: Some(r"^\d+$".into()),
+        };
         assert!(def.validate(&toml::Value::String("1234".into())).is_ok());
     }
 
     #[test]
     fn string_non_matching_pattern_errors() {
-        let def = FieldDefinition::String { max_length: None, pattern: Some(r"^\d+$".into()) };
-        let err = def.validate(&toml::Value::String("abc".into())).unwrap_err();
+        let def = FieldDefinition::String {
+            max_length: None,
+            pattern: Some(r"^\d+$".into()),
+        };
+        let err = def
+            .validate(&toml::Value::String("abc".into()))
+            .unwrap_err();
         assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
     }
 
     #[test]
     fn string_wrong_type_errors() {
-        let def = FieldDefinition::String { max_length: None, pattern: None };
+        let def = FieldDefinition::String {
+            max_length: None,
+            pattern: None,
+        };
         let err = def.validate(&toml::Value::Boolean(true)).unwrap_err();
         assert!(matches!(err, ValidationError::TypeMismatch { .. }));
     }
@@ -389,12 +414,16 @@ mod tests {
 
     #[test]
     fn boolean_true_valid() {
-        assert!(FieldDefinition::Boolean.validate(&toml::Value::Boolean(true)).is_ok());
+        assert!(FieldDefinition::Boolean
+            .validate(&toml::Value::Boolean(true))
+            .is_ok());
     }
 
     #[test]
     fn boolean_false_valid() {
-        assert!(FieldDefinition::Boolean.validate(&toml::Value::Boolean(false)).is_ok());
+        assert!(FieldDefinition::Boolean
+            .validate(&toml::Value::Boolean(false))
+            .is_ok());
     }
 
     #[test]
@@ -410,7 +439,10 @@ mod tests {
     #[test]
     fn array_valid_no_constraints() {
         let def = FieldDefinition::Array {
-            items: Box::new(FieldDefinition::String { max_length: None, pattern: None }),
+            items: Box::new(FieldDefinition::String {
+                max_length: None,
+                pattern: None,
+            }),
             min_items: None,
             max_items: None,
             must_contain: None,
@@ -467,7 +499,10 @@ mod tests {
     #[test]
     fn array_must_contain_present_ok() {
         let def = FieldDefinition::Array {
-            items: Box::new(FieldDefinition::String { max_length: None, pattern: None }),
+            items: Box::new(FieldDefinition::String {
+                max_length: None,
+                pattern: None,
+            }),
             min_items: None,
             max_items: None,
             must_contain: Some(vec![toml::Value::String("norgolith".into())]),
@@ -478,7 +513,10 @@ mod tests {
     #[test]
     fn array_must_contain_absent_errors() {
         let def = FieldDefinition::Array {
-            items: Box::new(FieldDefinition::String { max_length: None, pattern: None }),
+            items: Box::new(FieldDefinition::String {
+                max_length: None,
+                pattern: None,
+            }),
             min_items: None,
             max_items: None,
             must_contain: Some(vec![toml::Value::String("norgolith".into())]),
@@ -495,7 +533,9 @@ mod tests {
             max_items: None,
             must_contain: None,
         };
-        let err = def.validate(&toml::Value::String("not an array".into())).unwrap_err();
+        let err = def
+            .validate(&toml::Value::String("not an array".into()))
+            .unwrap_err();
         assert!(matches!(err, ValidationError::TypeMismatch { .. }));
     }
 
@@ -510,7 +550,9 @@ mod tests {
     #[test]
     fn resolve_path_single_child() {
         let mut schema = bare_schema(&["title"]);
-        schema.paths.insert("posts".into(), Box::new(bare_schema(&["category"])));
+        schema
+            .paths
+            .insert("posts".into(), Box::new(bare_schema(&["category"])));
         let nodes = schema.resolve_path("posts/my-post");
         assert_eq!(nodes.len(), 2);
         assert!(nodes[1].required.contains(&"category".to_string()));
@@ -525,7 +567,9 @@ mod tests {
     #[test]
     fn resolve_path_partial_match_stops_at_last_known() {
         let mut schema = bare_schema(&["title"]);
-        schema.paths.insert("posts".into(), Box::new(bare_schema(&["category"])));
+        schema
+            .paths
+            .insert("posts".into(), Box::new(bare_schema(&["category"])));
         // "posts" matches, "2025" has no child entry under posts
         let nodes = schema.resolve_path("posts/2025/my-post");
         assert_eq!(nodes.len(), 2);
@@ -554,12 +598,18 @@ mod tests {
         let mut a = bare_schema(&[]);
         a.fields.insert(
             "title".into(),
-            FieldDefinition::String { max_length: Some(50), pattern: None },
+            FieldDefinition::String {
+                max_length: Some(50),
+                pattern: None,
+            },
         );
         let mut b = bare_schema(&[]);
         b.fields.insert(
             "title".into(),
-            FieldDefinition::String { max_length: Some(120), pattern: None },
+            FieldDefinition::String {
+                max_length: Some(120),
+                pattern: None,
+            },
         );
         let merged = ContentSchema::merge_hierarchy(&[&a, &b]);
         match merged.fields.get("title").unwrap() {
@@ -573,12 +623,18 @@ mod tests {
         let mut a = bare_schema(&[]);
         a.rules.push(ValidationRule {
             condition: HashMap::from([("draft".into(), toml::Value::Boolean(false))]),
-            then: RuleAction { required: Some(vec!["publish_date".into()]), fields: None },
+            then: RuleAction {
+                required: Some(vec!["publish_date".into()]),
+                fields: None,
+            },
         });
         let mut b = bare_schema(&[]);
         b.rules.push(ValidationRule {
             condition: HashMap::from([("featured".into(), toml::Value::Boolean(true))]),
-            then: RuleAction { required: Some(vec!["hero_image".into()]), fields: None },
+            then: RuleAction {
+                required: Some(vec!["hero_image".into()]),
+                fields: None,
+            },
         });
         let merged = ContentSchema::merge_hierarchy(&[&a, &b]);
         assert_eq!(merged.rules.len(), 2);
@@ -589,7 +645,10 @@ mod tests {
     fn draft_rule() -> ValidationRule {
         ValidationRule {
             condition: HashMap::from([("draft".into(), toml::Value::Boolean(false))]),
-            then: RuleAction { required: Some(vec!["publish_date".into()]), fields: None },
+            then: RuleAction {
+                required: Some(vec!["publish_date".into()]),
+                fields: None,
+            },
         }
     }
 

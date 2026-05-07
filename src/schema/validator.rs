@@ -52,12 +52,17 @@ pub fn validate_metadata(
 mod tests {
     use std::collections::HashMap;
 
-    use crate::schema::{FieldDefinition, MergedSchema, RuleAction, ValidationError, ValidationRule};
+    use crate::schema::{
+        FieldDefinition, MergedSchema, RuleAction, ValidationError, ValidationRule,
+    };
 
     use super::validate_metadata;
 
     fn meta(pairs: &[(&str, toml::Value)]) -> HashMap<String, toml::Value> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()
     }
 
     fn required_only(fields: &[&str]) -> MergedSchema {
@@ -106,13 +111,17 @@ mod tests {
     #[test]
     fn type_mismatch_is_reported_with_field_name() {
         let mut merged = required_only(&[]);
-        merged.fields.insert("draft".into(), FieldDefinition::Boolean);
+        merged
+            .fields
+            .insert("draft".into(), FieldDefinition::Boolean);
         let errors = validate_metadata(
             &meta(&[("draft", toml::Value::String("true".into()))]),
             &merged,
         );
         assert_eq!(errors.len(), 1);
-        assert!(matches!(&errors[0], ValidationError::TypeMismatch { field, .. } if field == "draft"));
+        assert!(
+            matches!(&errors[0], ValidationError::TypeMismatch { field, .. } if field == "draft")
+        );
     }
 
     #[test]
@@ -120,14 +129,22 @@ mod tests {
         let mut merged = required_only(&[]);
         merged.fields.insert(
             "title".into(),
-            FieldDefinition::String { max_length: Some(5), pattern: None },
+            FieldDefinition::String {
+                max_length: Some(5),
+                pattern: None,
+            },
         );
         let errors = validate_metadata(
-            &meta(&[("title", toml::Value::String("This title is way too long".into()))]),
+            &meta(&[(
+                "title",
+                toml::Value::String("This title is way too long".into()),
+            )]),
             &merged,
         );
         assert_eq!(errors.len(), 1);
-        assert!(matches!(&errors[0], ValidationError::ConstraintViolation { field, .. } if field == "title"));
+        assert!(
+            matches!(&errors[0], ValidationError::ConstraintViolation { field, .. } if field == "title")
+        );
     }
 
     #[test]
@@ -147,7 +164,10 @@ mod tests {
         let mut merged = required_only(&[]);
         merged.rules.push(ValidationRule {
             condition: HashMap::from([("draft".into(), toml::Value::Boolean(false))]),
-            then: RuleAction { required: Some(vec!["publish_date".into()]), fields: None },
+            then: RuleAction {
+                required: Some(vec!["publish_date".into()]),
+                fields: None,
+            },
         });
         // draft = false and publish_date absent → error expected
         let errors = validate_metadata(&meta(&[("draft", toml::Value::Boolean(false))]), &merged);
@@ -160,7 +180,10 @@ mod tests {
         let mut merged = required_only(&[]);
         merged.rules.push(ValidationRule {
             condition: HashMap::from([("draft".into(), toml::Value::Boolean(false))]),
-            then: RuleAction { required: Some(vec!["publish_date".into()]), fields: None },
+            then: RuleAction {
+                required: Some(vec!["publish_date".into()]),
+                fields: None,
+            },
         });
         // draft = true → condition not met, no error
         let errors = validate_metadata(&meta(&[("draft", toml::Value::Boolean(true))]), &merged);
@@ -172,12 +195,18 @@ mod tests {
         let mut merged = required_only(&[]);
         merged.rules.push(ValidationRule {
             condition: HashMap::from([("draft".into(), toml::Value::Boolean(false))]),
-            then: RuleAction { required: Some(vec!["publish_date".into()]), fields: None },
+            then: RuleAction {
+                required: Some(vec!["publish_date".into()]),
+                fields: None,
+            },
         });
         // "draft" missing entirely → RuleConditionFailed
         let errors = validate_metadata(&meta(&[]), &merged);
         assert_eq!(errors.len(), 1);
-        assert!(matches!(&errors[0], ValidationError::RuleConditionFailed { .. }));
+        assert!(matches!(
+            &errors[0],
+            ValidationError::RuleConditionFailed { .. }
+        ));
     }
 
     #[test]
@@ -185,12 +214,18 @@ mod tests {
         let mut merged = required_only(&[]);
         merged.rules.push(ValidationRule {
             condition: HashMap::from([("draft".into(), toml::Value::Boolean(false))]),
-            then: RuleAction { required: Some(vec!["publish_date".into()]), fields: None },
+            then: RuleAction {
+                required: Some(vec!["publish_date".into()]),
+                fields: None,
+            },
         });
         let errors = validate_metadata(
             &meta(&[
                 ("draft", toml::Value::Boolean(false)),
-                ("publish_date", toml::Value::String("2026-01-01T00:00:00Z".into())),
+                (
+                    "publish_date",
+                    toml::Value::String("2026-01-01T00:00:00Z".into()),
+                ),
             ]),
             &merged,
         );

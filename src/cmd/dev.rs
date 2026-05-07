@@ -877,7 +877,10 @@ async fn handle_server_request(
         } else {
             duration_str.dimmed()
         };
-        println!("  {} {:<60}  {}  {}", method_colored, path, status_colored, duration_colored);
+        println!(
+            "  {} {:<60}  {}  {}",
+            method_colored, path, status_colored, duration_colored
+        );
     }
 
     Ok(response)
@@ -1083,9 +1086,11 @@ pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> 
         }
     });
 
-    let server = Server::bind(&addr).serve(make_svc).with_graceful_shutdown(async {
-        let _ = shutdown_rx.await;
-    });
+    let server = Server::bind(&addr)
+        .serve(make_svc)
+        .with_graceful_shutdown(async {
+            let _ = shutdown_rx.await;
+        });
 
     let localhost_address = format!(
         "{} {}   {}",

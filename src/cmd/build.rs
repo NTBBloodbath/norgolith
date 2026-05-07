@@ -607,7 +607,11 @@ pub async fn build(minify: bool) -> Result<()> {
     println!(
         "{} Building site{}...",
         "→".cyan().bold(),
-        if minify { " (minified)".dimmed() } else { ColoredString::from("") }
+        if minify {
+            " (minified)".dimmed()
+        } else {
+            ColoredString::from("")
+        }
     );
     let build_start = std::time::Instant::now();
 
