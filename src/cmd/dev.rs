@@ -911,7 +911,25 @@ async fn setup_server_state(
     let site_config: config::SiteConfig = toml::from_str(&config_content)?;
 
     let root_dir = root.parent().unwrap().to_path_buf();
-    let paths = SitePaths::new(root_dir.clone());
+    let mut paths = SitePaths::new(root_dir.clone());
+
+    // Resolve symlinks for each watched path so that OS-level file events
+    // from within a symlinked directory are correctly detected and matched.
+    if let Ok(real) = tokio::fs::canonicalize(&paths.content).await {
+        paths.content = real;
+    }
+    if let Ok(real) = tokio::fs::canonicalize(&paths.assets).await {
+        paths.assets = real;
+    }
+    if let Ok(real) = tokio::fs::canonicalize(&paths.templates).await {
+        paths.templates = real;
+    }
+    if let Ok(real) = tokio::fs::canonicalize(&paths.theme_assets).await {
+        paths.theme_assets = real;
+    }
+    if let Ok(real) = tokio::fs::canonicalize(&paths.theme_templates).await {
+        paths.theme_templates = real;
+    }
 
     let tera = Arc::new(RwLock::new(
         shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates).await?,
