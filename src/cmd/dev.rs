@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use chrono::Utc;
 use colored::Colorize;
 use eyre::{bail, eyre, Result};
 use futures_util::{SinkExt, Stream, StreamExt};
@@ -203,7 +204,7 @@ async fn is_template_change(event: &notify::Event) -> bool {
     let Some(path) = event.paths.first() else {
         return false;
     };
-    let is_template = path.extension().is_some_and(|ext| ext == "html");
+    let is_template = path.extension().is_some_and(|ext| ext == "html" || ext == "xml");
     let Some(parent_dir) = path.parent() else {
         return false;
     };
@@ -587,6 +588,36 @@ async fn resolve_url_norg_path(content_dir: &Path, path: &Path) -> std::io::Resu
 /// # Returns
 /// * `Result<Response<Body>>` - A `Response` containing the content or an error if the
 ///   content cannot be retrieved or rendered.
+/// Renders an XML feed template for the requested path.
+///
+/// Strips the leading `/` from the request path to derive the template name
+/// (e.g. `/rss.xml` → `rss.xml`, `/en/rss.xml` → `en/rss.xml`). Returns 404
+/// if no matching XML template is registered.
+async fn handle_xml_feed(request_path: &str, state: &Arc<ServerState>) -> Result<Response<Body>> {
+    let template_name = request_path.trim_start_matches('/');
+    debug!(template = %template_name, "Handling XML feed request");
+
+    let tera = state.tera.read().await;
+    if !tera.get_template_names().any(|n| n == template_name) {
+        return Ok(handle_not_found());
+    }
+
+    let posts = state.posts.read().await.clone();
+    let mut context = Context::new();
+    context.insert("config", &state.config);
+    context.insert("posts", &posts);
+    context.insert("now", &Utc::now());
+
+    let content = tera
+        .render(template_name, &context)
+        .map_err(|e| eyre!("{}: {}", "Failed to render XML feed template".bold(), e))?;
+
+    Ok(Response::builder()
+        .header(CONTENT_TYPE, "application/xml; charset=utf-8")
+        .status(StatusCode::OK)
+        .body(Body::from(content))?)
+}
+
 async fn handle_content(request_path: &str, state: Arc<ServerState>) -> Result<Response<Body>> {
     let req_path = PathBuf::from(request_path.trim_start_matches('/'));
     debug!(?req_path);
@@ -809,6 +840,7 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
         "/categories" => handle_category_index(&state).await,
         path if path.starts_with("/categories/") => handle_category(path, &state).await,
         path if path.starts_with("/assets/") => handle_asset(path, &state.paths).await,
+        path if path.ends_with(".xml") => handle_xml_feed(path, &state).await,
         _ => handle_content(request_path, state).await,
     }
 }

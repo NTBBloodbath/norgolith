@@ -10,7 +10,7 @@ use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions, Sty
 use rss::Channel;
 use tera::{Context, Tera};
 use tokio::sync::Mutex;
-use tracing::{debug, error, instrument};
+use tracing::{debug, error, instrument, warn};
 use walkdir::WalkDir;
 
 use crate::{config, fs, shared};
@@ -116,30 +116,68 @@ async fn prepare_build_directory(public_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-#[instrument(level = "debug", skip(tera, site_config, posts, output_path))]
-async fn generate_rss_feed(
+/// Collects the names of all XML templates registered in the Tera instance.
+fn collect_xml_templates(tera: &Tera) -> Vec<String> {
+    tera.get_template_names()
+        .filter(|name| name.ends_with(".xml"))
+        .map(|name| name.to_string())
+        .collect()
+}
+
+/// Renders all XML feed templates and writes them to the public directory.
+///
+/// Each XML template found in the Tera instance is rendered with site and post
+/// context, then written to the corresponding path under `public_dir`.
+/// Subdirectories are created as needed. RSS validation is attempted per file;
+/// failures emit a warning rather than aborting, so non-RSS formats (Atom,
+/// sitemaps, etc.) are also supported.
+#[instrument(level = "debug", skip(tera, site_config, posts, public_dir))]
+async fn generate_xml_feeds(
     tera: &Tera,
     site_config: &config::SiteConfig,
     posts: &[toml::Value],
-    output_path: &Path,
-) -> Result<()> {
-    // Prepare template
+    public_dir: &Path,
+) -> Result<usize> {
+    let xml_templates = collect_xml_templates(tera);
+    let count = xml_templates.len();
+    if count == 0 {
+        return Ok(0);
+    }
+
     let mut context = Context::new();
     context.insert("config", site_config);
     context.insert("posts", posts);
     context.insert("now", &chrono::Utc::now());
 
-    // Render the template
-    let rss_content = tera
-        .render("rss.xml", &context)
-        .map_err(|e| eyre!("{}: {}", "Failed to render RSS template".bold(), e))?;
+    for template_name in &xml_templates {
+        let rendered = tera
+            .render(template_name, &context)
+            .map_err(|e| eyre!("{}: {}", "Failed to render XML template".bold(), e))?;
 
-    // Parse the rendered XML to validate it
-    Channel::read_from(rss_content.as_bytes())
-        .map_err(|e| eyre!("{}: {}", "Invalid RSS feed generated".bold(), e))?;
+        if let Err(e) = Channel::read_from(rendered.as_bytes()) {
+            warn!(
+                template = %template_name,
+                "'{}' does not validate as RSS ({}); written as-is",
+                template_name,
+                e
+            );
+        }
 
-    tokio::fs::write(output_path, rss_content).await?;
-    Ok(())
+        let output_path = public_dir.join(template_name);
+        if let Some(parent) = output_path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .wrap_err(format!(
+                    "Failed to create output directory for '{}'",
+                    template_name
+                ))?;
+        }
+        tokio::fs::write(&output_path, &rendered)
+            .await
+            .wrap_err(format!("Failed to write '{}'", output_path.display()))?;
+    }
+
+    Ok(count)
 }
 
 /// Generates the final public build from intermediate build artifacts
@@ -675,17 +713,15 @@ pub async fn build(minify: bool) -> Result<()> {
         );
     }
 
-    // Generate RSS feed after building content if enabled
-    if site_config.rss.as_ref().is_some_and(|rss| rss.enable) {
-        debug!("Generating RSS feed");
-        let step_start = std::time::Instant::now();
-        let rss_path = paths.public.join("rss.xml");
-        generate_rss_feed(&tera, &site_config, &posts, &rss_path).await?;
+    // Generate XML feeds (RSS, Atom, sitemaps, etc.) from all XML templates
+    let step_start = std::time::Instant::now();
+    let feed_count = generate_xml_feeds(&tera, &site_config, &posts, &paths.public).await?;
+    if feed_count > 0 {
         println!(
             "  {} {}  {:<12}  {}",
             "•".green(),
-            format!("{:<12}", "RSS").bold(),
-            "1 file",
+            format!("{:<12}", "Feeds").bold(),
+            format!("{} files", feed_count),
             shared::get_elapsed_time(step_start).dimmed()
         );
     }
