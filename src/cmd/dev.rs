@@ -334,7 +334,7 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     }
 
     if actions.reload_content {
-        match shared::collect_all_posts_metadata(&state.paths.content, &state.routes_url).await {
+        match shared::collect_all_posts_metadata(&state.paths.content, &state.routes_url, &state.config.collections).await {
             Ok(new_posts) => {
                 let mut posts_lock = state.posts.write().await;
                 *posts_lock = new_posts;
@@ -575,19 +575,6 @@ async fn resolve_url_norg_path(content_dir: &Path, path: &Path) -> std::io::Resu
     Ok(path)
 }
 
-/// Handles requests for content, either static or dynamic.
-///
-/// This function serves content from the content directory. If the content is a static file
-/// (e.g., an image), it serves it directly. Otherwise, it renders the content as HTML
-/// using Tera templates.
-///
-/// # Arguments
-/// * `request_path` - The path of the requested content.
-/// * `state` - The shared server state.
-///
-/// # Returns
-/// * `Result<Response<Body>>` - A `Response` containing the content or an error if the
-///   content cannot be retrieved or rendered.
 /// Renders an XML feed template for the requested path.
 ///
 /// Strips the leading `/` from the request path to derive the template name
@@ -606,6 +593,7 @@ async fn handle_xml_feed(request_path: &str, state: &Arc<ServerState>) -> Result
     let mut context = Context::new();
     context.insert("config", &state.config);
     context.insert("posts", &posts);
+    shared::insert_collection_subsets(&mut context, &posts, &state.config);
     context.insert("now", &Utc::now());
 
     let content = tera
@@ -618,6 +606,11 @@ async fn handle_xml_feed(request_path: &str, state: &Arc<ServerState>) -> Result
         .body(Body::from(content))?)
 }
 
+/// Handles requests for content, either static or dynamic.
+///
+/// Serves content from the content directory. If the content is a static file
+/// (e.g., an image), it serves it directly. Otherwise, it renders the content as HTML
+/// using Tera templates.
 async fn handle_content(request_path: &str, state: Arc<ServerState>) -> Result<Response<Body>> {
     let req_path = PathBuf::from(request_path.trim_start_matches('/'));
     debug!(?req_path);
@@ -741,6 +734,7 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
     let mut context = Context::new();
     context.insert("config", &state.config);
     context.insert("posts", &posts);
+    shared::insert_collection_subsets(&mut context, &posts, &state.config);
     context.insert("categories", &categories.into_iter().collect::<Vec<_>>());
 
     let tera = state.tera.read().await;
@@ -771,7 +765,8 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
 }
 
 async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Response<Body>> {
-    let category = path.trim_start_matches("/categories/");
+    let cat_prefix = format!("/{}/", state.config.categories_dir);
+    let category = path.strip_prefix(&*cat_prefix).unwrap_or(path);
     let posts = state.posts.read().await.clone();
 
     let category_posts: Vec<_> = posts
@@ -837,8 +832,8 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
         "/livereload.js" => Ok(Response::builder()
             .header(CONTENT_TYPE, "text/javascript")
             .body(LIVE_RELOAD_SCRIPT.into())?),
-        "/categories" => handle_category_index(&state).await,
-        path if path.starts_with("/categories/") => handle_category(path, &state).await,
+        path if path == format!("/{}", state.config.categories_dir) => handle_category_index(&state).await,
+        path if path.starts_with(&format!("/{}/", state.config.categories_dir)) => handle_category(path, &state).await,
         path if path.starts_with("/assets/") => handle_asset(path, &state.paths).await,
         path if path.ends_with(".xml") => handle_xml_feed(path, &state).await,
         _ => handle_content(request_path, state).await,
@@ -969,7 +964,7 @@ async fn setup_server_state(
 
     let (reload_tx, _) = broadcast::channel(16);
 
-    let posts = shared::collect_all_posts_metadata(&paths.content, &routes_url).await?;
+    let posts = shared::collect_all_posts_metadata(&paths.content, &routes_url, &site_config.collections).await?;
 
     Ok(Arc::new(ServerState {
         reload_tx: Arc::new(reload_tx),

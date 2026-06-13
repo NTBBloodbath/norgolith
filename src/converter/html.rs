@@ -390,7 +390,7 @@ impl NorgToHtml for NorgAST {
             }
             NorgAST::NestableDetachedModifier {
                 modifier_type,
-                level,
+                level: _,
                 text,
                 content,
                 ..

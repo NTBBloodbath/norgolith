@@ -105,13 +105,21 @@ enum Commands {
             value_parser = [
                 PossibleValue::new("norg").help("New norg file"),
                 PossibleValue::new("css").help("New CSS stylesheet"),
-                PossibleValue::new("js").help("New JS script")
+                PossibleValue::new("js").help("New JS script"),
+                PossibleValue::new("post").help("New post in a configured collection")
             ]
         )]
         kind: Option<String>,
 
         /// Asset name, e.g. 'post1.norg' or 'hello.js'
         name: Option<String>,
+
+        #[arg(
+            short = 'c',
+            long = "collection",
+            help = "Target collection name (only used with --kind post)"
+        )]
+        collection: Option<String>,
     },
     /// Build a site for production
     Build {
@@ -180,7 +188,7 @@ pub async fn start() -> Result<()> {
             minify: _,
             _no_minify,
         } => build_site(!_no_minify).await?,
-        Commands::New { kind, name, open } => new_asset(kind.as_ref(), name.as_ref(), open).await?,
+        Commands::New { kind, name, open, collection } => new_asset(kind.as_ref(), name.as_ref(), open, collection.as_ref()).await?,
         Commands::Preview { port, host, open } => preview(port, open, host).await?,
     }
 
@@ -268,21 +276,15 @@ async fn theme_handle(subcommand: &cmd::ThemeCommands) -> Result<()> {
 /// Ok(())
 /// }
 /// ```
-async fn new_asset(kind: Option<&String>, name: Option<&String>, open: bool) -> Result<()> {
-    let asset_type = kind.unwrap_or(&String::from("content")).to_owned();
+async fn new_asset(kind: Option<&String>, name: Option<&String>, open: bool, collection: Option<&String>) -> Result<()> {
+    let asset_type = kind.unwrap_or(&String::from("norg")).to_owned();
 
-    if ![
-        String::from("js"),
-        String::from("css"),
-        String::from("norg"),
-    ]
-    .contains(&asset_type)
-    {
+    if !["js", "css", "norg", "post"].contains(&asset_type.as_str()) {
         bail!("Unable to create site asset: unknown asset type provided");
     }
 
     match name {
-        Some(name) => cmd::new(&asset_type, name, open).await,
+        Some(name) => cmd::new(&asset_type, name, open, collection).await,
         None => bail!("Unable to create site asset: missing name for the asset"),
     }
 }
