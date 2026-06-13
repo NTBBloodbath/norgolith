@@ -1,0 +1,347 @@
+@import "tailwindcss";
+/* User content */
+@source "../../../content";
+/* User templates */
+@source "../../../templates";
+/* Theme templates */
+@source "../../templates";
+
+/* Custom fonts */
+@font-face {
+  font-family: "Geist Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url(https://cdn.jsdelivr.net/fontsource/fonts/geist:vf@latest/latin-wght-normal.woff2) format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: "Martian Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  font-stretch: 75% 112.5%;
+  src: url(https://cdn.jsdelivr.net/fontsource/fonts/martian-mono:vf@latest/latin-wdth-normal.woff2) format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* Use dark class for dark theme */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  /* Buttons use pointer cursor */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/*
+ * Fix some code rendering bugs with PrismJS
+ * See https://github.com/PrismJS/prism/issues/2443
+ */
+@layer utilities {
+  .table {
+    display: initial;
+  }
+}
+
+/* Colorscheme, using sweetie palette */
+:root {
+  --base: #dddde7;
+  --base-alt: #bbbbce;
+  --surface: #ccccda;
+  --text: #202023;
+  --text-alt: #18181a;
+  --grey: #8989a9;
+  --dark-grey: #78789d;
+  --red: #b31919;
+  --orange: #ae580e;
+  --green: #287f0d;
+  --teal: #47948a;
+  --yellow: #957d09;
+  --blue: #0c5090;
+  --magenta: #a00c79;
+  --violet: #9437ff;
+  --cyan: #0b658e;
+}
+:root.dark {
+  --base: #2a2a3a;
+  --base-alt: #303040;
+  --surface: #25252f;
+  --text: #d3d7de;
+  --text-alt: #bdbdbd;
+  --grey: #798399;
+  --dark-grey: #707b87;
+  --red: #d75f4a;
+  --orange: #e7a06a;
+  --green: #89c252;
+  --teal: #92d3c5;
+  --yellow: #e7d482;
+  --blue: #73a3f3;
+  --magenta: #d087e8;
+  --violet: #b094e2;
+  --cyan: #a2c4ff;
+}
+
+@theme static {
+  --font-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  --color-base: var(--base);
+  --color-base-alt: var(--base-alt);
+  --color-surface: var(--surface);
+  --color-text: var(--text);
+  --color-text-alt: var(--text-alt);
+  --color-grey: var(--grey);
+  --color-dark-grey: var(--dark-grey);
+  --color-red: var(--red);
+  --color-orange: var(--orange);
+  --color-green: var(--green);
+  --color-teal: var(--teal);
+  --color-yellow: var(--yellow);
+  --color-blue: var(--blue);
+  --color-magenta: var(--magenta);
+  --color-violet: var(--violet);
+  --color-cyan: var(--cyan);
+}
+
+/* Overall design */
+html {
+  scrollbar-color: var(--blue) var(--surface);
+  @apply scroll-smooth tabular-nums font-sans;
+}
+
+body {
+  @apply bg-base text-text antialiased font-medium;
+}
+
+main a {
+  @apply underline hover:text-blue;
+}
+
+a.icon {
+  @apply no-underline;
+}
+
+a {
+  @apply transition-colors duration-200 ease-in-out;
+}
+
+hr {
+  /* brightness-120 = #39394b */
+  @apply text-base-alt dark:brightness-120;
+}
+
+header,
+footer {
+  @apply bg-surface text-text-alt;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  @apply font-bold;
+}
+
+h1 {
+  @apply text-3xl;
+}
+
+h2 {
+  @apply text-2xl;
+  counter-increment: h2;
+  counter-reset: h3;
+}
+
+h3 {
+  @apply text-xl;
+  counter-increment: h3;
+  counter-reset: h4;
+}
+
+h4 {
+  @apply text-lg;
+  counter-increment: h4;
+}
+
+h5 {
+  counter-increment: h5;
+}
+
+h6 {
+  @apply font-semibold;
+  counter-increment: h6;
+}
+
+p {
+  @apply leading-relaxed py-2;
+}
+
+strong {
+  @apply font-semibold;
+}
+
+ul {
+  @apply list-disc;
+}
+
+ol {
+  @apply list-decimal;
+}
+
+ul,
+ol {
+  @apply leading-relaxed;
+}
+
+nav ul,
+nav ol {
+  @apply mx-2 space-y-0 list-none;
+}
+
+main ul {
+  @apply pl-4;
+}
+
+/* Margins */
+main h2, article h2, section h2 {
+  @apply mt-10;
+}
+main h3, article h3, section h3 {
+  @apply mt-8;
+}
+main h4, article h4, section h4 {
+  @apply mt-6;
+}
+main h5, article h5, section h5 {
+  @apply mt-4;
+}
+main h6, article h6, section h6 {
+  @apply mt-2;
+}
+
+/* Visual flair */
+main div#content h2:not(:first-child) {
+  @apply border-t border-t-base-alt dark:border-t-[#39394b] pt-5;
+}
+main div#content h3:not(:first-child) {
+  @apply border-t border-t-base-alt dark:border-t-[#39394b] pt-4;
+}
+main div#content h4:not(:first-child) {
+  @apply border-t border-t-base-alt dark:border-t-[#39394b] pt-3;
+}
+main div#content h5:not(:first-child) {
+  @apply border-t border-t-base-alt dark:border-t-[#39394b] pt-2;
+}
+main div#content h6:not(:first-child) {
+  @apply border-t border-t-base-alt dark:border-t-[#39394b] pt-1;
+}
+
+blockquote {
+  @apply p-4 my-4 border-s-4 rounded-r-sm border-base-alt bg-surface dark:border-surface dark:bg-base-alt;
+}
+
+blockquote.tip {
+  @apply border-green bg-green/30;
+}
+blockquote.note {
+  @apply border-blue bg-blue/30;
+}
+blockquote.important {
+  @apply border-violet bg-violet/30;
+}
+blockquote.warning {
+  @apply border-yellow bg-yellow/30;
+}
+blockquote.error {
+  @apply border-red bg-red/30;
+}
+
+blockquote > p {
+  @apply leading-relaxed;
+}
+
+/* Inline verbatim `` */
+code:not([class*="language-"]) {
+  @apply px-1 py-px font-mono text-sm rounded-md bg-base-alt dark:bg-surface dark:brightness-80;
+}
+
+/* Table of Contents */
+nav.toc {
+  @apply h-3/4 pt-4 pb-4 font-mono bg-surface border-2 border-base-alt rounded-md;
+}
+
+nav.toc ol {
+  @apply pl-4 list-decimal list-inside;
+}
+
+nav.toc ul {
+  @apply pl-4 list-disc list-inside;
+}
+
+nav.toc ol li,
+nav.toc ul li {
+    @apply mt-0 pb-0;
+}
+
+nav.toc ol li a,
+nav.toc ul li a {
+    @apply no-underline hover:text-blue;
+}
+
+nav.toc ol li::marker,
+nav.toc ul li::marker {
+    @apply hover:text-blue;
+}
+
+nav.toc ol li ol,
+nav.toc ul li ul {
+    @apply pb-2;
+}
+
+/* PrismJS specific css */
+pre[class*="language-"],
+code[class*="language-"] {
+  font-variant-ligatures: common-ligatures !important;
+  @apply bg-surface! dark:bg-base-alt font-mono! text-shadow-none!;
+}
+
+/* PrismJS line-numbers plugin */
+pre[class*="language-"].line-numbers {
+  counter-reset: linenumber;
+  @apply relative pl-13;
+}
+
+pre[class*="language-"].line-numbers > code {
+  white-space: inherit;
+  @apply relative;
+}
+
+.line-numbers .line-numbers-rows {
+  @apply absolute flex flex-col top-[-1.5px] -left-12 w-10 pointer-events-none select-none border-r! border-r-grey!;
+}
+
+.line-numbers-rows > span {
+  counter-increment: linenumber;
+  @apply block leading-[1.5];
+}
+
+.line-numbers-rows > span:before {
+  content: counter(linenumber);
+  @apply text-grey! text-right pr-2 block;
+}
+
+/* Center MermaidJS charts and diagrams */
+pre.mermaid {
+  @apply flex justify-center;
+}
+
+/* Automatic dark theme for MermaidJS */
+.dark .mermaid {
+  filter: invert(0.9) hue-rotate(180deg);
+}

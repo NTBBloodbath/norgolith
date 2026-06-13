@@ -1,0 +1,5 @@
+procs:
+  norgolith:
+    cmd: ["lith", "dev"]
+  tailwind:
+    cmd: ["tailwindcss", "-i", "theme/assets/css/tailwind.css", "-o", "theme/assets/css/styles.min.css", "--minify", "--watch"]

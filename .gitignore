@@ -9,3 +9,8 @@
 
 # nix build
 /result
+
+# Documentation site build artifacts
+/docs/public
+/docs/.build
+/docs/deploy.sh

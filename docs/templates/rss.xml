@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>{{ config.title }}</title>
+    <link>{{ config.rootUrl | escape_xml | safe }}</link>
+    <description>{{ config.rss.description | default(value="Latest posts")}}</description>
+    <generator>Norgolith</generator>
+    <language>{{ config.language }}</language>
+    <lastBuildDate>{{ now | date(format="%a, %d %b %Y %H:%M:%S %z") }}</lastBuildDate>
+    <ttl>{{ config.rss.ttl | default(value=60) }}</ttl>
+    <atom:link href="{{ config.rootUrl }}/rss.xml" rel="self" type="application/rss+xml" />
+
+    <image>
+      <url>{{ config.rootUrl | escape_xml | safe }}{{ config.rss.image | default(value="/assets/favicon.png") }}</url>
+      <title>{{ config.title }}</title>
+      <link>{{ config.rootUrl | escape_xml | safe }}</link>
+      <width>144</width>
+      <height>144</height>
+    </image>
+
+    {% for post in posts | filter(attribute="draft", value=false) %}
+    <item>
+      <title>{{ post.title }}</title>
+      <link>{{ post.permalink | escape_xml | safe }}</link>
+      <guid>{{ post.permalink | escape_xml | safe }}</guid>
+      <description>{{ post.description }}</description>
+      <author>{{ post.authors | join(sep=", ") }}</author>
+      <pubDate>{{ post.created | date(format="%a, %d %b %Y %H:%M:%S %z") }}</pubDate>
+      {% if post.categories %}{% for category in post.categories %}<category>{{ category }}</category>{% endfor %}{% endif %}
+    </item>
+    {% endfor %}
+  </channel>
+</rss>

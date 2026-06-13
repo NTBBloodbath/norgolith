@@ -1,0 +1,30 @@
+<div
+  class="flex justify-between items-center font-medium text-xs md:text-sm text-text-alt"
+>
+  <span
+      >Copyright &copy; {{ now(format="%Y") }}
+    {% if config.extra.footer_author_link %}
+    <a
+      href="{{ config.extra.footer_author_link }}"
+      class="text-blue hover:underline">{{ config.author }}</a
+    >.
+    {% else %}
+    {{ config.author }}.
+    {% endif %}
+    {% if config.extra.license %}
+      <br class="md:hidden" /> Licensed under {{ config.extra.license }}.
+    {% endif %}
+  </span>
+  <div class="flex flex-inline">
+    {% for name, link in config.extra.footer %}
+    <div class="mr-4 md:mr-6 lg:mr-8 last:mr-0">
+      <a
+        href="{{ link }}"
+        class="hover:text-blue"
+      >
+        <span>{{ name | title }}</span>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+</div>

@@ -75,6 +75,12 @@
             rust-analyzer
             pkg-config # Required by git2 crate
             openssl # Required by git2 crate
+
+            # Documentation site dev tools
+            tailwindcss_4
+            mprocs
+            watchman
+            tailwindcss-language-server
           ];
 
           # Many editors rely on this rust-src PATH variable

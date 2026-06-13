@@ -164,6 +164,24 @@ flake.
 
 </details>
 
+## 📚 Documentation
+
+The documentation site source lives in the `docs/` directory. To work on it:
+
+```sh
+# From repo root — enter dev shell (includes tailwindcss, mprocs)
+nix develop
+
+# Build lith
+cargo build --release
+
+# Start docs dev server
+cd docs
+mprocs
+```
+
+See [docs/README.md](./docs/README.md) for details.
+
 ## 🚀 Community
 
 Join the Neorg community and get help or discuss about the project:
