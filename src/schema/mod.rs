@@ -2,6 +2,7 @@ use colored::Colorize;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path};
+use tracing::warn;
 
 mod validator;
 
@@ -280,9 +281,10 @@ impl ValidationRule {
                         Ok(acc && actual == expected)
                     }
                 }
-                None => Err(ValidationError::RuleConditionFailed {
-                    message: format!("Missing condition field '{}'", field),
-                }),
+                None => {
+                    warn!("Missing condition field '{}'", field);
+                    Ok(false)
+                },
             })
     }
 }
