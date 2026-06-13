@@ -30,7 +30,7 @@ pub fn insert_collection_subsets(
             .filter(|p| {
                 p.get("permalink")
                     .and_then(|v| v.as_str())
-                    .map(|permalink| permalink.contains(&prefix))
+                    .map(|permalink| permalink.starts_with(&prefix))
                     .unwrap_or(false)
             })
             .collect();
