@@ -169,7 +169,13 @@ impl FieldDefinition {
                     }
                 }
                 if let Some(pattern) = pattern {
-                    let re = Regex::new(pattern).unwrap();
+                    let re = match Regex::new(pattern) {
+                        Ok(r) => r,
+                        Err(_) => return Err(ValidationError::ConstraintViolation {
+                            field: "pattern".into(),
+                            message: format!("Invalid regex pattern: {}", pattern),
+                        }),
+                    };
                     if !re.is_match(s) {
                         return Err(ValidationError::ConstraintViolation {
                             field: String::new(),
