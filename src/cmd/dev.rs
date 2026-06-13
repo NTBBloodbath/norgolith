@@ -160,7 +160,8 @@ impl ServerState {
     fn send_reload(&self) -> Result<()> {
         debug!("Sending reload signal to clients");
         if self.reload_tx.receiver_count() == 0 {
-            return Err(eyre!("No active receivers"));
+            debug!("No active receivers, skipping reload signal");
+            return Ok(());
         }
 
         self.reload_tx
@@ -1130,9 +1131,13 @@ pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> 
     // WebSocket server
     let reload_tx = state.reload_tx.clone();
     tokio::spawn(async move {
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", LIVE_RELOAD_PORT))
-            .await
-            .unwrap();
+        let listener = match TcpListener::bind(format!("127.0.0.1:{}", LIVE_RELOAD_PORT)).await {
+            OK(l) => l,
+            Err(e) => {
+                error!("LiveReload disabled: failed to bind port {}: {}", LIVE_RELOAD_PORT, e);
+                return;
+            }
+        };
         while let Ok((stream, _)) = listener.accept().await {
             tokio::spawn(handle_websocket(stream, reload_tx.clone()));
         }
