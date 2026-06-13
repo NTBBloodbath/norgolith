@@ -7,9 +7,6 @@ use eyre::{bail, Result};
 use crate::cmd;
 use crate::net;
 
-#[cfg(test)]
-use mockall::{automock, predicate::*};
-
 #[derive(Parser)]
 #[command(
     author = "NTBBloodbath",
@@ -243,17 +240,8 @@ async fn preview(port: u16, open: bool, host: bool) -> Result<()> {
 ///   A `Result<()>` indicating success or error. On error, the context message
 ///   will provide information on why the development server could not be initialized.
 async fn run_dev_server(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
-    if !net::is_port_available(port) {
-        let port_msg = if port == 3030 {
-            "default Norgolith port (3030)".to_string()
-        } else {
-            format!("requested port ({})", port)
-        };
-
-        bail!("Could not initialize the development server: failed to open listener, perhaps the {} is busy?", port_msg);
-    }
-
-    cmd::dev(port, drafts, open, host).await
+    let listener = net::bind_available(port, host)?;
+    cmd::dev(listener, port, drafts, open, host).await
 }
 
 async fn theme_handle(subcommand: &cmd::ThemeCommands) -> Result<()> {
@@ -324,25 +312,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg_attr(test, automock)]
-    trait NetTrait {
-        fn is_port_available(&self, port: u16) -> bool;
-    }
-
-    // check_and_serve tests
-    #[tokio::test]
-    #[cfg_attr(feature = "ci", ignore)]
-    #[serial]
-    async fn test_is_port_available() {
-        let mut mock_net = MockNetTrait::new();
-        mock_net
-            .expect_is_port_available()
-            .with(eq(8080))
-            .times(1)
-            .returning(|_| true);
-        assert!(mock_net.is_port_available(8080));
-    }
-
     #[tokio::test]
     #[cfg_attr(feature = "ci", ignore)]
     #[serial]
@@ -371,7 +340,7 @@ mod tests {
             .unwrap_err()
             .root_cause()
             .to_string()
-            .contains("failed to open listener"));
+            .contains("Could not bind"));
 
         // Restore previous directory
         std::env::set_current_dir(origin)?;

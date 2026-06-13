@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 use std::error::Error;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, TcpListener as StdTcpListener};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -1107,7 +1107,7 @@ async fn setup_file_watcher(
 /// # Returns
 /// * `Result<()>` - `Ok(())` if the server runs successfully, otherwise an error.
 #[instrument(skip(port, drafts, open, host))]
-pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
+pub async fn dev(listener: StdTcpListener, port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
     println!("{} Starting development server...", "→".cyan().bold());
 
     let root = fs::find_config_file().await?;
@@ -1176,12 +1176,7 @@ pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> 
             }))
         }
     });
-
-    let addr = if host {
-        ([0, 0, 0, 0], port).into()
-    } else {
-        ([127, 0, 0, 1], port).into()
-    };
+    listener.set_nonblocking(true)?;
     // Graceful shutdown via Ctrl-D (stdin EOF)
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     tokio::spawn(async move {
@@ -1199,7 +1194,7 @@ pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> 
         }
     });
 
-    let server = Server::bind(&addr)
+    let server = Server::from_tcp(listener)?
         .serve(make_svc)
         .with_graceful_shutdown(async {
             let _ = shutdown_rx.await;
