@@ -34,6 +34,7 @@ use crate::{config, fs, shared};
 /// to organize and manage the file structure of the site.
 #[derive(Debug)]
 struct SitePaths {
+    config_file: PathBuf,
     content: PathBuf,
     assets: PathBuf,
     templates: PathBuf,
@@ -57,6 +58,7 @@ impl SitePaths {
     fn new(root: PathBuf) -> Self {
         debug!("Initializing site paths");
         let paths = Self {
+            config_file: root.join("norgolith.toml"),
             content: root.join("content"),
             assets: root.join("assets"),
             theme_assets: root.join("theme/assets"),
@@ -77,7 +79,7 @@ impl SitePaths {
 struct ServerState {
     reload_tx: Arc<broadcast::Sender<()>>,
     tera: Arc<RwLock<Tera>>,
-    config: config::SiteConfig,
+    config: Arc<RwLock<config::SiteConfig>>,
     paths: SitePaths,
     build_drafts: bool,
     routes_url: String,
@@ -113,6 +115,34 @@ impl ServerState {
         debug!("There are {} templates loaded", templates.len());
 
         // Reload the page
+        self.send_reload()?;
+        Ok(())
+    }
+
+    #[instrument(level = "debug", skip(self))]
+    async fn reload_config(&self) -> Result<()> {
+        debug!("Reloading config");
+        let config_content = tokio::fs::read_to_string(&self.paths.config_file).await?;
+        let new_config: config::SiteConfig = toml::from_str(&config_content)?;
+
+        // Re-collect posts, collections config may have changed
+        let new_posts = shared::collect_all_posts_metadata(
+            &self.paths.content,
+            &self.routes_url,
+            &new_config.collections,
+        )
+        .await?;
+
+        {
+            let mut config = self.config.write().await;
+            *config = new_config;
+        }
+        {
+            let mut posts = self.posts.write().await;
+            *posts = new_posts;
+        }
+
+        info!("Config reloaded successfully");
         self.send_reload()?;
         Ok(())
     }
@@ -155,6 +185,7 @@ struct FileActions {
     reload_templates: bool,
     reload_assets: bool,
     reload_content: bool,
+    reload_config: bool,
 }
 
 /// LiveReload script to be injected into HTML pages.
@@ -310,9 +341,18 @@ async fn process_debounced_events(result: DebounceEventResult, state: Arc<Server
 #[instrument(level = "debug", skip(actions, state))]
 async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     debug!(
-        "Executing actions: templates={}, assets={}, reload={}",
-        actions.reload_templates, actions.reload_assets, actions.reload_content,
+        "Executing actions: templates={}, assets={}, reload={}, config={}",
+        actions.reload_templates, actions.reload_assets, actions.reload_content, actions.reload_config,
     );
+
+    // Config reload supersedes content/template/asset reloads since it re-collects posts too
+    if actions.reload_config {
+        match state.reload_config().await {
+            Ok(_) => {}
+            Err(e) => error!("Config reload failed: {}", e),
+        }
+        return;
+    }
 
     // Handle asset reloads
     if actions.reload_assets {
@@ -334,7 +374,8 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     }
 
     if actions.reload_content {
-        match shared::collect_all_posts_metadata(&state.paths.content, &state.routes_url, &state.config.collections).await {
+        let collections = state.config.read().await.collections.clone();
+        match shared::collect_all_posts_metadata(&state.paths.content, &state.routes_url, &collections).await {
             Ok(new_posts) => {
                 let mut posts_lock = state.posts.write().await;
                 *posts_lock = new_posts;
@@ -451,6 +492,12 @@ async fn handle_single_event(
     // TODO: also ignore swap files, my mental health will thank me later.
     if path.to_string_lossy().ends_with('~') {
         debug!("Ignoring temporary editor backup file");
+        return;
+    }
+
+    if path == state.paths.config_file {
+        info!("Config modified: norgolith.toml");
+        actions.reload_config = true;
         return;
     }
 
@@ -589,11 +636,12 @@ async fn handle_xml_feed(request_path: &str, state: &Arc<ServerState>) -> Result
         return Ok(handle_not_found());
     }
 
+    let config = state.config.read().await.clone();
     let posts = state.posts.read().await.clone();
     let mut context = Context::new();
-    context.insert("config", &state.config);
+    context.insert("config", &config);
     context.insert("posts", &posts);
-    shared::insert_collection_subsets(&mut context, &posts, &state.config);
+    shared::insert_collection_subsets(&mut context, &posts, &config);
     context.insert("now", &Utc::now());
 
     let content = tera
@@ -657,13 +705,14 @@ async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<R
         return Ok(handle_not_found());
     }
 
+    let config = state.config.read().await.clone();
     let posts = state.posts.read().await.clone();
-    let mut body = shared::render_norg_page(&tera, &metadata, &posts, &state.config).await?;
+    let mut body = shared::render_norg_page(&tera, &metadata, &posts, &config).await?;
 
     // Always use the proper URL to the development server for template links that refers
     // to the local URL, this is useful when running the server exposed to LAN network
     body = body.replace(
-        &state.config.root_url.replace("://", ":&#x2F;&#x2F;"),
+        &config.root_url.replace("://", ":&#x2F;&#x2F;"),
         &state.routes_url,
     );
 
@@ -729,12 +778,13 @@ async fn handle_websocket(stream: TcpStream, reload_tx: Arc<broadcast::Sender<()
 }
 
 async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body>> {
+    let config = state.config.read().await.clone();
     let categories = shared::collect_all_posts_categories(&state.posts.read().await).await;
     let posts = state.posts.read().await.clone();
     let mut context = Context::new();
-    context.insert("config", &state.config);
+    context.insert("config", &config);
     context.insert("posts", &posts);
-    shared::insert_collection_subsets(&mut context, &posts, &state.config);
+    shared::insert_collection_subsets(&mut context, &posts, &config);
     context.insert("categories", &categories.into_iter().collect::<Vec<_>>());
 
     let tera = state.tera.read().await;
@@ -754,7 +804,7 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
     // Always use the proper URL to the development server for template links that refers
     // to the local URL, this is useful when running the server exposed to LAN network
     body = body.replace(
-        &state.config.root_url.replace("://", ":&#x2F;&#x2F;"),
+        &config.root_url.replace("://", ":&#x2F;&#x2F;"),
         &state.routes_url,
     );
 
@@ -765,7 +815,8 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
 }
 
 async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Response<Body>> {
-    let cat_prefix = format!("/{}/", state.config.categories_dir);
+    let config = state.config.read().await.clone();
+    let cat_prefix = format!("/{}/", config.categories_dir);
     let category = path.strip_prefix(&*cat_prefix).unwrap_or(path);
     let posts = state.posts.read().await.clone();
 
@@ -780,7 +831,7 @@ async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Respons
         .collect();
 
     let mut context = Context::new();
-    context.insert("config", &state.config);
+    context.insert("config", &config);
     context.insert("category", &category);
     context.insert("posts", &category_posts);
 
@@ -802,7 +853,7 @@ async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Respons
     // Always use the proper URL to the development server for template links that refers
     // to the local URL, this is useful when running the server exposed to LAN network
     body = body.replace(
-        &state.config.root_url.replace("://", ":&#x2F;&#x2F;"),
+        &config.root_url.replace("://", ":&#x2F;&#x2F;"),
         &state.routes_url,
     );
 
@@ -828,12 +879,13 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
     let request_path = req.uri().path();
     debug!(path = %request_path, "Handling request");
 
+    let categories_dir = state.config.read().await.categories_dir.clone();
     match request_path {
         "/livereload.js" => Ok(Response::builder()
             .header(CONTENT_TYPE, "text/javascript")
             .body(LIVE_RELOAD_SCRIPT.into())?),
-        path if path == format!("/{}", state.config.categories_dir) => handle_category_index(&state).await,
-        path if path.starts_with(&format!("/{}/", state.config.categories_dir)) => handle_category(path, &state).await,
+        path if path == format!("/{}", categories_dir) => handle_category_index(&state).await,
+        path if path.starts_with(&format!("/{}/", categories_dir)) => handle_category(path, &state).await,
         path if path.starts_with("/assets/") => handle_asset(path, &state.paths).await,
         path if path.ends_with(".xml") => handle_xml_feed(path, &state).await,
         _ => handle_content(request_path, state).await,
@@ -969,7 +1021,7 @@ async fn setup_server_state(
     Ok(Arc::new(ServerState {
         reload_tx: Arc::new(reload_tx),
         tera,
-        config: site_config,
+        config: Arc::new(RwLock::new(site_config)),
         paths,
         build_drafts: drafts,
         routes_url,
@@ -1017,6 +1069,7 @@ async fn setup_file_watcher(
         },
     )?;
 
+    debouncer.watch(&state.paths.config_file, RecursiveMode::NonRecursive)?;
     debouncer.watch(&state.paths.templates, RecursiveMode::Recursive)?;
     debouncer.watch(&state.paths.content, RecursiveMode::Recursive)?;
     debouncer.watch(&state.paths.assets, RecursiveMode::Recursive)?;
