@@ -243,18 +243,20 @@ pub async fn validate_content_metadata(
     schema: &ContentSchema,
     as_warnings: bool,
 ) -> Result<String> {
-    let relative_path = path.strip_prefix(content_dir).unwrap();
+    let relative_path = path
+        .strip_prefix(content_dir)
+        .map_err(|e| eyre!("Path {} is not under content_dir: {}", path.display(), e))?;
     // We do not need to do anything with the metadata permalink here so we pass an empty string to it
     let metadata_map = metadata
         .as_table()
-        .unwrap()
+        .ok_or_else(|| eyre!("Metadata for {} is not a table", path.display()))?
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
     let content_path = relative_path
         .to_str()
-        .unwrap()
+        .ok_or_else(|| eyre!("Non-UTF-8 path: {}", path.display()))?
         .replace('\\', "/")
         .trim_end_matches(".norg")
         .to_string();

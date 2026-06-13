@@ -265,7 +265,7 @@ async fn build_content_entry(
         .wrap_err("Failed to strip prefix")?;
 
     // Determine output path
-    let public_path = determine_public_path(&paths.public, rel_path);
+    let public_path = determine_public_path(&paths.public, rel_path)?;
 
     let metadata = shared::load_metadata(
         path.to_path_buf(),
@@ -377,15 +377,18 @@ pub async fn build_category_pages(
 /// # Returns
 /// * `PathBuf` - The final public path for the HTML file.
 #[instrument]
-fn determine_public_path(public_dir: &Path, rel_path: &Path) -> PathBuf {
-    let stem = rel_path.file_stem().and_then(|s| s.to_str()).unwrap();
+fn determine_public_path(public_dir: &Path, rel_path: &Path) -> Result<PathBuf> {
+    let stem = rel_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| eyre!("Invalid file stem for path: {}", rel_path.display()))?;
     if stem == "index" {
-        public_dir.join(rel_path).with_extension("html")
+        Ok(public_dir.join(rel_path).with_extension("html"))
     } else {
-        public_dir
+        Ok(public_dir
             .join(rel_path.parent().unwrap_or(Path::new(""))) // Handle root path parent gracefully
             .join(stem)
-            .join("index.html")
+            .join("index.html"))
     }
 }
 
@@ -607,7 +610,10 @@ async fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Resu
         .into_iter()
         .filter_map(|e| e.ok())
     {
-        let rel_path = entry.path().strip_prefix(assets_dir).unwrap();
+        let Some(rel_path) = entry.path().strip_prefix(assets_dir).ok() else {
+            warn!("Skipping asset outside assets directory: {}", entry.path().display());
+            continue;
+        };
         let target_path = target_dir.join(rel_path);
         if entry.path().is_dir() {
             if !target_path.exists() {
