@@ -236,7 +236,9 @@ async fn is_template_change(event: &notify::Event) -> bool {
     let Some(path) = event.paths.first() else {
         return false;
     };
-    let is_template = path.extension().is_some_and(|ext| ext == "html" || ext == "xml");
+    let is_template = path
+        .extension()
+        .is_some_and(|ext| ext == "html" || ext == "xml");
     let Some(parent_dir) = path.parent() else {
         return false;
     };
@@ -343,7 +345,10 @@ async fn process_debounced_events(result: DebounceEventResult, state: Arc<Server
 async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     debug!(
         "Executing actions: templates={}, assets={}, reload={}, config={}",
-        actions.reload_templates, actions.reload_assets, actions.reload_content, actions.reload_config,
+        actions.reload_templates,
+        actions.reload_assets,
+        actions.reload_content,
+        actions.reload_config,
     );
 
     // Config reload supersedes content/template/asset reloads since it re-collects posts too
@@ -376,7 +381,13 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
 
     if actions.reload_content {
         let collections = state.config.read().await.collections.clone();
-        match shared::collect_all_posts_metadata(&state.paths.content, &state.routes_url, &collections).await {
+        match shared::collect_all_posts_metadata(
+            &state.paths.content,
+            &state.routes_url,
+            &collections,
+        )
+        .await
+        {
             Ok(new_posts) => {
                 let mut posts_lock = state.posts.write().await;
                 *posts_lock = new_posts;
@@ -886,7 +897,9 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
             .header(CONTENT_TYPE, "text/javascript")
             .body(LIVE_RELOAD_SCRIPT.into())?),
         path if path == format!("/{}", categories_dir) => handle_category_index(&state).await,
-        path if path.starts_with(&format!("/{}/", categories_dir)) => handle_category(path, &state).await,
+        path if path.starts_with(&format!("/{}/", categories_dir)) => {
+            handle_category(path, &state).await
+        }
         path if path.starts_with("/assets/") => handle_asset(path, &state.paths).await,
         path if path.ends_with(".xml") => handle_xml_feed(path, &state).await,
         _ => handle_content(request_path, state).await,
@@ -1017,7 +1030,9 @@ async fn setup_server_state(
 
     let (reload_tx, _) = broadcast::channel(16);
 
-    let posts = shared::collect_all_posts_metadata(&paths.content, &routes_url, &site_config.collections).await?;
+    let posts =
+        shared::collect_all_posts_metadata(&paths.content, &routes_url, &site_config.collections)
+            .await?;
 
     Ok(Arc::new(ServerState {
         reload_tx: Arc::new(reload_tx),
@@ -1134,7 +1149,10 @@ pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> 
         let listener = match TcpListener::bind(format!("127.0.0.1:{}", LIVE_RELOAD_PORT)).await {
             Ok(l) => l,
             Err(e) => {
-                error!("LiveReload disabled: failed to bind port {}: {}", LIVE_RELOAD_PORT, e);
+                error!(
+                    "LiveReload disabled: failed to bind port {}: {}",
+                    LIVE_RELOAD_PORT, e
+                );
                 return;
             }
         };

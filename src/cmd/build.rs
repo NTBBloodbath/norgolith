@@ -166,12 +166,10 @@ async fn generate_xml_feeds(
 
         let output_path = public_dir.join(template_name);
         if let Some(parent) = output_path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .wrap_err(format!(
-                    "Failed to create output directory for '{}'",
-                    template_name
-                ))?;
+            tokio::fs::create_dir_all(parent).await.wrap_err(format!(
+                "Failed to create output directory for '{}'",
+                template_name
+            ))?;
         }
         tokio::fs::write(&output_path, &rendered)
             .await
@@ -675,20 +673,23 @@ pub async fn build(minify: bool) -> Result<()> {
     // Prepare the public build directory
     prepare_build_directory(&paths.public).await?;
 
-    let posts: Vec<_> =
-        shared::collect_all_posts_metadata(&paths.content, &site_config.root_url, &site_config.collections)
-            .await?
-        .into_iter()
-        .filter(|post| {
-            !post
-                .get("draft")
-                .map(|v| {
-                    v.as_bool()
-                        .expect("draft metadata field should be a boolean")
-                })
-                .unwrap_or(false)
-        })
-        .collect();
+    let posts: Vec<_> = shared::collect_all_posts_metadata(
+        &paths.content,
+        &site_config.root_url,
+        &site_config.collections,
+    )
+    .await?
+    .into_iter()
+    .filter(|post| {
+        !post
+            .get("draft")
+            .map(|v| {
+                v.as_bool()
+                    .expect("draft metadata field should be a boolean")
+            })
+            .unwrap_or(false)
+    })
+    .collect();
 
     println!();
 

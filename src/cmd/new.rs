@@ -223,17 +223,14 @@ fn resolve_collection<'a>(
         bail!("No collections configured. Add [[collections]] to norgolith.toml");
     }
     if let Some(name) = collection_name {
-        collections
-            .iter()
-            .find(|c| c.name == *name)
-            .ok_or_else(|| {
-                let available = collections
-                    .iter()
-                    .map(|c| c.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                eyre!("Unknown collection '{}'. Available: {}", name, available)
-            })
+        collections.iter().find(|c| c.name == *name).ok_or_else(|| {
+            let available = collections
+                .iter()
+                .map(|c| c.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            eyre!("Unknown collection '{}'. Available: {}", name, available)
+        })
     } else if collections.len() == 1 {
         Ok(&collections[0])
     } else {

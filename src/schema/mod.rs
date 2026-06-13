@@ -172,10 +172,12 @@ impl FieldDefinition {
                 if let Some(pattern) = pattern {
                     let re = match Regex::new(pattern) {
                         Ok(r) => r,
-                        Err(_) => return Err(ValidationError::ConstraintViolation {
-                            field: "pattern".into(),
-                            message: format!("Invalid regex pattern: {}", pattern),
-                        }),
+                        Err(_) => {
+                            return Err(ValidationError::ConstraintViolation {
+                                field: "pattern".into(),
+                                message: format!("Invalid regex pattern: {}", pattern),
+                            })
+                        }
                     };
                     if !re.is_match(s) {
                         return Err(ValidationError::ConstraintViolation {
@@ -284,7 +286,7 @@ impl ValidationRule {
                 None => {
                     warn!("Missing condition field '{}'", field);
                     Ok(false)
-                },
+                }
             })
     }
 }
@@ -673,11 +675,8 @@ mod tests {
     }
 
     #[test]
-    fn rule_errors_when_condition_field_missing() {
-        assert!(matches!(
-            draft_rule().applies(&HashMap::new()),
-            Err(ValidationError::RuleConditionFailed { .. })
-        ));
+    fn rule_skips_when_condition_field_missing() {
+        assert!(matches!(draft_rule().applies(&HashMap::new()), Ok(false)));
     }
 
     #[test]

@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn conditional_rule_condition_field_absent_yields_rule_error() {
+    fn conditional_rule_condition_field_absent_skips_rule() {
         let mut merged = required_only(&[]);
         merged.rules.push(ValidationRule {
             condition: HashMap::from([("draft".into(), toml::Value::Boolean(false))]),
@@ -200,13 +200,9 @@ mod tests {
                 fields: None,
             },
         });
-        // "draft" missing entirely → RuleConditionFailed
+        // "draft" missing entirely -> condition not met, rule skipped, no errors
         let errors = validate_metadata(&meta(&[]), &merged);
-        assert_eq!(errors.len(), 1);
-        assert!(matches!(
-            &errors[0],
-            ValidationError::RuleConditionFailed { .. }
-        ));
+        assert_eq!(errors.len(), 0);
     }
 
     #[test]

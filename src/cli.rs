@@ -188,7 +188,12 @@ pub async fn start() -> Result<()> {
             minify: _,
             _no_minify,
         } => build_site(!_no_minify).await?,
-        Commands::New { kind, name, open, collection } => new_asset(kind.as_ref(), name.as_ref(), open, collection.as_ref()).await?,
+        Commands::New {
+            kind,
+            name,
+            open,
+            collection,
+        } => new_asset(kind.as_ref(), name.as_ref(), open, collection.as_ref()).await?,
         Commands::Preview { port, host, open } => preview(port, open, host).await?,
     }
 
@@ -276,7 +281,12 @@ async fn theme_handle(subcommand: &cmd::ThemeCommands) -> Result<()> {
 /// Ok(())
 /// }
 /// ```
-async fn new_asset(kind: Option<&String>, name: Option<&String>, open: bool, collection: Option<&String>) -> Result<()> {
+async fn new_asset(
+    kind: Option<&String>,
+    name: Option<&String>,
+    open: bool,
+    collection: Option<&String>,
+) -> Result<()> {
     let asset_type = kind.unwrap_or(&String::from("norg")).to_owned();
 
     if !["js", "css", "norg", "post"].contains(&asset_type.as_str()) {

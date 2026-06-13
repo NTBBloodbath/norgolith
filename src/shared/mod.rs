@@ -6,7 +6,7 @@ use std::time::Instant;
 use colored::Colorize;
 use eyre::{eyre, Result};
 use tera::{Context, Tera};
-use tracing::error;
+use tracing::{error, warn};
 use walkdir::WalkDir;
 
 use crate::config::{CollectionConfig, SiteConfig};
@@ -301,8 +301,7 @@ pub async fn collect_all_posts_metadata(
             let is_norg_file = path.extension().is_some_and(|ext| ext == "norg");
             let is_post = path.strip_prefix(content_dir).is_ok_and(|p| {
                 collections.iter().any(|c| {
-                    p.starts_with(&c.dir)
-                        && p != Path::new(&format!("{}/index.norg", c.dir))
+                    p.starts_with(&c.dir) && p != Path::new(&format!("{}/index.norg", c.dir))
                 })
             });
             is_norg_file && is_post
@@ -328,7 +327,13 @@ pub async fn collect_all_posts_metadata(
 
         let parse_date = |s: &str| {
             chrono::DateTime::parse_from_rfc3339(s)
-                .unwrap_or_else(|_| chrono::DateTime::from_timestamp(0, 0).unwrap().into())
+                .unwrap_or_else(|_| {
+                    warn!(
+                        "Post has invalid 'created' date '{}', defaulting to epoch for sort",
+                        s
+                    );
+                    chrono::DateTime::from_timestamp(0, 0).unwrap().into()
+                })
                 .with_timezone(&chrono::Utc)
         };
 
