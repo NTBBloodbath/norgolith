@@ -1,6 +1,6 @@
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 use colored::{ColoredString, Colorize};
@@ -12,6 +12,11 @@ use tera::{Context, Tera};
 use tokio::sync::Mutex;
 use tracing::{debug, error, instrument, warn};
 use walkdir::WalkDir;
+
+fn href_root_re() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r#"href="(/|&#x2F;)"#).expect("valid regex"))
+}
 
 use crate::{config, fs, shared};
 
@@ -299,7 +304,7 @@ async fn build_content_entry(
     // Convert all '/' references to the site root URL in links and assets, e.g.,
     // - `<a href="/docs" ...` -> `<a href="https://foobar.com/docs" ...`
     // - `<link rel... href="/assets/..." ...` -> `<link rel... href="https://foobar.com/assets/..." ...`
-    let href_re = regex::Regex::new(r#"href="(/|&#x2F;)"#)?;
+    let href_re = href_root_re();
     rendered = href_re
         .replace_all(&rendered, format!("href=\"{}/", site_config.root_url))
         .into_owned();
