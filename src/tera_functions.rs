@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
-use eyre::Result;
-use tera::{Error, Function, Value};
+use tera::{Error, Function, Result, Value};
 
 /// Now function
 /// Template usage: {{ now(format="%A, %B %d") }} → "Thursday, October 05"
 pub struct NowFunction;
 impl Function for NowFunction {
-    fn call(&self, args: &HashMap<String, Value>) -> Result<Value, Error> {
+    fn call(&self, args: &HashMap<String, Value>) -> Result<Value> {
         let format = match args.get("format") {
             Some(v) => v
                 .as_str()
@@ -35,19 +34,20 @@ struct TocTree {
 }
 
 fn parse_toc(value: &Value) -> Result<TocTree> {
-    let entries = value.as_array().ok_or("TOC must be an array").unwrap();
+    let entries = value
+        .as_array()
+        .ok_or_else(|| Error::msg("TOC must be an array"))?;
     let mut tree = TocTree {
         nodes: Vec::new(),
         root_indices: Vec::new(),
     };
-    let mut stack: Vec<usize> = Vec::new(); // Store indices instead of references
+    let mut stack: Vec<usize> = Vec::new();
 
     for entry in entries {
         let level = entry
             .get("level")
             .and_then(|v| v.as_i64())
-            .ok_or("Missing or invalid level")
-            .unwrap() as u8;
+            .ok_or_else(|| Error::msg("Missing or invalid level"))? as u8;
 
         let title = entry
             .get("title")
@@ -126,14 +126,16 @@ fn generate_nested_html(tree: &TocTree, list_type: &str) -> String {
 
 pub struct GenerateToc;
 impl Function for GenerateToc {
-    fn call(&self, args: &HashMap<String, Value>) -> Result<Value, Error> {
-        let toc = args.get("toc").expect("Missing 'toc' argument");
+    fn call(&self, args: &HashMap<String, Value>) -> Result<Value> {
+        let toc = args
+            .get("toc")
+            .ok_or_else(|| Error::msg("Missing 'toc' argument"))?;
         let list_type = args
             .get("list_type")
             .and_then(|v| v.as_str())
             .unwrap_or("ol");
 
-        let nodes = parse_toc(toc).unwrap();
+        let nodes = parse_toc(toc)?;
         let html = generate_nested_html(&nodes, list_type);
         Ok(Value::String(html))
     }
