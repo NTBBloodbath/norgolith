@@ -1132,7 +1132,7 @@ pub async fn dev(port: u16, drafts: bool, open: bool, host: bool) -> Result<()> 
     let reload_tx = state.reload_tx.clone();
     tokio::spawn(async move {
         let listener = match TcpListener::bind(format!("127.0.0.1:{}", LIVE_RELOAD_PORT)).await {
-            OK(l) => l,
+            Ok(l) => l,
             Err(e) => {
                 error!("LiveReload disabled: failed to bind port {}: {}", LIVE_RELOAD_PORT, e);
                 return;
