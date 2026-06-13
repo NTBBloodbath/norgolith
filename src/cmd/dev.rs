@@ -513,32 +513,24 @@ async fn handle_single_event(
         return;
     }
 
-    if is_template_change(event).await
-        && (path.strip_prefix(&state.paths.templates).is_ok()
-            || path.strip_prefix(&state.paths.theme_templates).is_ok())
-    {
-        let template_path = path.display().to_string();
-        let template = if template_path.contains("/theme/") {
-            path.strip_prefix(&state.paths.theme_templates).unwrap()
-        } else {
-            path.strip_prefix(&state.paths.templates).unwrap()
-        };
-        info!("Template modified: {}", template.display());
-        actions.reload_templates = true;
+    if is_template_change(event).await {
+        if let Ok(rel) = path.strip_prefix(&state.paths.theme_templates) {
+            info!("Template modified: {}", rel.display());
+            actions.reload_templates = true;
+        } else if let Ok(rel) = path.strip_prefix(&state.paths.templates) {
+            info!("Template modified: {}", rel.display());
+            actions.reload_templates = true;
+        }
     }
 
-    if is_asset_change(event).await
-        && (path.strip_prefix(&state.paths.assets).is_ok()
-            || path.strip_prefix(&state.paths.theme_assets).is_ok())
-    {
-        let asset_path = path.display().to_string();
-        let asset = if asset_path.contains("/theme/") {
-            path.strip_prefix(&state.paths.theme_assets).unwrap()
-        } else {
-            path.strip_prefix(&state.paths.assets).unwrap()
-        };
-        info!("Asset modified: {}", asset.display());
-        actions.reload_assets = true;
+    if is_asset_change(event).await {
+        if let Ok(rel) = path.strip_prefix(&state.paths.theme_assets) {
+            info!("Asset modified: {}", rel.display());
+            actions.reload_assets = true;
+        } else if let Ok(rel) = path.strip_prefix(&state.paths.assets) {
+            info!("Asset modified: {}", rel.display());
+            actions.reload_assets = true;
+        }
     }
 
     // PERF: don't check for other content files as we will reload all clients anyways
