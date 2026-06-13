@@ -18,7 +18,24 @@ pub struct SiteConfigRss {
     pub image: String,
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CollectionConfig {
+    pub name: String,
+    pub dir: String,
+}
+
+fn default_collections() -> Vec<CollectionConfig> {
+    vec![CollectionConfig {
+        name: "posts".into(),
+        dir: "posts".into(),
+    }]
+}
+
+fn default_categories_dir() -> String {
+    "categories".into()
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SiteConfig {
     #[serde(rename = "rootUrl")]
     pub root_url: String,
@@ -30,4 +47,25 @@ pub struct SiteConfig {
     pub highlighter: Option<SiteConfigHighlighter>,
     pub rss: Option<SiteConfigRss>,
     pub extra: Option<HashMap<String, toml::Value>>,
+    #[serde(default = "default_collections", rename = "collections")]
+    pub collections: Vec<CollectionConfig>,
+    #[serde(default = "default_categories_dir", rename = "categoriesDir")]
+    pub categories_dir: String,
+}
+
+impl Default for SiteConfig {
+    fn default() -> Self {
+        Self {
+            root_url: String::new(),
+            language: String::new(),
+            title: String::new(),
+            author: String::new(),
+            content_schema: None,
+            highlighter: None,
+            rss: None,
+            extra: None,
+            collections: default_collections(),
+            categories_dir: default_categories_dir(),
+        }
+    }
 }

@@ -9,9 +9,34 @@ use tera::{Context, Tera};
 use tracing::error;
 use walkdir::WalkDir;
 
-use crate::config::SiteConfig;
+use crate::config::{CollectionConfig, SiteConfig};
 use crate::converter;
 use crate::schema::{format_errors, validate_metadata, ContentSchema};
+
+/// Inserts per-collection post subsets into a Tera context.
+///
+/// Filters `all_posts` by permalink prefix for each configured collection and inserts
+/// the result under the collection's `name` key (e.g. `{{ journal }}`, `{{ log }}`).
+/// The combined `posts` variable must be inserted separately before calling this.
+pub fn insert_collection_subsets(
+    context: &mut Context,
+    all_posts: &[toml::Value],
+    config: &SiteConfig,
+) {
+    for collection in &config.collections {
+        let prefix = format!("/{}/", collection.dir);
+        let subset: Vec<_> = all_posts
+            .iter()
+            .filter(|p| {
+                p.get("permalink")
+                    .and_then(|v| v.as_str())
+                    .map(|permalink| permalink.contains(&prefix))
+                    .unwrap_or(false)
+            })
+            .collect();
+        context.insert(&collection.name, &subset);
+    }
+}
 
 /// Render full norg page by converting it to HTML and applying tera template
 pub async fn render_norg_page(
@@ -31,6 +56,7 @@ pub async fn render_norg_page(
     context.insert("content", content);
     context.insert("metadata", metadata);
     context.insert("posts", posts);
+    insert_collection_subsets(&mut context, posts, config);
 
     tera.render(&format!("{}.html", layout), &context)
         .map_err(|e| {
@@ -54,6 +80,7 @@ pub async fn render_category_index(
         let mut ctx = Context::new();
         ctx.insert("config", config);
         ctx.insert("posts", posts);
+        insert_collection_subsets(&mut ctx, posts, config);
         ctx.insert("categories", &categories.iter().collect::<Vec<_>>());
         ctx
     };
@@ -262,6 +289,7 @@ pub async fn collect_all_posts_categories(posts: &[toml::Value]) -> HashSet<Stri
 pub async fn collect_all_posts_metadata(
     content_dir: &Path,
     routes_url: &str,
+    collections: &[CollectionConfig],
 ) -> Result<Vec<toml::Value>> {
     let mut posts = Vec::new();
 
@@ -271,9 +299,12 @@ pub async fn collect_all_posts_metadata(
         .filter(|e| {
             let path = e.path();
             let is_norg_file = path.extension().is_some_and(|ext| ext == "norg");
-            let is_post = path
-                .strip_prefix(content_dir)
-                .is_ok_and(|p| p.starts_with("posts") && p != Path::new("posts/index.norg"));
+            let is_post = path.strip_prefix(content_dir).is_ok_and(|p| {
+                collections.iter().any(|c| {
+                    p.starts_with(&c.dir)
+                        && p != Path::new(&format!("{}/index.norg", c.dir))
+                })
+            });
             is_norg_file && is_post
         })
     {

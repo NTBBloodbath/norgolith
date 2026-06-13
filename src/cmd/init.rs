@@ -35,7 +35,16 @@ async fn create_config(root: &str, root_url: &str, language: &str, title: &str) 
         enable = true
         description = 'Latest posts'
         ttl = 60
-        image = '/assets/favicon.png'"#,
+        image = '/assets/favicon.png'
+
+        # Content collections (posts source dirs and URL prefixes)
+        # Defaults to a single "posts" collection if not set
+        # [[collections]]
+        # name = "posts"
+        # dir  = "posts"
+
+        # URL prefix for generated category pages (default: "categories")
+        # categoriesDir = "categories""#,
         root_url, // this is the default port
         language,
         title,

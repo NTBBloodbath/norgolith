@@ -14,7 +14,7 @@
         {% endif %}
       {% endfor %}
       <li>
-        <a href="{{ config.rootUrl }}/categories/{{ category }}">{{ category }}</a>
+        <a href="{{ config.rootUrl }}/{{ config.categoriesDir }}/{{ category }}">{{ category }}</a>
         <span>({{ cat_posts }} post{{ cat_posts | pluralize }})</span>
       </li>
     {% endfor %}

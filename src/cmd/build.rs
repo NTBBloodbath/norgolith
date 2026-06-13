@@ -147,6 +147,7 @@ async fn generate_xml_feeds(
     let mut context = Context::new();
     context.insert("config", site_config);
     context.insert("posts", posts);
+    shared::insert_collection_subsets(&mut context, posts, site_config);
     context.insert("now", &chrono::Utc::now());
 
     for template_name in &xml_templates {
@@ -246,6 +247,7 @@ async fn build_contents(
 ///
 /// Handles template rendering, metadata validation, and output path determination.
 /// Skips draft content and applies minification when enabled.
+#[allow(clippy::too_many_arguments)]
 #[instrument(
     level = "debug",
     skip(tera, paths, site_config, validation_errors, built_count, posts)
@@ -277,7 +279,7 @@ async fn build_content_entry(
     // Metadata schema validation
     if let Some(schema) = &site_config.content_schema {
         // Do not try to validate generated categories
-        if !rel_path.starts_with("categories") {
+        if !rel_path.starts_with(&site_config.categories_dir) {
             let errors =
                 shared::validate_content_metadata(&paths.content, path, &metadata, schema, false)
                     .await?;
@@ -327,7 +329,7 @@ pub async fn build_category_pages(
     config: &config::SiteConfig,
 ) -> Result<usize> {
     let categories = shared::collect_all_posts_categories(posts).await;
-    let categories_dir = public_dir.join("categories");
+    let categories_dir = public_dir.join(&config.categories_dir);
 
     // Generate category pages only if the site has posts
     if posts.is_empty() {
@@ -673,8 +675,9 @@ pub async fn build(minify: bool) -> Result<()> {
     // Prepare the public build directory
     prepare_build_directory(&paths.public).await?;
 
-    let posts: Vec<_> = shared::collect_all_posts_metadata(&paths.content, &site_config.root_url)
-        .await?
+    let posts: Vec<_> =
+        shared::collect_all_posts_metadata(&paths.content, &site_config.root_url, &site_config.collections)
+            .await?
         .into_iter()
         .filter(|post| {
             !post

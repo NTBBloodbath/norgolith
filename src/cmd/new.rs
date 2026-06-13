@@ -7,13 +7,13 @@ use chrono::{Local, SecondsFormat};
 use colored::Colorize;
 use eyre::{bail, eyre, Context, Result};
 use indoc::formatdoc;
-use inquire::Text;
+use inquire::{Select, Text};
 use regex::Regex;
 use titlecase::titlecase;
 use tracing::{debug, info, instrument, warn};
 use whoami::username;
 
-use crate::fs;
+use crate::{config, fs};
 
 /// Supported asset types for creation
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -215,14 +215,72 @@ async fn open_file_editor(path: &Path) -> Result<()> {
     Ok(())
 }
 
-#[instrument(skip(kind, name, open))]
-pub async fn new(kind: &str, name: &str, open: bool) -> Result<()> {
+fn resolve_collection<'a>(
+    collections: &'a [config::CollectionConfig],
+    collection_name: Option<&String>,
+) -> Result<&'a config::CollectionConfig> {
+    if collections.is_empty() {
+        bail!("No collections configured. Add [[collections]] to norgolith.toml");
+    }
+    if let Some(name) = collection_name {
+        collections
+            .iter()
+            .find(|c| c.name == *name)
+            .ok_or_else(|| {
+                let available = collections
+                    .iter()
+                    .map(|c| c.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                eyre!("Unknown collection '{}'. Available: {}", name, available)
+            })
+    } else if collections.len() == 1 {
+        Ok(&collections[0])
+    } else {
+        let names: Vec<&str> = collections.iter().map(|c| c.name.as_str()).collect();
+        let selected_name = Select::new("Select a collection:", names)
+            .prompt()
+            .map_err(|e| eyre!("Failed to select collection: {}", e))?;
+        Ok(collections
+            .iter()
+            .find(|c| c.name == selected_name)
+            .unwrap())
+    }
+}
+
+#[instrument(skip(kind, name, open, collection))]
+pub async fn new(kind: &str, name: &str, open: bool, collection: Option<&String>) -> Result<()> {
     debug!(type = kind, name = name, "Creating new asset");
-    let asset_type = AssetType::from_extension(kind)?;
-    let mut input_path = PathBuf::from(name);
+
+    // Find site root early — needed for "post" collection resolution
+    let config_file = fs::find_config_file().await?.ok_or_else(|| {
+        eyre!(
+            "{}: not in a Norgolith site directory",
+            "Unable to create site asset".bold()
+        )
+    })?;
+    let site_root = config_file.parent().unwrap().to_path_buf();
+
+    // "post" kind: resolve the target collection and delegate to Content creation
+    let (resolved_kind, resolved_name);
+    if kind == "post" {
+        let config_content = tokio::fs::read_to_string(&config_file)
+            .await
+            .map_err(|e| eyre!("Failed to read config: {}", e))?;
+        let site_config: config::SiteConfig =
+            toml::from_str(&config_content).map_err(|e| eyre!("Failed to parse config: {}", e))?;
+        let col = resolve_collection(&site_config.collections, collection)?;
+        resolved_kind = "norg".to_string();
+        resolved_name = format!("{}/{}", col.dir, name);
+    } else {
+        resolved_kind = kind.to_string();
+        resolved_name = name.to_string();
+    }
+
+    let asset_type = AssetType::from_extension(&resolved_kind)?;
+    let mut input_path = PathBuf::from(&resolved_name);
 
     // Validate file extension
-    // TODO: also validate assets?
     if let AssetType::Content = asset_type {
         // Add norg file extension to content name if it is missing an extension
         if input_path.extension().is_none() {
@@ -233,16 +291,6 @@ pub async fn new(kind: &str, name: &str, open: bool) -> Result<()> {
             bail!("Norg documents must have .norg extension");
         }
     }
-
-    // Find site root
-    let mut site_root = fs::find_config_file().await?.ok_or_else(|| {
-        eyre!(
-            "{}: not in a Norgolith site directory",
-            "Unable to create site asset".bold()
-        )
-    })?;
-    // Remove norgolith.toml from the site_root
-    site_root.pop();
 
     // Build target path
     let mut target_path = site_root.join(asset_type.directory());
