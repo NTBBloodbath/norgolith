@@ -43,8 +43,9 @@ fn handle_not_found() -> Response<Body> {
 }
 
 fn sanitize_path(uri_path: &str) -> PathBuf {
-    // TODO: decode percent signs (url-encoded path)
-    let rel_path = uri_path.trim_start_matches('/');
+    let decoded = percent_encoding::percent_decode_str(uri_path)
+        .decode_utf8_lossy();
+    let rel_path = decoded.trim_start_matches('/');
     let mut base = PathBuf::from("./public");
     for comp in Path::new(rel_path) {
         if comp == ".." {
