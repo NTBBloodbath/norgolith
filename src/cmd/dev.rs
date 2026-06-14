@@ -787,8 +787,8 @@ async fn handle_websocket(stream: TcpStream, reload_tx: Arc<broadcast::Sender<()
 
 async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body>> {
     let config = state.config.read().await.clone();
-    let categories = shared::collect_all_posts_categories(&state.posts.read().await).await;
     let posts = state.posts.read().await.clone();
+    let categories = shared::collect_all_posts_categories(&posts).await;
     let mut context = Context::new();
     context.insert("config", &config);
     context.insert("posts", &posts);
