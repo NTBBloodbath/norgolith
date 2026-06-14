@@ -208,7 +208,13 @@ async fn build_contents(
 ) -> Result<usize> {
     let entries = WalkDir::new(&paths.content)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(|e| match e {
+            Ok(e) => Some(e),
+            Err(e) => {
+                warn!("WalkDir error: {}", e);
+                None
+            }
+        })
         .filter(|e| e.path().extension().is_some_and(|ext| ext == "norg"));
 
     // Shared error state for concurrent validation
@@ -617,7 +623,13 @@ async fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Resu
     for entry in WalkDir::new(assets_dir)
         .follow_links(true)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(|e| match e {
+            Ok(e) => Some(e),
+            Err(e) => {
+                warn!("WalkDir error: {}", e);
+                None
+            }
+        })
     {
         let Some(rel_path) = entry.path().strip_prefix(assets_dir).ok() else {
             warn!("Skipping asset outside assets directory: {}", entry.path().display());

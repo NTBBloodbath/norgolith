@@ -301,7 +301,13 @@ pub async fn collect_all_posts_metadata(
 
     for entry in WalkDir::new(content_dir)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(|e| match e {
+            Ok(e) => Some(e),
+            Err(e) => {
+                warn!("WalkDir error: {}", e);
+                None
+            }
+        })
         .filter(|e| {
             let path = e.path();
             let is_norg_file = path.extension().is_some_and(|ext| ext == "norg");
