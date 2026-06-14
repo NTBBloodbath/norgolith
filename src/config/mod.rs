@@ -13,7 +13,7 @@ pub struct SiteConfigHighlighter {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SiteConfigRss {
     pub enable: bool,
-    pub ttl: i32,
+    pub ttl: u32,
     pub description: String,
     pub image: String,
 }
