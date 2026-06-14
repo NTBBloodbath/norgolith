@@ -61,12 +61,16 @@ pub async fn resolve_repo_shorthand(repo: &str) -> Result<String> {
 #[instrument(skip(repo, requirement))]
 async fn get_version(repo: &Repository, requirement: Option<String>) -> Result<Version> {
     debug!("Finding compatible version");
-    let mut versions = repo
-        .tag_names(None)?
-        .iter()
-        .flatten()
-        .filter_map(|t| Version::parse(t).ok())
-        .collect::<Vec<_>>();
+    let versions = tokio::task::block_in_place(|| -> Result<Vec<Version>> {
+        Ok(repo
+            .tag_names(None)?
+            .iter()
+            .flatten()
+            .filter_map(|t| Version::parse(t).ok())
+            .collect())
+    })?;
+
+    let mut versions = versions;
 
     if let Some(req) = requirement {
         let version_req = VersionReq::parse(&req)?;
@@ -84,34 +88,36 @@ async fn get_version(repo: &Repository, requirement: Option<String>) -> Result<V
 async fn checkout_version(repo: &Repository, version: &Version) -> Result<()> {
     debug!(%version, "Checking out version");
     let tag_name = version.to_string();
-    let (object, reference) = repo.revparse_ext(&tag_name).map_err(|e| {
-        error!(error = %e, "Failed to parse version reference");
-        e
-    })?;
-
-    repo.checkout_tree(&object, Some(CheckoutBuilder::new().force()))
-        .map_err(|e| {
-            error!(error = %e, "Failed to checkout tree");
+    tokio::task::block_in_place(|| -> Result<()> {
+        let (object, reference) = repo.revparse_ext(&tag_name).map_err(|e| {
+            error!(error = %e, "Failed to parse version reference");
             e
         })?;
 
-    if let Some(reference) = reference {
-        let ref_name = reference
-            .name()
-            .ok_or_else(|| eyre!("Invalid reference name"))?;
-        repo.set_head(ref_name).map_err(|e| {
-            error!(error = %e, "Failed to set HEAD");
-            e
-        })?;
-    }
+        repo.checkout_tree(&object, Some(CheckoutBuilder::new().force()))
+            .map_err(|e| {
+                error!(error = %e, "Failed to checkout tree");
+                e
+            })?;
 
-    Ok(())
+        if let Some(reference) = reference {
+            let ref_name = reference
+                .name()
+                .ok_or_else(|| eyre!("Invalid reference name"))?;
+            repo.set_head(ref_name).map_err(|e| {
+                error!(error = %e, "Failed to set HEAD");
+                e
+            })?;
+        }
+
+        Ok(())
+    })
 }
 
 #[instrument(skip(src, dest, sp))]
 async fn backup_theme_files(src: &Path, dest: &Path, sp: &mut Spinner) -> Result<()> {
     // If the theme directory is empty then early return
-    if src.read_dir()?.next().is_none() {
+    if fs::read_dir(src).await?.next_entry().await?.is_none() {
         debug!("Source directory is empty, skipping backup");
         return Ok(());
     }
