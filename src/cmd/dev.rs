@@ -1248,7 +1248,7 @@ pub async fn dev(listener: StdTcpListener, port: u16, drafts: bool, open: bool, 
             Ok(()) => {
                 info!("Opening the development server page using your browser ...");
             }
-            Err(e) => bail!(
+            Err(e) => warn!(
                 "{}: {}",
                 "Could not open the development server page".bold(),
                 e

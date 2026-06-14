@@ -38,12 +38,6 @@ pub async fn find_in_previous_dirs(
                 break; // Reached root directory
             }
         }
-
-        let mut entries = read_dir(&current_dir).await?;
-        if entries.next_entry().await?.is_none() {
-            debug!("Directory is empty: {}", current_dir.display());
-            break;
-        }
     }
 
     debug!("No matching {} found in parent directories", kind);
