@@ -249,7 +249,7 @@ async fn build_contents(
 
     let errors = validation_errors.lock().await;
     if !errors.is_empty() {
-        bail!(errors.concat());
+        bail!(errors.join("\n"));
     }
 
     let count = *built_count.lock().await;
