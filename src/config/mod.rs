@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use colored::Colorize;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::ContentSchema;
@@ -67,5 +68,38 @@ impl Default for SiteConfig {
             collections: default_collections(),
             categories_dir: default_categories_dir(),
         }
+    }
+}
+
+impl SiteConfig {
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        if self.root_url.is_empty() {
+            errors.push(format!(
+                "{}: 'rootUrl' must not be empty",
+                "Validation failed".bold()
+            ));
+        }
+        if self.title.is_empty() {
+            errors.push(format!(
+                "{}: 'title' must not be empty",
+                "Validation failed".bold()
+            ));
+        }
+        if self.author.is_empty() {
+            errors.push(format!(
+                "{}: 'author' must not be empty",
+                "Validation failed".bold()
+            ));
+        }
+        if self.language.is_empty() {
+            errors.push(format!(
+                "{}: 'language' must not be empty",
+                "Validation failed".bold()
+            ));
+        }
+
+        errors
     }
 }

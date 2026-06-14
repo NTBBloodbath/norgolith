@@ -688,6 +688,15 @@ pub async fn build(minify: bool) -> Result<()> {
         .wrap_err("Failed to read config file")?;
     let site_config: config::SiteConfig =
         toml::from_str(&config_content).wrap_err("Failed to parse site configuration")?;
+
+    let validation_errors = site_config.validate();
+    if !validation_errors.is_empty() {
+        for error in &validation_errors {
+            eprintln!("{}", error);
+        }
+        bail!("Site configuration has validation errors");
+    }
+
     debug!(?site_config, "Loaded site configuration");
 
     let root_dir = root.parent().unwrap().to_path_buf();

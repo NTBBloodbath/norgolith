@@ -1007,6 +1007,14 @@ async fn setup_server_state(
     let config_content = tokio::fs::read_to_string(&root).await?;
     let site_config: config::SiteConfig = toml::from_str(&config_content)?;
 
+    let validation_errors = site_config.validate();
+    if !validation_errors.is_empty() {
+        for error in &validation_errors {
+            eprintln!("{}", error);
+        }
+        bail!("Site configuration has validation errors");
+    }
+
     let root_dir = root.parent().unwrap().to_path_buf();
     let mut paths = SitePaths::new(root_dir.clone());
 
