@@ -1826,6 +1826,7 @@ dependencies = [
  "notify-debouncer-full",
  "num_cpus",
  "open",
+ "percent-encoding",
  "regex",
  "rss",
  "rust-norg",
