@@ -179,7 +179,7 @@ async fn create_directories(path: &str) -> Result<()> {
 
 #[instrument(skip(name, prompt))]
 pub async fn init(name: &str, prompt: bool) -> Result<()> {
-    info!("Initializing new Norgoliht site: {}", name);
+    info!("Initializing new Norgolith site: {}", name);
 
     let path_exists = fs::try_exists(name)
         .await
