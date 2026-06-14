@@ -1,10 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use colored::Colorize;
 use eyre::{eyre, Result};
+use futures_util::StreamExt;
 use tera::{Context, Tera};
 use tracing::{error, warn};
 use walkdir::WalkDir;
@@ -13,37 +14,63 @@ use crate::config::{CollectionConfig, SiteConfig};
 use crate::converter;
 use crate::schema::{format_errors, validate_metadata, ContentSchema};
 
-/// Inserts per-collection post subsets into a Tera context.
-///
-/// Filters `all_posts` by permalink prefix for each configured collection and inserts
-/// the result under the collection's `name` key (e.g. `{{ journal }}`, `{{ log }}`).
-/// The combined `posts` variable must be inserted separately before calling this.
-pub fn insert_collection_subsets(
-    context: &mut Context,
+/// Pre-computed collection subsets: collection name → filtered posts.
+pub type PrecomputedCollections = HashMap<String, Vec<toml::Value>>;
+
+/// Pre-computes collection subsets once, avoiding O(posts × collections) per page.
+pub fn precompute_collection_subsets(
     all_posts: &[toml::Value],
     config: &SiteConfig,
-) {
-    for collection in &config.collections {
-        let prefix = format!("/{}/", collection.dir);
-        let subset: Vec<_> = all_posts
-            .iter()
-            .filter(|p| {
-                p.get("permalink")
-                    .and_then(|v| v.as_str())
-                    .map(|permalink| permalink.starts_with(&prefix))
-                    .unwrap_or(false)
-            })
-            .collect();
-        context.insert(&collection.name, &subset);
-    }
+) -> PrecomputedCollections {
+    config
+        .collections
+        .iter()
+        .map(|collection| {
+            let prefix = format!("/{}/", collection.dir);
+            let subset: Vec<_> = all_posts
+                .iter()
+                .filter(|p| {
+                    p.get("permalink")
+                        .and_then(|v| v.as_str())
+                        .map(|permalink| permalink.starts_with(&prefix))
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
+            (collection.name.clone(), subset)
+        })
+        .collect()
 }
 
-/// Render full norg page by converting it to HTML and applying tera template
+/// Builds a Tera context with shared site data (config, posts, version, collection subsets).
+///
+/// This context is identical for every page render — only `metadata` and `content` differ.
+/// Build once and clone per page to avoid redundant serialization.
+pub fn build_shared_context(
+    posts: &[toml::Value],
+    config: &SiteConfig,
+    collections: &PrecomputedCollections,
+) -> Context {
+    let mut context = Context::new();
+    context.insert("config", config);
+    context.insert("posts", posts);
+    context.insert(
+        "lith_version",
+        option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+    );
+    for (name, subset) in collections {
+        context.insert(name, subset);
+    }
+    context
+}
+
+/// Render full norg page by converting it to HTML and applying tera template.
+///
+/// Uses a pre-built shared context; only `metadata` and `content` are inserted per page.
 pub async fn render_norg_page(
     tera: &Tera,
     metadata: &toml::Value,
-    posts: &[toml::Value],
-    config: &SiteConfig,
+    shared_context: &Context,
 ) -> Result<String> {
     let content = metadata.get("raw").and_then(|v| v.as_str()).unwrap_or("");
     let layout = metadata
@@ -51,16 +78,9 @@ pub async fn render_norg_page(
         .and_then(|v| v.as_str())
         .unwrap_or("default");
 
-    let mut context = Context::new();
-    context.insert("config", config);
+    let mut context = shared_context.clone();
     context.insert("content", content);
     context.insert("metadata", metadata);
-    context.insert("posts", posts);
-    context.insert(
-        "lith_version",
-        option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
-    );
-    insert_collection_subsets(&mut context, posts, config);
 
     tera.render(&format!("{}.html", layout), &context)
         .map_err(|e| {
@@ -78,13 +98,16 @@ pub async fn render_category_index(
     tera: &Tera,
     posts: &[toml::Value],
     config: &SiteConfig,
+    collections: &PrecomputedCollections,
 ) -> Result<String> {
     let categories = collect_all_posts_categories(posts).await;
     let context = {
         let mut ctx = Context::new();
         ctx.insert("config", config);
         ctx.insert("posts", posts);
-        insert_collection_subsets(&mut ctx, posts, config);
+        for (name, subset) in collections {
+            ctx.insert(name, subset);
+        }
         ctx.insert("categories", &categories.iter().collect::<Vec<_>>());
         ctx
     };
@@ -171,64 +194,74 @@ pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Resul
     Ok(tera)
 }
 
-/// Loads metadata from a TOML file.
+/// Computes the permalink for a content file based on its relative path.
+fn compute_permalink(rel_path: &Path, routes_url: &str) -> String {
+    let mut permalink_path = rel_path.with_extension("");
+    if permalink_path
+        .file_name()
+        .is_some_and(|name| name == "index")
+    {
+        permalink_path = permalink_path
+            .parent()
+            .unwrap_or(Path::new(""))
+            .to_path_buf();
+    }
+    let permalink = permalink_path.to_string_lossy();
+    if permalink.is_empty() {
+        format!("{}/", routes_url)
+    } else {
+        format!("{}/{}/", routes_url, permalink)
+    }
+}
+
+/// Converts TOML datetime values to RFC3339 strings in a metadata table.
+fn normalize_datetimes(metadata: &mut toml::Value) {
+    if let toml::Value::Table(ref mut table) = metadata {
+        for (_k, v) in table.iter_mut() {
+            if let toml::Value::Datetime(dt) = v {
+                *v = toml::Value::String(dt.to_string());
+            }
+        }
+    }
+}
+
+/// Full metadata + HTML conversion from pre-read content.
 ///
-/// This function reads metadata from a TOML file and returns it as a `toml::Value`.
-/// If the file cannot be read or parsed, it logs the error and returns an empty table.
-///
-/// # Arguments
-/// * `path` - The path to the norg file.
-/// * `rel_path` - Relative path to the norg file without the content directory prefix.
-/// * `routes_url` - The URL used for routing.
-///
-/// # Returns
-/// * `toml::Value` - The parsed metadata or an empty table if an error occurs.
-pub async fn load_metadata(path: PathBuf, rel_path: PathBuf, routes_url: &str) -> toml::Value {
-    let Ok(content) = tokio::fs::read_to_string(&path).await else {
-        error!(
-            "{} {}",
-            "Norg file not found for".bold(),
-            rel_path.display()
-        );
-        return toml::Value::Table(toml::map::Map::new());
-    };
-    let (html, toc) = converter::html::convert(&content, routes_url);
-    let mut metadata = match converter::meta::convert(&content, Some(converter::html::toc_to_toml(&toc))) {
+/// This is the inner function that does the actual work. It does NOT read from disk.
+pub fn load_metadata_from_content(content: &str, rel_path: &Path, routes_url: &str) -> toml::Value {
+    let (html, toc) = converter::html::convert(content, routes_url);
+    let mut metadata = match converter::meta::convert(content, Some(converter::html::toc_to_toml(&toc))) {
         Ok(m) => m,
         Err(e) => {
             warn!("Failed to parse metadata for {}: {}", rel_path.display(), e);
             toml::Value::Table(toml::map::Map::new())
         }
     };
-    let permalink = {
-        let mut permalink_path = rel_path.with_extension("");
-        if permalink_path
-            .file_name()
-            .is_some_and(|name| name == "index")
-        {
-            permalink_path = permalink_path
-                .parent()
-                .unwrap_or(Path::new(""))
-                .to_path_buf();
-        }
-        let permalink = permalink_path.to_string_lossy();
-        if permalink.is_empty() {
-            format!("{}/", routes_url)
-        } else {
-            format!("{}/{}/", routes_url, permalink)
-        }
-    };
+    let permalink = compute_permalink(rel_path, routes_url);
+    normalize_datetimes(&mut metadata);
     if let toml::Value::Table(ref mut table) = metadata {
-        // Convert TOML datetimes to RFC3339 strings
-        for (_k, v) in table.iter_mut() {
-            if let toml::Value::Datetime(dt) = v {
-                *v = toml::Value::String(dt.to_string());
-            }
-        }
-        table.insert("raw".to_string(), toml::Value::String(html));
+        table.insert("raw".to_string(), toml::Value::String(html.to_string()));
         table.insert("permalink".to_string(), toml::Value::String(permalink));
     }
+    metadata
+}
 
+/// Lightweight metadata extraction from pre-read content (no parse_tree).
+///
+/// This is the inner function that does the actual work. It does NOT read from disk.
+pub fn extract_metadata_from_content(content: &str, rel_path: &Path, routes_url: &str) -> toml::Value {
+    let mut metadata = match converter::meta::convert(content, None) {
+        Ok(m) => m,
+        Err(e) => {
+            warn!("Failed to parse metadata for {}: {}", rel_path.display(), e);
+            toml::Value::Table(toml::map::Map::new())
+        }
+    };
+    let permalink = compute_permalink(rel_path, routes_url);
+    normalize_datetimes(&mut metadata);
+    if let toml::Value::Table(ref mut table) = metadata {
+        table.insert("permalink".to_string(), toml::Value::String(permalink));
+    }
     metadata
 }
 
@@ -248,41 +281,7 @@ pub async fn extract_metadata_only(path: PathBuf, rel_path: PathBuf, routes_url:
         );
         return toml::Value::Table(toml::map::Map::new());
     };
-    let mut metadata = match converter::meta::convert(&content, None) {
-        Ok(m) => m,
-        Err(e) => {
-            warn!("Failed to parse metadata for {}: {}", rel_path.display(), e);
-            toml::Value::Table(toml::map::Map::new())
-        }
-    };
-    let permalink = {
-        let mut permalink_path = rel_path.with_extension("");
-        if permalink_path
-            .file_name()
-            .is_some_and(|name| name == "index")
-        {
-            permalink_path = permalink_path
-                .parent()
-                .unwrap_or(Path::new(""))
-                .to_path_buf();
-        }
-        let permalink = permalink_path.to_string_lossy();
-        if permalink.is_empty() {
-            format!("{}/", routes_url)
-        } else {
-            format!("{}/{}/", routes_url, permalink)
-        }
-    };
-    if let toml::Value::Table(ref mut table) = metadata {
-        for (_k, v) in table.iter_mut() {
-            if let toml::Value::Datetime(dt) = v {
-                *v = toml::Value::String(dt.to_string());
-            }
-        }
-        table.insert("permalink".to_string(), toml::Value::String(permalink));
-    }
-
-    metadata
+    extract_metadata_from_content(&content, &rel_path, routes_url)
 }
 
 /// Validates content metadata against a schema.
@@ -355,9 +354,8 @@ pub async fn collect_all_posts_metadata(
     routes_url: &str,
     collections: &[CollectionConfig],
 ) -> Result<Vec<toml::Value>> {
-    let mut posts = Vec::new();
-
-    for entry in WalkDir::new(content_dir)
+    // Collect paths first (WalkDir is sync)
+    let entries: Vec<_> = WalkDir::new(content_dir)
         .into_iter()
         .filter_map(|e| match e {
             Ok(e) => Some(e),
@@ -376,14 +374,21 @@ pub async fn collect_all_posts_metadata(
             });
             is_norg_file && is_post
         })
-    {
-        let path = entry.path().to_path_buf();
-        let rel_path = path.strip_prefix(content_dir)?.to_path_buf();
+        .map(|e| {
+            let path = e.path().to_path_buf();
+            let rel_path = path.strip_prefix(content_dir).unwrap().to_path_buf();
+            (path, rel_path)
+        })
+        .collect();
 
-        let metadata = extract_metadata_only(path, rel_path, routes_url).await;
-
-        posts.push(metadata);
-    }
+    // Process metadata extraction concurrently
+    let mut posts: Vec<toml::Value> = futures_util::stream::iter(entries)
+        .map(|(path, rel_path)| async move {
+            extract_metadata_only(path, rel_path, routes_url).await
+        })
+        .buffer_unordered(num_cpus::get())
+        .collect::<Vec<_>>()
+        .await;
 
     posts.sort_by(|a, b| {
         let a_date = a

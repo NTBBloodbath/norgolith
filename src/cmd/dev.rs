@@ -642,14 +642,9 @@ async fn handle_xml_feed(request_path: &str, state: &Arc<ServerState>) -> Result
 
     let config = state.config.read().await.clone();
     let posts = state.posts.read().await.clone();
-    let mut context = Context::new();
-    context.insert("config", &config);
-    context.insert("posts", &posts);
-    context.insert(
-        "lith_version",
-        option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
-    );
-    shared::insert_collection_subsets(&mut context, &posts, &config);
+    let collections = shared::precompute_collection_subsets(&posts, &config);
+    let shared_context = shared::build_shared_context(&posts, &config, &collections);
+    let mut context = shared_context;
     context.insert("now", &Utc::now());
 
     let content = tera
@@ -702,8 +697,13 @@ async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<R
 
     let rel_path = path.strip_prefix(&state.paths.content)?.to_path_buf();
 
+    // Read file once — both draft check and full conversion use this content
+    let Ok(content) = tokio::fs::read_to_string(&path).await else {
+        return Ok(handle_not_found());
+    };
+
     // Lightweight metadata extraction first (no parse_tree, no HTML conversion)
-    let metadata = shared::extract_metadata_only(path.clone(), rel_path.clone(), &state.routes_url).await;
+    let metadata = shared::extract_metadata_from_content(&content, &rel_path, &state.routes_url);
     let is_draft = metadata
         .get("draft")
         .map(|v| {
@@ -715,12 +715,14 @@ async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<R
         return Ok(handle_not_found());
     }
 
-    // Full load with HTML conversion (only for non-draft pages or when serving drafts)
-    let metadata = shared::load_metadata(path, rel_path, &state.routes_url).await;
+    // Full load with HTML conversion (only for non-draft pages, reuses pre-read content)
+    let metadata = shared::load_metadata_from_content(&content, &rel_path, &state.routes_url);
 
     let config = state.config.read().await.clone();
     let posts = state.posts.read().await.clone();
-    let mut body = shared::render_norg_page(&tera, &metadata, &posts, &config).await?;
+    let collections = shared::precompute_collection_subsets(&posts, &config);
+    let shared_context = shared::build_shared_context(&posts, &config, &collections);
+    let mut body = shared::render_norg_page(&tera, &metadata, &shared_context).await?;
 
     // Always use the proper URL to the development server for template links that refers
     // to the local URL, this is useful when running the server exposed to LAN network
@@ -794,14 +796,9 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
     let config = state.config.read().await.clone();
     let posts = state.posts.read().await.clone();
     let categories = shared::collect_all_posts_categories(&posts).await;
-    let mut context = Context::new();
-    context.insert("config", &config);
-    context.insert("posts", &posts);
-    context.insert(
-        "lith_version",
-        option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
-    );
-    shared::insert_collection_subsets(&mut context, &posts, &config);
+    let collections = shared::precompute_collection_subsets(&posts, &config);
+    let shared_context = shared::build_shared_context(&posts, &config, &collections);
+    let mut context = shared_context;
     context.insert("categories", &categories.into_iter().collect::<Vec<_>>());
 
     let tera = state.tera.read().await;

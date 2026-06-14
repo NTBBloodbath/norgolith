@@ -136,11 +136,10 @@ fn collect_xml_templates(tera: &Tera) -> Vec<String> {
 /// Subdirectories are created as needed. RSS validation is attempted per file;
 /// failures emit a warning rather than aborting, so non-RSS formats (Atom,
 /// sitemaps, etc.) are also supported.
-#[instrument(level = "debug", skip(tera, site_config, posts, public_dir))]
+#[instrument(level = "debug", skip(tera, shared_context, public_dir))]
 async fn generate_xml_feeds(
     tera: &Tera,
-    site_config: &config::SiteConfig,
-    posts: &[toml::Value],
+    shared_context: &Context,
     public_dir: &Path,
 ) -> Result<usize> {
     let xml_templates = collect_xml_templates(tera);
@@ -149,14 +148,7 @@ async fn generate_xml_feeds(
         return Ok(0);
     }
 
-    let mut context = Context::new();
-    context.insert("config", site_config);
-    context.insert("posts", posts);
-    context.insert(
-        "lith_version",
-        option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
-    );
-    shared::insert_collection_subsets(&mut context, posts, site_config);
+    let mut context = shared_context.clone();
     context.insert("now", &chrono::Utc::now());
 
     for template_name in &xml_templates {
@@ -200,12 +192,13 @@ async fn generate_xml_feeds(
 /// * `paths` - Site directory paths
 /// * `site_config` - Site configuration
 /// * `minify` - Enable minification of output
-#[instrument(level = "debug", skip(tera, paths, site_config))]
+#[instrument(level = "debug", skip(tera, paths, site_config, shared_context))]
 async fn build_contents(
     tera: &Tera,
     paths: &SitePaths,
     posts: &[toml::Value],
     site_config: &config::SiteConfig,
+    shared_context: &Context,
     minify: bool,
 ) -> Result<usize> {
     let entries = WalkDir::new(&paths.content)
@@ -239,7 +232,7 @@ async fn build_contents(
                     minify,
                     validation_errors,
                     built_count,
-                    posts,
+                    shared_context,
                 )
                 .await
                 {
@@ -265,7 +258,7 @@ async fn build_contents(
 #[allow(clippy::too_many_arguments)]
 #[instrument(
     level = "debug",
-    skip(tera, paths, site_config, validation_errors, built_count, posts)
+    skip(tera, paths, site_config, validation_errors, built_count, shared_context)
 )]
 async fn build_content_entry(
     path: &Path,
@@ -275,19 +268,28 @@ async fn build_content_entry(
     minify: bool,
     validation_errors: Arc<Mutex<Vec<String>>>,
     built_count: Arc<Mutex<usize>>,
-    posts: &[toml::Value],
+    shared_context: &Context,
 ) -> Result<()> {
     let rel_path = path
         .strip_prefix(&paths.content)
         .wrap_err("Failed to strip prefix")?;
 
+    // Read file once — both draft check and full conversion use this content
+    let file_start = std::time::Instant::now();
+    let Ok(content) = tokio::fs::read_to_string(path).await else {
+        error!(
+            "{} {}",
+            "Norg file not found for".bold(),
+            rel_path.display()
+        );
+        return Ok(());
+    };
+    let file_time = file_start.elapsed();
+
     // Lightweight metadata extraction first (no parse_tree, no HTML conversion)
-    let metadata = shared::extract_metadata_only(
-        path.to_path_buf(),
-        rel_path.to_path_buf(),
-        &site_config.root_url,
-    )
-    .await;
+    let meta_start = std::time::Instant::now();
+    let metadata = shared::extract_metadata_from_content(&content, rel_path, &site_config.root_url);
+    let meta_time = meta_start.elapsed();
 
     // Metadata schema validation
     if let Some(schema) = &site_config.content_schema {
@@ -310,18 +312,17 @@ async fn build_content_entry(
         return Ok(());
     }
 
-    // Full load with HTML conversion (only for non-draft pages)
-    let metadata = shared::load_metadata(
-        path.to_path_buf(),
-        rel_path.to_path_buf(),
-        &site_config.root_url,
-    )
-    .await;
+    // Full load with HTML conversion (only for non-draft pages, reuses pre-read content)
+    let load_start = std::time::Instant::now();
+    let metadata = shared::load_metadata_from_content(&content, rel_path, &site_config.root_url);
+    let load_time = load_start.elapsed();
 
     // Determine output path
     let public_path = determine_public_path(&paths.public, rel_path)?;
 
-    let mut rendered = shared::render_norg_page(tera, &metadata, posts, site_config).await?;
+    let render_start = std::time::Instant::now();
+    let mut rendered = shared::render_norg_page(tera, &metadata, shared_context).await?;
+    let render_time = render_start.elapsed();
 
     // Convert all '/' references to the site root URL in links and assets, e.g.,
     // - `<a href="/docs" ...` -> `<a href="https://foobar.com/docs" ...`
@@ -343,6 +344,14 @@ async fn build_content_entry(
         write_public_file(&public_path, &rendered).await?;
         *built_count.lock().await += 1;
     }
+    debug!(
+        path = %rel_path.display(),
+        file_ms = file_time.as_millis(),
+        meta_ms = meta_time.as_millis(),
+        load_ms = load_time.as_millis(),
+        render_ms = render_time.as_millis(),
+        "build_content_entry timing"
+    );
     Ok(())
 }
 
@@ -352,6 +361,7 @@ pub async fn build_category_pages(
     public_dir: &Path,
     posts: &[toml::Value],
     config: &config::SiteConfig,
+    collections: &shared::PrecomputedCollections,
 ) -> Result<usize> {
     let categories = shared::collect_all_posts_categories(posts).await;
     let categories_dir = public_dir.join(&config.categories_dir);
@@ -361,7 +371,7 @@ pub async fn build_category_pages(
         return Ok(0);
     }
 
-    let content = shared::render_category_index(tera, posts, config).await?;
+    let content = shared::render_category_index(tera, posts, config, collections).await?;
 
     tokio::fs::create_dir_all(&categories_dir).await?;
     tokio::fs::write(categories_dir.join("index.html"), content).await?;
@@ -739,11 +749,16 @@ pub async fn build(minify: bool) -> Result<()> {
     })
     .collect();
 
+    // Pre-compute collection subsets once (was O(posts × collections) per page)
+    let collections = shared::precompute_collection_subsets(&posts, &site_config);
+    // Build shared Tera context once (config, posts, lith_version, collections)
+    let shared_context = shared::build_shared_context(&posts, &site_config, &collections);
+
     println!();
 
     // Build all norg content (& run validation)
     let step_start = std::time::Instant::now();
-    let page_count = build_contents(&tera, &paths, &posts, &site_config, minify).await?;
+    let page_count = build_contents(&tera, &paths, &posts, &site_config, &shared_context, minify).await?;
     println!(
         "  {} {}  {:<12}  {}",
         "•".green(),
@@ -754,7 +769,7 @@ pub async fn build(minify: bool) -> Result<()> {
 
     // Build all category pages
     let step_start = std::time::Instant::now();
-    let cat_count = build_category_pages(&tera, &paths.public, &posts, &site_config).await?;
+    let cat_count = build_category_pages(&tera, &paths.public, &posts, &site_config, &collections).await?;
     if cat_count > 0 {
         println!(
             "  {} {}  {:<12}  {}",
@@ -767,7 +782,7 @@ pub async fn build(minify: bool) -> Result<()> {
 
     // Generate XML feeds (RSS, Atom, sitemaps, etc.) from all XML templates
     let step_start = std::time::Instant::now();
-    let feed_count = generate_xml_feeds(&tera, &site_config, &posts, &paths.public).await?;
+    let feed_count = generate_xml_feeds(&tera, &shared_context, &paths.public).await?;
     if feed_count > 0 {
         println!(
             "  {} {}  {:<12}  {}",

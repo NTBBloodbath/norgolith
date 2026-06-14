@@ -6,6 +6,9 @@
 // BUG: currently, strong carryover tags AST is missing a lot of things in the rust-norg parser
 // so we are going to omit them for now until it's fixed.
 
+use std::collections::VecDeque;
+use std::sync::OnceLock;
+
 use html_escape::encode_text_minimal_to_string;
 use regex::Regex;
 use rust_norg::{
@@ -27,6 +30,11 @@ pub struct TocEntry {
     level: u16,
     title: String,
     id: String,
+}
+
+fn inline_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"-?<.*>").expect("valid regex"))
 }
 
 /// Converts paragraph segment tokens to a String
@@ -53,7 +61,7 @@ fn paragraph_tokens_to_string(tokens: &[ParagraphSegmentToken]) -> String {
 fn paragraph_to_string(
     segment: &[ParagraphSegment],
     _strong_carry: &[CarryOverTag],
-    weak_carry: &mut Vec<CarryOverTag>,
+    weak_carry: &mut VecDeque<CarryOverTag>,
     root_url: &str,
 ) -> String {
     let mut paragraph = String::new();
@@ -158,7 +166,7 @@ fn paragraph_to_string(
                     a_tag.push(weak_carryover_attribute(weak_carryover));
                     // Remove the carryover tag after using it because its lifetime
                     // ended after invocating it
-                    weak_carry.remove(0);
+                    weak_carry.pop_front();
                 }
             }
             if let Some(desc) = description {
@@ -201,7 +209,7 @@ fn paragraph_to_string(
                     }
                     LinkTarget::Heading { level: _, title } => {
                         // Regex to remove possible links from heading title ids during href
-                        let re = Regex::new(r"-?<.*>").unwrap();
+                        let re = inline_re();
                         a_tag.push(format!(
                             "href=\"#{}\"",
                             re.replace(
@@ -223,7 +231,7 @@ fn paragraph_to_string(
                     a_tag.push(weak_carryover_attribute(weak_carryover));
                     // Remove the carryover tag after using it because its lifetime
                     // ended after invocating it
-                    weak_carry.remove(0);
+                    weak_carry.pop_front();
                 }
             }
             a_tag.push(format!(
@@ -300,7 +308,7 @@ trait NorgToHtml {
     fn to_html(
         &self,
         strong_carry: &[CarryOverTag],
-        weak_carry: Vec<CarryOverTag>,
+        weak_carry: VecDeque<CarryOverTag>,
         root_url: &str,
         toc: &mut Vec<TocEntry>,
     ) -> String;
@@ -311,7 +319,7 @@ impl NorgToHtml for NorgAST {
     fn to_html(
         &self,
         strong_carry: &[CarryOverTag],
-        mut weak_carry: Vec<CarryOverTag>,
+        mut weak_carry: VecDeque<CarryOverTag>,
         root_url: &str,
         toc: &mut Vec<TocEntry>,
     ) -> String {
@@ -324,7 +332,7 @@ impl NorgToHtml for NorgAST {
                         paragraph.push(weak_carryover_attribute(weak_carryover));
                         // Remove the carryover tag after using it because its lifetime
                         // ended after invocating it
-                        weak_carry.remove(0);
+                        weak_carry.pop_front();
                     }
                 }
                 paragraph.push(format!(
@@ -343,11 +351,11 @@ impl NorgToHtml for NorgAST {
                 // HACK: we are passing empty carryover vectors here because otherwise
                 // the HTML carryovers meant for the heading are used for its internal content instead
                 let strong: &[CarryOverTag] = &[];
-                let mut weak = Vec::<CarryOverTag>::new();
+                let mut weak = VecDeque::<CarryOverTag>::new();
                 let heading_title = paragraph_to_string(title, strong, &mut weak, root_url);
 
                 // Regex to remove possible links from heading title ids
-                let re = Regex::new(r"-?<.*>").unwrap();
+                let re = inline_re();
                 let heading_id = re.replace(&heading_title.replace(" ", "-"), "").to_string();
 
                 match level {
@@ -358,7 +366,7 @@ impl NorgToHtml for NorgAST {
                                 section.push(weak_carryover_attribute(weak_carryover));
                                 // Remove the carryover tag after using it because its lifetime
                                 // ended after invocating it
-                                weak_carry.remove(0);
+                                weak_carry.pop_front();
                             }
                         }
                         section.push(format!(">{}</h{}>", heading_title, level));
@@ -371,7 +379,7 @@ impl NorgToHtml for NorgAST {
                                 section.push(weak_carryover_attribute(weak_carryover));
                                 // Remove the carryover tag after using it because its lifetime
                                 // ended after invocating it
-                                weak_carry.remove(0);
+                                weak_carry.pop_front();
                             }
                         }
                         section.push(format!(">{}</h6>", heading_title));
@@ -398,7 +406,7 @@ impl NorgToHtml for NorgAST {
                 // HACK: 'text' is actually a 'Box<NorgASTFlat>' value. It should be converted into a `ParagraphSegment` later in the rust-norg parser
                 let mod_text = if let NorgASTFlat::Paragraph(s) = *text.clone() {
                     let strong: &[CarryOverTag] = &[];
-                    let mut weak = Vec::<CarryOverTag>::new();
+                    let mut weak = VecDeque::<CarryOverTag>::new();
                     // HACK: we are passing empty carryover vectors here because otherwise
                     // the HTML carryovers meant for the lists are used for its internal content instead
                     paragraph_to_string(&s, strong, &mut weak, root_url)
@@ -416,7 +424,7 @@ impl NorgToHtml for NorgAST {
                                 list.push(weak_carryover_attribute(weak_carryover));
                                 // Remove the carryover tag after using it because its lifetime
                                 // ended after invocating it
-                                weak_carry.remove(0);
+                                weak_carry.pop_front();
                             }
                         }
                         list.push(format!(">{}", mod_text));
@@ -434,7 +442,7 @@ impl NorgToHtml for NorgAST {
                                 quote.push(weak_carryover_attribute(weak_carryover));
                                 // Remove the carryover tag after using it because its lifetime
                                 // ended after invocating it
-                                weak_carry.remove(0);
+                                weak_carry.pop_front();
                             }
                         }
                         quote.push(format!(">{}", mod_text));
@@ -462,7 +470,7 @@ impl NorgToHtml for NorgAST {
                                 code_tag.push(weak_carryover_attribute(weak_carryover));
                                 // Remove the carryover tag after using it because its lifetime
                                 // ended after invocating it
-                                weak_carry.remove(0);
+                                weak_carry.pop_front();
                             }
                         }
                         let language = if !parameters.is_empty() {
@@ -498,7 +506,7 @@ impl NorgToHtml for NorgAST {
                                 image_tag.push(weak_carryover_attribute(weak_carryover));
                                 // Remove the carryover tag after using it because its lifetime
                                 // ended after invocating it
-                                weak_carry.remove(0);
+                                weak_carry.pop_front();
                             }
                         }
                         image_tag.push("/>".to_string());
@@ -532,7 +540,7 @@ impl NorgToHtml for NorgAST {
                         name: name.clone(),
                         parameters: parameters.clone(),
                     };
-                    weak_carry.push(tag);
+                    weak_carry.push_back(tag);
                         to_html(
                             &[*next_object.clone()],
                             strong_carry,
@@ -563,7 +571,7 @@ impl NorgToHtml for NorgAST {
                                 image_tag.push(weak_carryover_attribute(weak_carryover));
                                 // Remove the carryover tag after using it because its lifetime
                                 // ended after invocating it
-                                weak_carry.remove(0);
+                                weak_carry.pop_front();
                             }
                         }
 
@@ -586,7 +594,7 @@ impl NorgToHtml for NorgAST {
                             hr_tag.push(weak_carryover_attribute(weak_carryover));
                             // Remove the carryover tag after using it because its lifetime
                             // ended after invocating it
-                            weak_carry.remove(0);
+                            weak_carry.pop_front();
                         }
                     }
 
@@ -623,13 +631,13 @@ impl NorgToHtml for NorgAST {
 fn to_html(
     ast: &[NorgAST],
     strong_carry: &[CarryOverTag],
-    weak_carry: &[CarryOverTag],
+    weak_carry: &VecDeque<CarryOverTag>,
     root_url: &str,
     toc: &mut Vec<TocEntry>,
 ) -> String {
     let mut res = String::new();
     for node in ast {
-        res.push_str(&node.to_html(strong_carry, weak_carry.to_vec(), root_url, toc));
+        res.push_str(&node.to_html(strong_carry, weak_carry.clone(), root_url, toc));
     }
 
     res
@@ -654,7 +662,7 @@ pub fn convert(document: &str, root_url: &str) -> (String, Vec<TocEntry>) {
     let ast = parse_tree(document).unwrap();
     let mut toc = Vec::<TocEntry>::new();
     // We do not have any carryover tag when starting to convert the document
-    let html = to_html(&ast, &[], &[], root_url, &mut toc);
+    let html = to_html(&ast, &[], &VecDeque::new(), root_url, &mut toc);
 
     (html, toc)
 }
