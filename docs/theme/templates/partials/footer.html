@@ -1,5 +1,5 @@
 <div
-  class="flex justify-between items-center font-medium text-xs md:text-sm text-text-alt"
+  class="flex flex-col md:flex-row gap-4 justify-between md:items-center mx-auto max-w-5xl md:px-4 font-medium text-xs md:text-sm text-text-alt"
 >
   <span
       >Copyright &copy; {{ now(format="%Y") }}
@@ -15,17 +15,15 @@
       <br class="md:hidden" /> Licensed under {{ config.extra.license }}.
     {% endif %}
   </span>
-  <div class="flex items-center gap-4">
-    <span class="font-mono text-xs bg-surface-alt px-2 py-1 rounded">lith v{{ lith_version }}</span>
-    {% for name, link in config.extra.footer %}
-    <div class="last:mr-0">
-      <a
-        href="{{ link }}"
-        class="hover:text-blue"
-      >
-        <span>{{ name | title }}</span>
-      </a>
-    </div>
-    {% endfor %}
+  <span class="font-mono text-xs md:px-2">Built with norgolith v{{ lith_version }}</span>
+  {% for name, link in config.extra.footer %}
+  <div class="last:mr-0">
+    <a
+      href="{{ link }}"
+      class="hover:text-blue"
+    >
+      <span>{{ name | title }}</span>
+    </a>
   </div>
+  {% endfor %}
 </div>

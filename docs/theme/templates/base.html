@@ -128,15 +128,15 @@
 </head>
 <body>
   <div class="transition-colors duration-150 ease-linear">
-    <header class="relative shadow-sm">
+    <header class="relative shadow-sm px-4">
       {% include "partials/nav.html" %}
     </header>
 
-    <main class="container mx-auto min-h-screen pt-8 px-4 md:px-0">
+    <main class="container mx-auto max-w-5xl min-h-screen pt-4 md:pt-8 px-4">
       {% block content %}{% endblock content %}
     </main>
 
-    <footer class="mt-8 py-4 px-6 w-full font-mono">
+    <footer class="mt-8 py-4 px-4 w-full font-mono">
       {% include "partials/footer.html" %}
     </footer>
   </div>
