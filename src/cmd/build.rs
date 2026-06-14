@@ -281,10 +281,8 @@ async fn build_content_entry(
         .strip_prefix(&paths.content)
         .wrap_err("Failed to strip prefix")?;
 
-    // Determine output path
-    let public_path = determine_public_path(&paths.public, rel_path)?;
-
-    let metadata = shared::load_metadata(
+    // Lightweight metadata extraction first (no parse_tree, no HTML conversion)
+    let metadata = shared::extract_metadata_only(
         path.to_path_buf(),
         rel_path.to_path_buf(),
         &site_config.root_url,
@@ -305,11 +303,23 @@ async fn build_content_entry(
     }
 
     // Do not try to build draft content for production builds
+    // Check early to skip the expensive parse_tree + HTML conversion
     if toml::Value::as_bool(metadata.get("draft").unwrap_or(&toml::Value::from(false)))
         .expect("draft metadata field should be a boolean")
     {
         return Ok(());
     }
+
+    // Full load with HTML conversion (only for non-draft pages)
+    let metadata = shared::load_metadata(
+        path.to_path_buf(),
+        rel_path.to_path_buf(),
+        &site_config.root_url,
+    )
+    .await;
+
+    // Determine output path
+    let public_path = determine_public_path(&paths.public, rel_path)?;
 
     let mut rendered = shared::render_norg_page(tera, &metadata, posts, site_config).await?;
 
