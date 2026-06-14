@@ -57,6 +57,7 @@ lightningcss = "1.0.0-alpha.64"
 percent-encoding = "2.3.2"
 blake3 = "1.5"
 serde_json = "1.0"
+dirs = "6.0"
 
 [dev-dependencies]
 mockall = "0.13.1"

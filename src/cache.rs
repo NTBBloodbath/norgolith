@@ -13,6 +13,17 @@ struct CacheEntry {
     metadata: serde_json::Value,
 }
 
+/// Returns the XDG cache directory for a site: `~/.cache/norgolith/{site_name}/`
+fn cache_dir_for_site(site_root: &Path) -> Result<PathBuf> {
+    let cache_base = dirs::cache_dir()
+        .ok_or_else(|| eyre!("{}: cannot determine cache directory", "Failed".bold()))?;
+    let site_name = site_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
+    Ok(cache_base.join("norgolith").join(site_name))
+}
+
 /// Build cache for incremental builds.
 ///
 /// Stores parsed metadata keyed by relative file path. Entries are invalidated when:
@@ -28,10 +39,11 @@ impl BuildCache {
     /// Creates or loads a build cache.
     ///
     /// `site_root` is the directory containing `norgolith.toml`.
+    /// Cache is stored in `~/.cache/norgolith/{site_name}/` (XDG_CACHE_HOME).
     /// If the global state (templates + config + theme) changed since last build,
     /// the entire cache is cleared.
     pub fn open(site_root: &Path) -> Result<Self> {
-        let cache_dir = site_root.join(".norgolith").join("cache");
+        let cache_dir = cache_dir_for_site(site_root)?;
 
         let global_hash = compute_global_hash(site_root)?;
 
