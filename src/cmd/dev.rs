@@ -84,6 +84,7 @@ struct ServerState {
     build_drafts: bool,
     routes_url: String,
     posts: Arc<RwLock<Vec<toml::Value>>>,
+    cache: Arc<RwLock<crate::cache::BuildCache>>,
 }
 
 impl ServerState {
@@ -716,7 +717,25 @@ async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<R
     }
 
     // Full load with HTML conversion (only for non-draft pages, reuses pre-read content)
-    let metadata = shared::load_metadata_from_content(&content, &rel_path, &state.routes_url);
+    // Check cache first to avoid expensive parse_tree on cache hit
+    let cache_key = rel_path.with_extension("");
+    let metadata = {
+        let cache_guard = state.cache.read().await;
+        cache_guard.get(&cache_key, &content)
+    };
+    let metadata = if let Some(cached) = metadata {
+        match serde_json::from_value(cached.clone()) {
+            Ok(md) => md,
+            Err(_) => shared::load_metadata_from_content(&content, &rel_path, &state.routes_url),
+        }
+    } else {
+        let md = shared::load_metadata_from_content(&content, &rel_path, &state.routes_url);
+        if let Ok(json_val) = serde_json::to_value(&md) {
+            let mut cache_guard = state.cache.write().await;
+            cache_guard.insert(&cache_key, &content, json_val);
+        }
+        md
+    };
 
     let config = state.config.read().await.clone();
     let posts = state.posts.read().await.clone();
@@ -1048,6 +1067,9 @@ async fn setup_server_state(
         shared::collect_all_posts_metadata(&paths.content, &routes_url, &site_config.collections)
             .await?;
 
+    // Open build cache for incremental renders
+    let cache = crate::cache::BuildCache::open(&root_dir)?;
+
     Ok(Arc::new(ServerState {
         reload_tx: Arc::new(reload_tx),
         tera,
@@ -1056,6 +1078,7 @@ async fn setup_server_state(
         build_drafts: drafts,
         routes_url,
         posts: Arc::new(RwLock::new(posts)),
+        cache: Arc::new(RwLock::new(cache)),
     }))
 }
 

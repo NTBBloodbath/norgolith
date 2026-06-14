@@ -65,7 +65,7 @@ This guide assumes that you’ve already {:/docs/installation:}[installed Norgol
          <strong class="text-xl">Tip</strong>
        </span>
      @end
-     You might want to add `.build` directory to your `gitignore`.
+     You might want to add `.norgolith/cache/` directory to your `gitignore`.
      @embed html
      </blockquote>
      @end

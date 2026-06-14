@@ -14,3 +14,6 @@
 /docs/public
 /docs/.build
 /docs/deploy.sh
+
+# Build cache (incremental builds)
+.norgolith/cache/

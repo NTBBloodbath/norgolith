@@ -18,7 +18,7 @@ fn href_root_re() -> &'static regex::Regex {
     RE.get_or_init(|| regex::Regex::new(r#"href="(/|&#x2F;)"#).expect("valid regex"))
 }
 
-use crate::{config, fs, shared};
+use crate::{cache::BuildCache, config, fs, shared};
 
 /// Represents the directory structure of a Norgolith site.
 ///
@@ -192,13 +192,14 @@ async fn generate_xml_feeds(
 /// * `paths` - Site directory paths
 /// * `site_config` - Site configuration
 /// * `minify` - Enable minification of output
-#[instrument(level = "debug", skip(tera, paths, site_config, shared_context))]
+#[instrument(level = "debug", skip(tera, paths, site_config, shared_context, cache))]
 async fn build_contents(
     tera: &Tera,
     paths: &SitePaths,
     posts: &[toml::Value],
     site_config: &config::SiteConfig,
     shared_context: &Context,
+    cache: &Arc<tokio::sync::Mutex<BuildCache>>,
     minify: bool,
 ) -> Result<usize> {
     let entries = WalkDir::new(&paths.content)
@@ -221,6 +222,7 @@ async fn build_contents(
         .for_each_concurrent(num_cpus::get(), |entry| {
             let validation_errors = Arc::clone(&validation_errors);
             let built_count = Arc::clone(&built_count);
+            let cache = Arc::clone(cache);
 
             async move {
                 let path = entry.path();
@@ -233,6 +235,7 @@ async fn build_contents(
                     validation_errors,
                     built_count,
                     shared_context,
+                    &cache,
                 )
                 .await
                 {
@@ -258,7 +261,7 @@ async fn build_contents(
 #[allow(clippy::too_many_arguments)]
 #[instrument(
     level = "debug",
-    skip(tera, paths, site_config, validation_errors, built_count, shared_context)
+    skip(tera, paths, site_config, validation_errors, built_count, shared_context, cache)
 )]
 async fn build_content_entry(
     path: &Path,
@@ -269,6 +272,7 @@ async fn build_content_entry(
     validation_errors: Arc<Mutex<Vec<String>>>,
     built_count: Arc<Mutex<usize>>,
     shared_context: &Context,
+    cache: &Arc<tokio::sync::Mutex<BuildCache>>,
 ) -> Result<()> {
     let rel_path = path
         .strip_prefix(&paths.content)
@@ -314,7 +318,30 @@ async fn build_content_entry(
 
     // Full load with HTML conversion (only for non-draft pages, reuses pre-read content)
     let load_start = std::time::Instant::now();
-    let metadata = shared::load_metadata_from_content(&content, rel_path, &site_config.root_url);
+    // Check cache for full metadata (avoids expensive parse_tree on cache hit)
+    let cache_key = rel_path.with_extension("");
+    let metadata = {
+        let cache_guard = cache.lock().await;
+        cache_guard.get(&cache_key, &content)
+    };
+    let metadata = if let Some(cached) = metadata {
+        // Cache hit — deserialize from serde_json::Value back to toml::Value
+        match serde_json::from_value(cached.clone()) {
+            Ok(md) => md,
+            Err(_) => {
+                // Fallback: re-parse if deserialization fails
+                shared::load_metadata_from_content(&content, rel_path, &site_config.root_url)
+            }
+        }
+    } else {
+        // Cache miss — parse and store
+        let md = shared::load_metadata_from_content(&content, rel_path, &site_config.root_url);
+        if let Ok(json_val) = serde_json::to_value(&md) {
+            let mut cache_guard = cache.lock().await;
+            cache_guard.insert(&cache_key, &content, json_val);
+        }
+        md
+    };
     let load_time = load_start.elapsed();
 
     // Determine output path
@@ -754,11 +781,15 @@ pub async fn build(minify: bool) -> Result<()> {
     // Build shared Tera context once (config, posts, lith_version, collections)
     let shared_context = shared::build_shared_context(&posts, &site_config, &collections);
 
+    // Open build cache for incremental builds
+    let cache = BuildCache::open(&root_dir)?;
+    let cache = Arc::new(tokio::sync::Mutex::new(cache));
+
     println!();
 
     // Build all norg content (& run validation)
     let step_start = std::time::Instant::now();
-    let page_count = build_contents(&tera, &paths, &posts, &site_config, &shared_context, minify).await?;
+    let page_count = build_contents(&tera, &paths, &posts, &site_config, &shared_context, &cache, minify).await?;
     println!(
         "  {} {}  {:<12}  {}",
         "•".green(),
@@ -815,6 +846,12 @@ pub async fn build(minify: bool) -> Result<()> {
         "✓".green().bold(),
         shared::get_elapsed_time(build_start)
     );
+
+    // Save cache for next incremental build
+    let cache_guard = cache.lock().await;
+    if let Err(e) = cache_guard.save(&root_dir) {
+        warn!("Failed to save build cache: {}", e);
+    }
 
     Ok(())
 }
