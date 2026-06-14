@@ -159,7 +159,7 @@ async fn copy_theme_files(src: &Path, dest: &Path, sp: &mut Spinner) -> Result<(
     let mut entries = fs::read_dir(src).await?;
     while let Some(entry) = entries.next_entry().await? {
         let file_name = entry.file_name();
-        let file_name_str = file_name.clone().into_string().unwrap();
+        let file_name_str = file_name.to_string_lossy().into_owned();
 
         if allowed_dirs.contains(&file_name_str.as_ref()) {
             debug!(dir = %file_name_str, "Copying directory");
