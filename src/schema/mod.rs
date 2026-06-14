@@ -25,17 +25,6 @@ pub enum ValidationError {
     },
 }
 
-impl ValidationError {
-    pub fn with_field(&mut self, field: String) -> &Self {
-        match self {
-            Self::TypeMismatch { field: f, .. } => *f = field,
-            Self::ConstraintViolation { field: f, .. } => *f = field,
-            _ => {}
-        }
-        self
-    }
-}
-
 impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -152,7 +141,7 @@ pub enum FieldDefinition {
 }
 
 impl FieldDefinition {
-    pub fn validate(&self, value: &toml::Value) -> Result<(), ValidationError> {
+    pub fn validate(&self, value: &toml::Value, field_name: &str) -> Result<(), ValidationError> {
         match (self, value) {
             (
                 FieldDefinition::String {
@@ -164,7 +153,7 @@ impl FieldDefinition {
                 if let Some(max) = max_length {
                     if s.len() > *max {
                         return Err(ValidationError::ConstraintViolation {
-                            field: String::new(),
+                            field: field_name.to_string(),
                             message: format!("Exceeds max length {}", max),
                         });
                     }
@@ -174,14 +163,14 @@ impl FieldDefinition {
                         Ok(r) => r,
                         Err(_) => {
                             return Err(ValidationError::ConstraintViolation {
-                                field: "pattern".into(),
+                                field: field_name.to_string(),
                                 message: format!("Invalid regex pattern: {}", pattern),
                             })
                         }
                     };
                     if !re.is_match(s) {
                         return Err(ValidationError::ConstraintViolation {
-                            field: String::new(),
+                            field: field_name.to_string(),
                             message: format!("No pattern matching {}", pattern),
                         });
                     }
@@ -190,7 +179,7 @@ impl FieldDefinition {
             }
             (
                 FieldDefinition::Array {
-                    items: _,
+                    items,
                     min_items,
                     max_items,
                     must_contain,
@@ -201,7 +190,7 @@ impl FieldDefinition {
                     for required in required_values {
                         if !arr.contains(required) {
                             return Err(ValidationError::ConstraintViolation {
-                                field: String::new(),
+                                field: field_name.to_string(),
                                 message: format!("Missing value {}", required),
                             });
                         }
@@ -210,7 +199,7 @@ impl FieldDefinition {
                 if let Some(min) = min_items {
                     if arr.len() < *min {
                         return Err(ValidationError::ConstraintViolation {
-                            field: String::new(),
+                            field: field_name.to_string(),
                             message: format!("Must contain at least {} value(s)", *min),
                         });
                     }
@@ -218,17 +207,20 @@ impl FieldDefinition {
                 if let Some(max) = max_items {
                     if arr.len() > *max {
                         return Err(ValidationError::ConstraintViolation {
-                            field: String::new(),
+                            field: field_name.to_string(),
                             message: format!("Exceeds values limit (expected {} value(s))", *max),
                         });
                     }
+                }
+                for (i, item) in arr.iter().enumerate() {
+                    items.validate(item, &format!("{}[{}]", field_name, i))?;
                 }
                 Ok(())
             }
             (FieldDefinition::Boolean, value) => {
                 if !value.is_bool() {
                     return Err(ValidationError::TypeMismatch {
-                        field: String::new(),
+                        field: field_name.to_string(),
                         expected: self.type_name(),
                         actual: value.to_string(),
                     });
@@ -236,7 +228,7 @@ impl FieldDefinition {
                 Ok(())
             }
             _ => Err(ValidationError::TypeMismatch {
-                field: String::new(), // Should populate field name from context
+                field: field_name.to_string(),
                 expected: self.type_name(),
                 actual: value.to_string(),
             }),
@@ -356,7 +348,7 @@ mod tests {
             max_length: None,
             pattern: None,
         };
-        assert!(def.validate(&toml::Value::String("hello".into())).is_ok());
+        assert!(def.validate(&toml::Value::String("hello".into()), "title").is_ok());
     }
 
     #[test]
@@ -365,7 +357,7 @@ mod tests {
             max_length: Some(10),
             pattern: None,
         };
-        assert!(def.validate(&toml::Value::String("hello".into())).is_ok());
+        assert!(def.validate(&toml::Value::String("hello".into()), "title").is_ok());
     }
 
     #[test]
@@ -374,7 +366,7 @@ mod tests {
             max_length: Some(5),
             pattern: None,
         };
-        assert!(def.validate(&toml::Value::String("hello".into())).is_ok());
+        assert!(def.validate(&toml::Value::String("hello".into()), "title").is_ok());
     }
 
     #[test]
@@ -384,7 +376,7 @@ mod tests {
             pattern: None,
         };
         let err = def
-            .validate(&toml::Value::String("hello".into()))
+            .validate(&toml::Value::String("hello".into()), "title")
             .unwrap_err();
         assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
     }
@@ -395,7 +387,7 @@ mod tests {
             max_length: None,
             pattern: Some(r"^\d+$".into()),
         };
-        assert!(def.validate(&toml::Value::String("1234".into())).is_ok());
+        assert!(def.validate(&toml::Value::String("1234".into()), "title").is_ok());
     }
 
     #[test]
@@ -405,7 +397,7 @@ mod tests {
             pattern: Some(r"^\d+$".into()),
         };
         let err = def
-            .validate(&toml::Value::String("abc".into()))
+            .validate(&toml::Value::String("abc".into()), "title")
             .unwrap_err();
         assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
     }
@@ -416,7 +408,7 @@ mod tests {
             max_length: None,
             pattern: None,
         };
-        let err = def.validate(&toml::Value::Boolean(true)).unwrap_err();
+        let err = def.validate(&toml::Value::Boolean(true), "title").unwrap_err();
         assert!(matches!(err, ValidationError::TypeMismatch { .. }));
     }
 
@@ -425,21 +417,21 @@ mod tests {
     #[test]
     fn boolean_true_valid() {
         assert!(FieldDefinition::Boolean
-            .validate(&toml::Value::Boolean(true))
+            .validate(&toml::Value::Boolean(true), "draft")
             .is_ok());
     }
 
     #[test]
     fn boolean_false_valid() {
         assert!(FieldDefinition::Boolean
-            .validate(&toml::Value::Boolean(false))
+            .validate(&toml::Value::Boolean(false), "draft")
             .is_ok());
     }
 
     #[test]
     fn boolean_string_errors() {
         let err = FieldDefinition::Boolean
-            .validate(&toml::Value::String("true".into()))
+            .validate(&toml::Value::String("true".into()), "draft")
             .unwrap_err();
         assert!(matches!(err, ValidationError::TypeMismatch { .. }));
     }
@@ -457,52 +449,64 @@ mod tests {
             max_items: None,
             must_contain: None,
         };
-        assert!(def.validate(&str_array(&["a", "b"])).is_ok());
+        assert!(def.validate(&str_array(&["a", "b"]), "tags").is_ok());
     }
 
     #[test]
     fn array_min_items_exactly_satisfied() {
         let def = FieldDefinition::Array {
-            items: Box::new(FieldDefinition::Boolean),
+            items: Box::new(FieldDefinition::String {
+                max_length: None,
+                pattern: None,
+            }),
             min_items: Some(2),
             max_items: None,
             must_contain: None,
         };
-        assert!(def.validate(&str_array(&["a", "b"])).is_ok());
+        assert!(def.validate(&str_array(&["a", "b"]), "tags").is_ok());
     }
 
     #[test]
     fn array_min_items_violated() {
         let def = FieldDefinition::Array {
-            items: Box::new(FieldDefinition::Boolean),
+            items: Box::new(FieldDefinition::String {
+                max_length: None,
+                pattern: None,
+            }),
             min_items: Some(3),
             max_items: None,
             must_contain: None,
         };
-        let err = def.validate(&str_array(&["a", "b"])).unwrap_err();
+        let err = def.validate(&str_array(&["a", "b"]), "tags").unwrap_err();
         assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
     }
 
     #[test]
     fn array_max_items_exactly_satisfied() {
         let def = FieldDefinition::Array {
-            items: Box::new(FieldDefinition::Boolean),
+            items: Box::new(FieldDefinition::String {
+                max_length: None,
+                pattern: None,
+            }),
             min_items: None,
             max_items: Some(3),
             must_contain: None,
         };
-        assert!(def.validate(&str_array(&["a", "b"])).is_ok());
+        assert!(def.validate(&str_array(&["a", "b"]), "tags").is_ok());
     }
 
     #[test]
     fn array_max_items_violated() {
         let def = FieldDefinition::Array {
-            items: Box::new(FieldDefinition::Boolean),
+            items: Box::new(FieldDefinition::String {
+                max_length: None,
+                pattern: None,
+            }),
             min_items: None,
             max_items: Some(2),
             must_contain: None,
         };
-        let err = def.validate(&str_array(&["a", "b", "c"])).unwrap_err();
+        let err = def.validate(&str_array(&["a", "b", "c"]), "tags").unwrap_err();
         assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
     }
 
@@ -517,7 +521,7 @@ mod tests {
             max_items: None,
             must_contain: Some(vec![toml::Value::String("norgolith".into())]),
         };
-        assert!(def.validate(&str_array(&["foo", "norgolith"])).is_ok());
+        assert!(def.validate(&str_array(&["foo", "norgolith"]), "tags").is_ok());
     }
 
     #[test]
@@ -531,7 +535,7 @@ mod tests {
             max_items: None,
             must_contain: Some(vec![toml::Value::String("norgolith".into())]),
         };
-        let err = def.validate(&str_array(&["foo", "bar"])).unwrap_err();
+        let err = def.validate(&str_array(&["foo", "bar"]), "tags").unwrap_err();
         assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
     }
 
@@ -544,9 +548,53 @@ mod tests {
             must_contain: None,
         };
         let err = def
-            .validate(&toml::Value::String("not an array".into()))
+            .validate(&toml::Value::String("not an array".into()), "tags")
             .unwrap_err();
         assert!(matches!(err, ValidationError::TypeMismatch { .. }));
+    }
+
+    #[test]
+    fn array_item_type_mismatch_errors() {
+        let def = FieldDefinition::Array {
+            items: Box::new(FieldDefinition::String {
+                max_length: None,
+                pattern: None,
+            }),
+            min_items: None,
+            max_items: None,
+            must_contain: None,
+        };
+        let arr = toml::Value::Array(vec![
+            toml::Value::String("ok".into()),
+            toml::Value::Integer(42),
+        ]);
+        let err = def.validate(&arr, "tags").unwrap_err();
+        assert!(matches!(err, ValidationError::TypeMismatch { .. }));
+    }
+
+    #[test]
+    fn array_item_string_pattern_validates() {
+        let def = FieldDefinition::Array {
+            items: Box::new(FieldDefinition::String {
+                max_length: None,
+                pattern: Some(r"^\d+$".into()),
+            }),
+            min_items: None,
+            max_items: None,
+            must_contain: None,
+        };
+        let ok = toml::Value::Array(vec![
+            toml::Value::String("123".into()),
+            toml::Value::String("456".into()),
+        ]);
+        assert!(def.validate(&ok, "tags").is_ok());
+
+        let bad = toml::Value::Array(vec![
+            toml::Value::String("123".into()),
+            toml::Value::String("abc".into()),
+        ]);
+        let err = def.validate(&bad, "tags").unwrap_err();
+        assert!(matches!(err, ValidationError::ConstraintViolation { .. }));
     }
 
     // ContentSchema::resolve_path

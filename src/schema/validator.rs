@@ -18,10 +18,9 @@ pub fn validate_metadata(
     // Validate field types and constraints
     for (field, value) in metadata {
         if let Some(def) = merged.fields.get(field) {
-            match def.validate(value) {
+            match def.validate(value, field) {
                 Ok(_) => {}
-                Err(mut e) => {
-                    e.with_field(field.to_string());
+                Err(e) => {
                     errors.push(e);
                 }
             }
