@@ -701,7 +701,9 @@ async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<R
     let tera = state.tera.read().await;
 
     let rel_path = path.strip_prefix(&state.paths.content)?.to_path_buf();
-    let metadata = shared::load_metadata(path, rel_path, &state.routes_url).await;
+
+    // Lightweight metadata extraction first (no parse_tree, no HTML conversion)
+    let metadata = shared::extract_metadata_only(path.clone(), rel_path.clone(), &state.routes_url).await;
     let is_draft = metadata
         .get("draft")
         .map(|v| {
@@ -712,6 +714,9 @@ async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<R
     if is_draft && !state.build_drafts {
         return Ok(handle_not_found());
     }
+
+    // Full load with HTML conversion (only for non-draft pages or when serving drafts)
+    let metadata = shared::load_metadata(path, rel_path, &state.routes_url).await;
 
     let config = state.config.read().await.clone();
     let posts = state.posts.read().await.clone();
