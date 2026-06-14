@@ -204,7 +204,7 @@ impl ThemeManager {
         checkout_version(&repo, &version).await?;
 
         // Backup existing theme files before installing a new one
-        let backup_dir = self.theme_dir.parent().unwrap().join(".theme_backup");
+        let backup_dir = self.theme_dir.parent().unwrap_or(Path::new(".")).join(".theme_backup");
         debug!(backup_path = %backup_dir.display(), "Starting theme backup");
         backup_theme_files(&self.theme_dir, &backup_dir, sp)
             .await
@@ -259,7 +259,7 @@ impl ThemeManager {
                 .context("Failed to checkout new theme version")?;
 
             // Backup current theme files
-            let backup_dir = self.theme_dir.parent().unwrap().join(".theme_backup");
+            let backup_dir = self.theme_dir.parent().unwrap_or(Path::new(".")).join(".theme_backup");
             backup_theme_files(&self.theme_dir, &backup_dir, sp)
                 .await
                 .context("Failed to backup theme files")?;
