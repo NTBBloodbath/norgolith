@@ -152,6 +152,10 @@ async fn generate_xml_feeds(
     let mut context = Context::new();
     context.insert("config", site_config);
     context.insert("posts", posts);
+    context.insert(
+        "lith_version",
+        option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+    );
     shared::insert_collection_subsets(&mut context, posts, site_config);
     context.insert("now", &chrono::Utc::now());
 

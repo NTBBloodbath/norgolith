@@ -56,6 +56,10 @@ pub async fn render_norg_page(
     context.insert("content", content);
     context.insert("metadata", metadata);
     context.insert("posts", posts);
+    context.insert(
+        "lith_version",
+        option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+    );
     insert_collection_subsets(&mut context, posts, config);
 
     tera.render(&format!("{}.html", layout), &context)

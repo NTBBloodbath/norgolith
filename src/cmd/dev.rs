@@ -645,6 +645,10 @@ async fn handle_xml_feed(request_path: &str, state: &Arc<ServerState>) -> Result
     let mut context = Context::new();
     context.insert("config", &config);
     context.insert("posts", &posts);
+    context.insert(
+        "lith_version",
+        option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+    );
     shared::insert_collection_subsets(&mut context, &posts, &config);
     context.insert("now", &Utc::now());
 
@@ -788,6 +792,10 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
     let mut context = Context::new();
     context.insert("config", &config);
     context.insert("posts", &posts);
+    context.insert(
+        "lith_version",
+        option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+    );
     shared::insert_collection_subsets(&mut context, &posts, &config);
     context.insert("categories", &categories.into_iter().collect::<Vec<_>>());
 
@@ -838,6 +846,10 @@ async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Respons
     context.insert("config", &config);
     context.insert("category", &category);
     context.insert("posts", &category_posts);
+    context.insert(
+        "lith_version",
+        option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+    );
 
     let tera = state.tera.read().await;
     let mut body = tera.render("category.html", &context).map_err(|e| {
