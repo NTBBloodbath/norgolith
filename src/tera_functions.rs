@@ -2,6 +2,17 @@ use std::collections::HashMap;
 
 use tera::{Error, Function, Result, Value};
 
+fn encode_uri_component(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                String::from(b as char)
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
 /// Now function
 /// Template usage: {{ now(format="%A, %B %d") }} → "Thursday, October 05"
 pub struct NowFunction;
@@ -102,7 +113,11 @@ fn generate_nested_html(tree: &TocTree, list_type: &str) -> String {
     fn render_node(tree: &TocTree, node_idx: usize, list_type: &str) -> String {
         let node = &tree.nodes[node_idx];
 
-        let mut html = format!("<li><a href=\"#{}\">{}</a>", node.id, node.title);
+        let mut html = format!(
+            "<li><a href=\"#{}\">{}</a>",
+            encode_uri_component(&node.id),
+            tera::escape_html(&node.title)
+        );
 
         if !node.children.is_empty() {
             html.push_str(&format!("<{}>", list_type));
