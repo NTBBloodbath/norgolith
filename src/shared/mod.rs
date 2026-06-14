@@ -193,8 +193,13 @@ pub async fn load_metadata(path: PathBuf, rel_path: PathBuf, routes_url: &str) -
         return toml::Value::Table(toml::map::Map::new());
     };
     let (html, toc) = converter::html::convert(&content, routes_url);
-    let mut metadata = converter::meta::convert(&content, Some(converter::html::toc_to_toml(&toc)))
-        .unwrap_or(toml::Value::Table(toml::map::Map::new()));
+    let mut metadata = match converter::meta::convert(&content, Some(converter::html::toc_to_toml(&toc))) {
+        Ok(m) => m,
+        Err(e) => {
+            warn!("Failed to parse metadata for {}: {}", rel_path.display(), e);
+            toml::Value::Table(toml::map::Map::new())
+        }
+    };
     let permalink = {
         let mut permalink_path = rel_path.with_extension("");
         if permalink_path
