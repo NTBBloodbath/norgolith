@@ -1893,6 +1893,7 @@ dependencies = [
  "num_cpus",
  "open",
  "percent-encoding",
+ "rayon",
  "regex",
  "rss",
  "rust-norg",

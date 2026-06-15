@@ -221,7 +221,7 @@ async fn init_site(name: String, prompt: bool) -> Result<()> {
 /// # Returns:
 ///   A `Result<()>` indicating success or error.
 async fn build_site(minify: bool) -> Result<()> {
-    cmd::build(minify).await
+    cmd::build(minify)
 }
 
 async fn preview(port: u16, open: bool, host: bool) -> Result<()> {

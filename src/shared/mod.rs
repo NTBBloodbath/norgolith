@@ -5,7 +5,6 @@ use std::time::Instant;
 
 use colored::Colorize;
 use eyre::{eyre, Result};
-use futures_util::StreamExt;
 use tera::{Context, Tera};
 use tracing::{error, warn};
 use walkdir::WalkDir;
@@ -44,7 +43,7 @@ pub fn precompute_collection_subsets(
 
 /// Builds a Tera context with shared site data (config, posts, version, collection subsets).
 ///
-/// This context is identical for every page render — only `metadata` and `content` differ.
+/// This context is identical for every page render. Only `metadata` and `content` differ.
 /// Build once and clone per page to avoid redundant serialization.
 pub fn build_shared_context(
     posts: &[toml::Value],
@@ -67,7 +66,7 @@ pub fn build_shared_context(
 /// Render full norg page by converting it to HTML and applying tera template.
 ///
 /// Uses a pre-built shared context; only `metadata` and `content` are inserted per page.
-pub async fn render_norg_page(
+pub fn render_norg_page(
     tera: &Tera,
     metadata: &toml::Value,
     shared_context: &Context,
@@ -94,13 +93,13 @@ pub async fn render_norg_page(
         })
 }
 
-pub async fn render_category_index(
+pub fn render_category_index(
     tera: &Tera,
     posts: &[toml::Value],
     config: &SiteConfig,
     collections: &PrecomputedCollections,
 ) -> Result<String> {
-    let categories = collect_all_posts_categories(posts).await;
+    let categories = collect_all_posts_categories(posts);
     let context = {
         let mut ctx = Context::new();
         ctx.insert("config", config);
@@ -122,7 +121,7 @@ pub async fn render_category_index(
     })
 }
 
-pub async fn render_category_page(
+pub fn render_category_page(
     tera: &Tera,
     name: &str,
     cat_posts: &[&toml::Value],
@@ -156,12 +155,12 @@ pub fn get_elapsed_time(instant: Instant) -> String {
     }
 }
 
-pub async fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Result<Tera> {
+pub fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Result<Tera> {
     let mut tera = Tera::default();
 
     // Loading theme templates first allows the user to extend the theme templates using their own user-defined
     // templates aka inheriting from the theme templates.
-    if tokio::fs::try_exists(&theme_templates_dir).await? {
+    if theme_templates_dir.exists() {
         let theme_glob = format!("{}/**/*.html", theme_templates_dir.display());
         let theme_tera =
             Tera::parse(&theme_glob).map_err(|e| eyre!("Error parsing theme templates: {}", e))?;
@@ -272,8 +271,8 @@ pub fn extract_metadata_from_content(content: &str, rel_path: &Path, routes_url:
 /// scanning and the metadata parser, making it ~10x faster.
 ///
 /// Used by `collect_all_posts_metadata` where only metadata is needed, not HTML.
-pub async fn extract_metadata_only(path: PathBuf, rel_path: PathBuf, routes_url: &str) -> toml::Value {
-    let Ok(content) = tokio::fs::read_to_string(&path).await else {
+pub fn extract_metadata_only(path: PathBuf, rel_path: PathBuf, routes_url: &str) -> toml::Value {
+    let Ok(content) = std::fs::read_to_string(&path) else {
         error!(
             "{} {}",
             "Norg file not found for".bold(),
@@ -297,7 +296,7 @@ pub async fn extract_metadata_only(path: PathBuf, rel_path: PathBuf, routes_url:
 ///
 /// # Returns
 /// * `Result<String>` - Empty String if the validation did not find any error, an String containing all the errors otherwise.
-pub async fn validate_content_metadata(
+pub fn validate_content_metadata(
     content_dir: &Path,
     path: &Path,
     metadata: &toml::Value,
@@ -333,7 +332,7 @@ pub async fn validate_content_metadata(
 }
 
 /// Collects all unique categories from post metadata
-pub async fn collect_all_posts_categories(posts: &[toml::Value]) -> HashSet<String> {
+pub fn collect_all_posts_categories(posts: &[toml::Value]) -> HashSet<String> {
     let mut categories = HashSet::new();
 
     for post in posts {
@@ -349,7 +348,7 @@ pub async fn collect_all_posts_categories(posts: &[toml::Value]) -> HashSet<Stri
     categories
 }
 
-pub async fn collect_all_posts_metadata(
+pub fn collect_all_posts_metadata(
     content_dir: &Path,
     routes_url: &str,
     collections: &[CollectionConfig],
@@ -381,14 +380,11 @@ pub async fn collect_all_posts_metadata(
         })
         .collect();
 
-    // Process metadata extraction concurrently
-    let mut posts: Vec<toml::Value> = futures_util::stream::iter(entries)
-        .map(|(path, rel_path)| async move {
-            extract_metadata_only(path, rel_path, routes_url).await
-        })
-        .buffer_unordered(num_cpus::get())
-        .collect::<Vec<_>>()
-        .await;
+    // Process metadata extraction
+    let mut posts: Vec<toml::Value> = entries
+        .into_iter()
+        .map(|(path, rel_path)| extract_metadata_only(path, rel_path, routes_url))
+        .collect();
 
     posts.sort_by(|a, b| {
         let a_date = a

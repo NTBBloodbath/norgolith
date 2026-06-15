@@ -1,15 +1,15 @@
 use std::path::{Path, PathBuf};
 
 use eyre::Result;
-use tokio::fs::{copy, create_dir_all, metadata, read_dir};
+use tokio::fs::{copy, create_dir_all, read_dir};
 use tracing::{debug, instrument};
 
 #[cfg(test)]
-use tokio::fs::{create_dir, File};
+use tempfile::tempdir;
 
 /// Find a given file or directory in the current working directory and its parent directories recursively
 #[instrument(skip(kind, filename, current_dir))]
-pub async fn find_in_previous_dirs(
+pub fn find_in_previous_dirs(
     kind: &str,
     filename: &str,
     current_dir: &mut PathBuf,
@@ -18,7 +18,7 @@ pub async fn find_in_previous_dirs(
         // Check if the file|dir exists in the current directory first
         let path = current_dir.join(filename);
         debug!("Checking path for {}", kind);
-        if let Ok(metadata) = metadata(&path).await {
+        if let Ok(metadata) = std::fs::metadata(&path) {
             if (metadata.is_file() && kind == "file") || (metadata.is_dir() && kind == "dir") {
                 debug!("Found matching {} at path", kind);
                 return Ok(Some(path));
@@ -45,12 +45,12 @@ pub async fn find_in_previous_dirs(
 }
 
 #[instrument]
-pub async fn find_config_file() -> Result<Option<PathBuf>> {
+pub fn find_config_file() -> Result<Option<PathBuf>> {
     // Try to find a 'norgolith.toml' file in the current working directory and its parents
     let mut current_dir = std::env::current_dir()?;
     debug!("Starting search for config file 'norgolith.toml'");
 
-    let found_site_root = find_in_previous_dirs("file", "norgolith.toml", &mut current_dir).await?;
+    let found_site_root = find_in_previous_dirs("file", "norgolith.toml", &mut current_dir)?;
 
     match &found_site_root {
         Some(path) => debug!("Found config file: {}", path.display()),
@@ -94,70 +94,64 @@ pub async fn copy_dir_all(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Resu
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use eyre::Result;
     use tempfile::tempdir;
 
-    use super::*;
-
-    #[tokio::test]
-    async fn test_find_file_in_current_directory() -> Result<()> {
+    #[test]
+    fn test_find_file_in_current_directory() -> Result<()> {
         let dir = tempdir()?;
-        // Create temporal test file
         let test_file = "test_file_1.txt";
         let test_file_path = dir.path().join(test_file);
-        File::create(&test_file_path).await?;
+        std::fs::File::create(&test_file_path)?;
 
-        // Look for the temporal test file
-        let result = find_in_previous_dirs("file", test_file, &mut dir.path().to_path_buf()).await;
+        let result = find_in_previous_dirs("file", test_file, &mut dir.path().to_path_buf());
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(test_file_path));
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_find_file_from_child_directory() -> Result<()> {
+    #[test]
+    fn test_find_file_from_child_directory() -> Result<()> {
         let dir = tempdir()?;
-        // Create temporal test directory and test file
         let test_file_name = "test_file_2.txt";
         let test_file = dir.path().join(test_file_name);
         let test_directory = dir.path().join("parent_dir");
 
-        create_dir(&test_directory).await?;
-        File::create(&test_file).await?;
+        std::fs::create_dir(&test_directory)?;
+        std::fs::File::create(&test_file)?;
 
-        // Look for the temporal test file
         let result =
-            find_in_previous_dirs("file", test_file_name, &mut test_directory.clone()).await;
+            find_in_previous_dirs("file", test_file_name, &mut test_directory.clone());
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(test_file.clone()));
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_find_file_not_found() -> Result<()> {
+    #[test]
+    fn test_find_file_not_found() -> Result<()> {
         let dir = tempdir()?;
         let test_file = "non_existent_file.txt";
 
-        let result = find_in_previous_dirs("file", test_file, &mut dir.path().to_path_buf()).await;
+        let result = find_in_previous_dirs("file", test_file, &mut dir.path().to_path_buf());
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), None);
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_find_dir_in_current_dir() -> Result<()> {
+    #[test]
+    fn test_find_dir_in_current_dir() -> Result<()> {
         let dir = tempdir()?;
-        // Create temporal test directory
         let test_directory_name = "parent_dir2";
         let test_directory = dir.path().join(test_directory_name);
 
-        create_dir(&test_directory).await?;
+        std::fs::create_dir(&test_directory)?;
 
-        // Look for the temporal directory
         let result =
-            find_in_previous_dirs("dir", test_directory_name, &mut dir.path().to_path_buf()).await;
+            find_in_previous_dirs("dir", test_directory_name, &mut dir.path().to_path_buf());
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(test_directory));
 
