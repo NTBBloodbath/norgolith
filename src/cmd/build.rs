@@ -981,7 +981,9 @@ pub fn build(minify: bool) -> Result<()> {
     }
     timings.cache_save_ms = t.elapsed().as_millis();
 
-    timings.print_summary(total_ms);
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        timings.print_summary(total_ms);
+    }
 
     Ok(())
 }
