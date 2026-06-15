@@ -214,47 +214,67 @@ async fn build_contents(
         })
         .filter(|e| e.path().extension().is_some_and(|ext| ext == "norg"));
 
-    // Shared error state for concurrent validation
+    // Shared state for concurrent processing
     let validation_errors = Arc::new(Mutex::new(Vec::new()));
-    let built_count = Arc::new(Mutex::new(0usize));
     let timings = Arc::new(Mutex::new(BuildTimings::new()));
 
-    // Parallel processing
+    // Parallel processing — buffer rendered content in memory
+    let entries: Vec<_> = entries.collect();
+    let buffered = Arc::new(Mutex::new(Vec::with_capacity(entries.len())));
     futures_util::stream::iter(entries)
         .for_each_concurrent(num_cpus::get(), |entry| {
             let validation_errors = Arc::clone(&validation_errors);
-            let built_count = Arc::clone(&built_count);
             let cache = Arc::clone(cache);
             let timings = Arc::clone(&timings);
+            let buffered = Arc::clone(&buffered);
 
             async move {
                 let path = entry.path();
-                if let Err(e) = build_content_entry(
+                match build_content_entry(
                     path,
                     tera,
                     paths,
                     site_config,
                     minify,
                     validation_errors,
-                    built_count,
                     shared_context,
                     &cache,
                     &timings,
                 )
                 .await
                 {
-                    error!("{:?}", e);
+                    Ok(Some((public_path, content))) => {
+                        buffered.lock().await.push((public_path, content));
+                    }
+                    Ok(None) => {} // draft or missing
+                    Err(e) => error!("{:?}", e),
                 }
             }
         })
         .await;
+    let buffered_writes = Arc::try_unwrap(buffered)
+        .expect("buffered Arc should have single owner")
+        .into_inner();
+
+    // Sequential writes — single I/O path, no contention
+    let write_start = Instant::now();
+    let mut built_count = 0usize;
+    for (public_path, content) in buffered_writes {
+        if write_public_file(&public_path, &content).await? {
+            built_count += 1;
+        }
+    }
+    {
+        let mut t = timings.lock().await;
+        t.page_write_ms = write_start.elapsed().as_millis();
+    }
 
     let errors = validation_errors.lock().await;
     if !errors.is_empty() {
         bail!(errors.join("\n"));
     }
 
-    let count = *built_count.lock().await;
+    let count = built_count;
     Ok((count, timings))
 }
 
@@ -262,10 +282,11 @@ async fn build_contents(
 ///
 /// Handles template rendering, metadata validation, and output path determination.
 /// Skips draft content and applies minification when enabled.
+/// Returns `(public_path, rendered_content)` for deferred writing.
 #[allow(clippy::too_many_arguments)]
 #[instrument(
     level = "debug",
-    skip(tera, paths, site_config, validation_errors, built_count, shared_context, cache)
+    skip(tera, paths, site_config, validation_errors, shared_context, cache)
 )]
 async fn build_content_entry(
     path: &Path,
@@ -274,11 +295,10 @@ async fn build_content_entry(
     site_config: &config::SiteConfig,
     minify: bool,
     validation_errors: Arc<Mutex<Vec<String>>>,
-    built_count: Arc<Mutex<usize>>,
     shared_context: &Context,
     cache: &Arc<tokio::sync::Mutex<BuildCache>>,
     timings: &Arc<Mutex<BuildTimings>>,
-) -> Result<()> {
+) -> Result<Option<(PathBuf, String)>> {
     let rel_path = path
         .strip_prefix(&paths.content)
         .wrap_err("Failed to strip prefix")?;
@@ -291,7 +311,7 @@ async fn build_content_entry(
             "Norg file not found for".bold(),
             rel_path.display()
         );
-        return Ok(());
+        return Ok(None);
     };
     let file_ms = t.elapsed().as_millis();
 
@@ -327,7 +347,7 @@ async fn build_content_entry(
             t.page_schema_ms += schema_ms;
             t.page_draft_ms += draft_ms;
         }
-        return Ok(());
+        return Ok(None);
     }
     let draft_ms = t.elapsed().as_millis();
 
@@ -382,14 +402,6 @@ async fn build_content_entry(
     };
     let minify_ms = t.elapsed().as_millis();
 
-    // Write
-    let t = Instant::now();
-    if !rendered.is_empty() {
-        write_public_file(&public_path, &rendered).await?;
-        *built_count.lock().await += 1;
-    }
-    let write_ms = t.elapsed().as_millis();
-
     // Accumulate timings
     {
         let mut t = timings.lock().await;
@@ -402,10 +414,9 @@ async fn build_content_entry(
         t.page_render_ms += render_ms;
         t.page_href_ms += href_ms;
         t.page_minify_ms += minify_ms;
-        t.page_write_ms += write_ms;
     }
 
-    Ok(())
+    Ok(Some((public_path, rendered)))
 }
 
 /// Generates category listing pages
@@ -482,29 +493,50 @@ fn determine_public_path(public_dir: &Path, rel_path: &Path) -> Result<PathBuf> 
     }
 }
 
-/// Writes rendered content to the public directory, ensuring parent directories exist.
+/// Pre-creates all output directories needed by content entries.
 ///
-/// This function creates any necessary parent directories before writing the file
-/// to the specified public path. It is used to save rendered HTML content and
-/// other assets to their final locations.
+/// Walks the content directory, computes each file's public output path via
+/// `determine_public_path`, and creates all unique parent directories once.
+/// This avoids redundant `create_dir_all` syscalls inside the parallel build loop.
+fn precreate_output_dirs(paths: &SitePaths) -> Result<()> {
+    let entries = WalkDir::new(&paths.content)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "norg"));
+
+    let mut dirs = std::collections::HashSet::new();
+    for entry in entries {
+        let rel_path = entry.path().strip_prefix(&paths.content)?;
+        if let Ok(public_path) = determine_public_path(&paths.public, rel_path) {
+            if let Some(parent) = public_path.parent() {
+                dirs.insert(parent.to_path_buf());
+            }
+        }
+    }
+    for dir in &dirs {
+        std::fs::create_dir_all(dir)?;
+    }
+    Ok(())
+}
+
+/// Writes rendered content to the public directory, skipping if content is unchanged.
+///
+/// If the file already exists with identical content, the write is skipped entirely.
+/// Parent directories must be created beforehand (see `precreate_output_dirs`).
 ///
 /// # Arguments
 /// * `public_path` - The path where the file should be written in the public directory.
 /// * `rendered` - The content to write to the file.
 ///
 /// # Returns
-/// * `Result<()>` - `Ok(())` if the file is written successfully, otherwise an error.
+/// * `Result<bool>` - `Ok(true)` if file was written, `Ok(false)` if skipped (unchanged).
 #[instrument(skip(rendered))]
-async fn write_public_file(public_path: &Path, rendered: &str) -> Result<()> {
-    if let Some(parent) = public_path.parent() {
-        tokio::fs::create_dir_all(parent).await.wrap_err(
-            format!(
-                "{}: {}",
-                "Failed to create parent directory for".bold(),
-                public_path.display()
-            )
-            .bold(),
-        )?;
+async fn write_public_file(public_path: &Path, rendered: &str) -> Result<bool> {
+    // Skip write if file exists with identical content
+    if let Ok(existing) = tokio::fs::read(public_path).await {
+        if existing == rendered.as_bytes() {
+            return Ok(false);
+        }
     }
     tokio::fs::write(public_path, rendered)
         .await
@@ -513,7 +545,7 @@ async fn write_public_file(public_path: &Path, rendered: &str) -> Result<()> {
             "Failed to write to public path".bold(),
             public_path.display()
         ))?;
-    Ok(())
+    Ok(true)
 }
 
 /// Determines whether an asset should be minified based on its name and extension.
@@ -907,6 +939,11 @@ pub async fn build(minify: bool) -> Result<()> {
     let t = Instant::now();
     prepare_build_directory(&paths.public).await?;
     timings.prepare_dir_ms = t.elapsed().as_millis();
+
+    // Pre-create output directories for all content entries
+    let t = Instant::now();
+    precreate_output_dirs(&paths)?;
+    timings.prepare_dir_ms += t.elapsed().as_millis();
 
     // Collect post metadata
     let t = Instant::now();
