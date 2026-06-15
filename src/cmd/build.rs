@@ -1067,7 +1067,7 @@ pub async fn build(minify: bool) -> Result<()> {
     // Save cache
     let t = Instant::now();
     let cache_guard = cache.read().await;
-    if let Err(e) = cache_guard.save(&root_dir) {
+    if let Err(e) = cache_guard.save() {
         warn!("Failed to save build cache: {}", e);
     }
     drop(cache_guard);

@@ -33,6 +33,7 @@ fn cache_dir_for_site(site_root: &Path) -> Result<PathBuf> {
 pub struct BuildCache {
     cache_dir: PathBuf,
     entries: HashMap<PathBuf, CacheEntry>,
+    global_hash: String,
 }
 
 impl BuildCache {
@@ -63,7 +64,7 @@ impl BuildCache {
             let _ = std::fs::remove_dir_all(&cache_dir);
         }
 
-        Ok(Self { cache_dir, entries })
+        Ok(Self { cache_dir, entries, global_hash })
     }
 
     /// Looks up cached metadata for a file.
@@ -95,7 +96,7 @@ impl BuildCache {
     }
 
     /// Saves cache entries and global hash to disk.
-    pub fn save(&self, site_root: &Path) -> Result<()> {
+    pub fn save(&self) -> Result<()> {
         if !self.cache_dir.exists() {
             std::fs::create_dir_all(&self.cache_dir).map_err(|e| {
                 eyre!("{}: {}", "Failed to create cache directory".bold(), e)
@@ -103,9 +104,8 @@ impl BuildCache {
         }
 
         // Write global hash
-        let global_hash = compute_global_hash(site_root)?;
         let global_path = self.cache_dir.join(".global_hash");
-        std::fs::write(&global_path, &global_hash).map_err(|e| {
+        std::fs::write(&global_path, &self.global_hash).map_err(|e| {
             eyre!("{}: {}", "Failed to write global hash".bold(), e)
         })?;
 
