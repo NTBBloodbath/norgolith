@@ -25,13 +25,15 @@ pub fn precompute_collection_subsets(
         .collections
         .iter()
         .map(|collection| {
-            let prefix = format!("/{}/", collection.dir);
+            let dir_prefix = format!("{}/", collection.dir);
             let subset: Vec<_> = all_posts
                 .iter()
                 .filter(|p| {
-                    p.get("permalink")
+                    p.get("rel_path")
                         .and_then(|v| v.as_str())
-                        .map(|permalink| permalink.starts_with(&prefix))
+                        .map(|rel_path| {
+                            rel_path == collection.dir || rel_path.starts_with(&dir_prefix)
+                        })
                         .unwrap_or(false)
                 })
                 .cloned()
@@ -58,7 +60,8 @@ pub fn build_shared_context(
         option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
     );
     for (name, subset) in collections {
-        context.insert(name, subset);
+        let key = format!("collection_{name}");
+        context.insert(key, subset);
     }
     context
 }
@@ -264,13 +267,10 @@ pub fn extract_metadata_from_content(content: &str, rel_path: &Path, routes_url:
     metadata
 }
 
-/// Lightweight metadata extraction without full document parsing.
+/// Full metadata extraction including HTML content (`raw` field).
 ///
-/// Unlike `load_metadata`, this function does NOT call `converter::html::convert`
-/// (which runs the expensive `parse_tree`). It only extracts metadata via string
-/// scanning and the metadata parser, making it ~10x faster.
-///
-/// Used by `collect_all_posts_metadata` where only metadata is needed, not HTML.
+/// Calls `load_metadata_from_content` which runs the full Norg→HTML conversion.
+/// The `raw` field is required by templates that list posts (e.g. posts.html).
 pub fn extract_metadata_only(path: PathBuf, rel_path: PathBuf, routes_url: &str) -> toml::Value {
     let Ok(content) = std::fs::read_to_string(&path) else {
         error!(
@@ -280,7 +280,7 @@ pub fn extract_metadata_only(path: PathBuf, rel_path: PathBuf, routes_url: &str)
         );
         return toml::Value::Table(toml::map::Map::new());
     };
-    extract_metadata_from_content(&content, &rel_path, routes_url)
+    load_metadata_from_content(&content, &rel_path, routes_url)
 }
 
 /// Validates content metadata against a schema.
