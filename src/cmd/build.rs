@@ -195,7 +195,7 @@ fn build_contents(
     posts: &[toml::Value],
     site_config: &config::SiteConfig,
     shared_context: &Context,
-    cache: &BuildCache,
+    cache: &mut BuildCache,
     minify: bool,
 ) -> Result<(usize, BuildTimings)> {
     use rayon::prelude::*;
@@ -213,7 +213,7 @@ fn build_contents(
         .collect();
 
     // Parallel processing with rayon, buffer rendered content in memory
-    let results: Vec<Result<Option<(PathBuf, String)>>> = entries
+    let results: Vec<BuildResult> = entries
         .par_iter()
         .map(|entry| {
             let path = entry.path();
@@ -233,7 +233,12 @@ fn build_contents(
     let mut buffered_writes = Vec::new();
     for result in results {
         match result {
-            Ok(Some((public_path, content))) => buffered_writes.push((public_path, content)),
+            Ok(Some((public_path, content, cache_entry))) => {
+                buffered_writes.push((public_path, content));
+                if let Some((key, content_str, metadata)) = cache_entry {
+                    cache.insert(&key, &content_str, metadata);
+                }
+            }
             Ok(None) => {} // draft or missing
             Err(e) => error!("{:?}", e),
         }
@@ -256,6 +261,11 @@ fn build_contents(
     Ok((built_count, timings))
 }
 
+/// (cache_key, content, metadata) for cache insertion
+type CacheInsert = (PathBuf, String, serde_json::Value);
+/// Result of building a single content entry
+type BuildResult = Result<Option<(PathBuf, String, Option<CacheInsert>)>>;
+
 /// Processes a single build entry (HTML file with metadata)
 ///
 /// Handles template rendering, metadata validation, and output path determination.
@@ -274,7 +284,7 @@ fn build_content_entry(
     minify: bool,
     shared_context: &Context,
     cache: &BuildCache,
-) -> Result<Option<(PathBuf, String)>> {
+) -> BuildResult {
     let rel_path = path
         .strip_prefix(&paths.content)
         .wrap_err("Failed to strip prefix")?;
@@ -315,13 +325,19 @@ fn build_content_entry(
     let cached = cache.get(&cache_key, &content);
 
     // Load (parse_tree + HTML on miss, deserialization on hit)
-    let metadata = if let Some(cached) = cached {
-        match serde_json::from_value(cached.clone()) {
-            Ok(md) => md,
-            Err(_) => shared::load_metadata_from_content(&content, rel_path, &site_config.root_url),
+    let (metadata, cache_insert) = if let Some(cached) = cached {
+        match serde_json::from_value::<toml::Value>(cached.clone()) {
+            Ok(md) => (md, None),
+            Err(_) => {
+                let md = shared::load_metadata_from_content(&content, rel_path, &site_config.root_url);
+                let cache_val = serde_json::to_value(&md).unwrap_or_default();
+                (md, Some((cache_key, content.clone(), cache_val)))
+            }
         }
     } else {
-        shared::load_metadata_from_content(&content, rel_path, &site_config.root_url)
+        let md = shared::load_metadata_from_content(&content, rel_path, &site_config.root_url);
+        let cache_val = serde_json::to_value(&md).unwrap_or_default();
+        (md, Some((cache_key, content.clone(), cache_val)))
     };
 
     // Determine output path
@@ -343,7 +359,7 @@ fn build_content_entry(
         rendered
     };
 
-    Ok(Some((public_path, rendered)))
+    Ok(Some((public_path, rendered, cache_insert)))
 }
 
 /// Generates category listing pages
@@ -881,14 +897,14 @@ pub fn build(minify: bool) -> Result<()> {
 
     // Open cache
     let t = Instant::now();
-    let cache = BuildCache::open(&root_dir)?;
+    let mut cache = BuildCache::open(&root_dir)?;
     timings.cache_open_ms = t.elapsed().as_millis();
 
     println!();
 
     // Build content
     let t = Instant::now();
-    let (page_count, content_timings) = build_contents(&tera, &paths, &posts, &site_config, &shared_context, &cache, minify)?;
+    let (page_count, content_timings) = build_contents(&tera, &paths, &posts, &site_config, &shared_context, &mut cache, minify)?;
     timings.content_ms = t.elapsed().as_millis();
     timings.page_count = page_count;
     // Copy per-page sub-timings from the concurrent build
