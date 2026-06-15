@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
 use std::net::{IpAddr, Ipv4Addr, TcpListener as StdTcpListener};
@@ -24,6 +25,7 @@ use tokio::{
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_tungstenite::accept_async;
 use tracing::{debug, error, info, instrument, warn};
+use walkdir::WalkDir;
 
 use crate::{config, fs, shared};
 
@@ -85,6 +87,7 @@ struct ServerState {
     routes_url: String,
     posts: Arc<RwLock<Vec<toml::Value>>>,
     cache: Arc<RwLock<crate::cache::BuildCache>>,
+    rendered_pages: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl ServerState {
@@ -144,6 +147,27 @@ impl ServerState {
         info!("Config reloaded successfully");
         self.send_reload()?;
         Ok(())
+    }
+
+    /// Rebuilds the in-memory rendered pages cache.
+    ///
+    /// Called when content, templates, or config change. Re-renders all pages
+    /// and replaces the cache wholesale.
+    #[instrument(level = "debug", skip(self))]
+    async fn rebuild_rendered_pages(&self) {
+        let tera = self.tera.read().await;
+        let config = self.config.read().await.clone();
+        let posts = self.posts.read().await.clone();
+        let cache = self.cache.read().await;
+
+        match render_all_pages(&tera, &self.paths, &config, &self.routes_url, &posts, &cache) {
+            Ok(new_pages) => {
+                let mut pages = self.rendered_pages.write().await;
+                *pages = new_pages;
+                info!("Rendered pages cache rebuilt");
+            }
+            Err(e) => error!("Failed to rebuild rendered pages: {}", e),
+        }
     }
 
     /// Sends a reload signal to connected WebSocket clients.
@@ -353,6 +377,7 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
             Ok(_) => {}
             Err(e) => error!("Config reload failed: {}", e),
         }
+        state.rebuild_rendered_pages().await;
         return;
     }
 
@@ -367,6 +392,7 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
     if actions.reload_templates {
         match state.reload_templates().await {
             Ok(_) => {
+                state.rebuild_rendered_pages().await;
                 if let Err(e) = state.send_reload() {
                     error!("Template reload signal error: {}", e);
                 }
@@ -389,6 +415,8 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
             }
             Err(e) => error!("Failed to update pages metadata: {}", e),
         }
+
+        state.rebuild_rendered_pages().await;
 
         if let Err(e) = state.send_reload() {
             error!("Reload signal error: {}", e);
@@ -630,6 +658,18 @@ async fn handle_xml_feed(request_path: &str, state: &Arc<ServerState>) -> Result
     let template_name = request_path.trim_start_matches('/');
     debug!(template = %template_name, "Handling XML feed request");
 
+    // Fast path: lookup in pre-rendered memory cache
+    {
+        let pages = state.rendered_pages.read().await;
+        if let Some(html) = pages.get(request_path) {
+            return Ok(Response::builder()
+                .header(CONTENT_TYPE, "application/xml; charset=utf-8")
+                .status(StatusCode::OK)
+                .body(Body::from(html.clone()))?);
+        }
+    }
+
+    // Slow path: render on demand
     let tera = state.tera.read().await;
     if !tera.get_template_names().any(|n| n == template_name) {
         return Ok(handle_not_found());
@@ -688,30 +728,38 @@ async fn handle_content(request_path: &str, state: Arc<ServerState>) -> Result<R
 /// * `Result<Response<Body>>` - A `Response` containing the rendered HTML or an error if
 ///   rendering fails.
 async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<Response<Body>> {
-    let tera = state.tera.read().await;
-
     let rel_path = path.strip_prefix(&state.paths.content)?.to_path_buf();
 
-    // Read file once, both draft check and full conversion use this content
+    // Fast path: lookup in pre-rendered memory cache
+    {
+        let pages = state.rendered_pages.read().await;
+        let url_path = format!("/{}", rel_path.with_extension("").display());
+        if let Some(html) = pages.get(&url_path) {
+            let mut body = html.clone();
+            inject_livereload_script(&mut body);
+            return Ok(Response::builder()
+                .header(CONTENT_TYPE, "text/html; charset=utf-8")
+                .status(StatusCode::OK)
+                .body(Body::from(body))?);
+        }
+    }
+
+    // Slow path: not in cache (e.g. file changed since last render), render on demand
+    let tera = state.tera.read().await;
+
     let Ok(content) = tokio::fs::read_to_string(&path).await else {
         return Ok(handle_not_found());
     };
 
-    // Lightweight metadata extraction first (no parse_tree, no HTML conversion)
     let metadata = shared::extract_metadata_from_content(&content, &rel_path, &state.routes_url);
     let is_draft = metadata
         .get("draft")
-        .map(|v| {
-            v.as_bool()
-                .expect("draft metadata field should be a boolean")
-        })
+        .and_then(|v| v.as_bool())
         .unwrap_or(false);
     if is_draft && !state.build_drafts {
         return Ok(handle_not_found());
     }
 
-    // Full load with HTML conversion (only for non-draft pages, reuses pre-read content)
-    // Check cache first to avoid expensive parse_tree on cache hit
     let cache_key = rel_path.with_extension("");
     let metadata = {
         let cache_guard = state.cache.read().await;
@@ -737,8 +785,6 @@ async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<R
     let shared_context = shared::build_shared_context(&posts, &config, &collections);
     let mut body = shared::render_norg_page(&tera, &metadata, &shared_context)?;
 
-    // Always use the proper URL to the development server for template links that refers
-    // to the local URL, this is useful when running the server exposed to LAN network
     body = body.replace(
         &config.root_url.replace("://", ":&#x2F;&#x2F;"),
         &state.routes_url,
@@ -807,6 +853,22 @@ async fn handle_websocket(stream: TcpStream, reload_tx: Arc<broadcast::Sender<()
 
 async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body>> {
     let config = state.config.read().await.clone();
+    let url_path = format!("/{}", config.categories_dir);
+
+    // Fast path: lookup in pre-rendered memory cache
+    {
+        let pages = state.rendered_pages.read().await;
+        if let Some(html) = pages.get(&url_path) {
+            let mut body = html.clone();
+            inject_livereload_script(&mut body);
+            return Ok(Response::builder()
+                .header(CONTENT_TYPE, "text/html; charset=utf-8")
+                .status(StatusCode::OK)
+                .body(Body::from(body))?);
+        }
+    }
+
+    // Slow path: render on demand
     let posts = state.posts.read().await.clone();
     let categories = shared::collect_all_posts_categories(&posts);
     let collections = shared::precompute_collection_subsets(&posts, &config);
@@ -816,7 +878,6 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
 
     let tera = state.tera.read().await;
     let mut body = tera.render("categories.html", &context).map_err(|e| {
-        // Store the reason why Tera failed to render the template
         if e.source().is_some() {
             let internal_err = e.source().unwrap();
             eyre!(
@@ -828,13 +889,12 @@ async fn handle_category_index(state: &Arc<ServerState>) -> Result<Response<Body
             eyre!("{}", "Failed to render 'categories.html' template".bold())
         }
     })?;
-    // Always use the proper URL to the development server for template links that refers
-    // to the local URL, this is useful when running the server exposed to LAN network
     body = body.replace(
         &config.root_url.replace("://", ":&#x2F;&#x2F;"),
         &state.routes_url,
     );
 
+    inject_livereload_script(&mut body);
     Ok(Response::builder()
         .header(CONTENT_TYPE, "text/html; charset=utf-8")
         .status(StatusCode::OK)
@@ -845,6 +905,21 @@ async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Respons
     let config = state.config.read().await.clone();
     let cat_prefix = format!("/{}/", config.categories_dir);
     let category = path.strip_prefix(&*cat_prefix).unwrap_or(path);
+
+    // Fast path: lookup in pre-rendered memory cache
+    {
+        let pages = state.rendered_pages.read().await;
+        if let Some(html) = pages.get(path) {
+            let mut body = html.clone();
+            inject_livereload_script(&mut body);
+            return Ok(Response::builder()
+                .header(CONTENT_TYPE, "text/html; charset=utf-8")
+                .status(StatusCode::OK)
+                .body(Body::from(body))?);
+        }
+    }
+
+    // Slow path: render on demand
     let posts = state.posts.read().await.clone();
 
     let category_posts: Vec<_> = posts
@@ -868,7 +943,6 @@ async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Respons
 
     let tera = state.tera.read().await;
     let mut body = tera.render("category.html", &context).map_err(|e| {
-        // Store the reason why Tera failed to render the template
         if e.source().is_some() {
             let internal_err = e.source().unwrap();
             eyre!(
@@ -881,13 +955,12 @@ async fn handle_category(path: &str, state: &Arc<ServerState>) -> Result<Respons
         }
     })?;
 
-    // Always use the proper URL to the development server for template links that refers
-    // to the local URL, this is useful when running the server exposed to LAN network
     body = body.replace(
         &config.root_url.replace("://", ":&#x2F;&#x2F;"),
         &state.routes_url,
     );
 
+    inject_livereload_script(&mut body);
     Ok(Response::builder()
         .header(CONTENT_TYPE, "text/html; charset=utf-8")
         .status(StatusCode::OK)
@@ -998,6 +1071,134 @@ async fn handle_server_request(
     Ok(response)
 }
 
+/// Pre-renders all content pages into an in-memory HashMap for instant serving.
+///
+/// Walks the content directory, renders each .norg file through the Tera template
+/// pipeline, and stores the HTML indexed by URL path. Also pre-renders category
+/// pages and XML feed templates.
+fn render_all_pages(
+    tera: &Tera,
+    paths: &SitePaths,
+    config: &config::SiteConfig,
+    routes_url: &str,
+    posts: &[toml::Value],
+    cache: &crate::cache::BuildCache,
+) -> Result<HashMap<String, String>> {
+    let mut pages = HashMap::new();
+
+    let collections = shared::precompute_collection_subsets(posts, config);
+    let shared_context = shared::build_shared_context(posts, config, &collections);
+
+    // Render content pages
+    for entry in WalkDir::new(&paths.content)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "norg"))
+    {
+        let path = entry.path();
+        let rel_path = match path.strip_prefix(&paths.content) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        let Ok(content) = std::fs::read_to_string(path) else {
+            continue;
+        };
+
+        // Draft check
+        let metadata = shared::extract_metadata_from_content(&content, rel_path, routes_url);
+        let is_draft = metadata
+            .get("draft")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if is_draft {
+            continue;
+        }
+
+        // Full load with HTML conversion (reuse build_cache if available)
+        let cache_key = rel_path.with_extension("");
+        let metadata = if let Some(cached) = cache.get(&cache_key, &content) {
+            serde_json::from_value(cached).unwrap_or_else(|_| {
+                shared::load_metadata_from_content(&content, rel_path, routes_url)
+            })
+        } else {
+            shared::load_metadata_from_content(&content, rel_path, routes_url)
+        };
+
+        let mut body = shared::render_norg_page(tera, &metadata, &shared_context)?;
+
+        // Always use the proper URL to the development server for template links that refers
+        // to the local URL, this is useful when running the server exposed to LAN network
+        body = body.replace(
+            &config.root_url.replace("://", ":&#x2F;&#x2F;"),
+            routes_url,
+        );
+
+        // URL path: /{rel_path_without_extension}
+        let url_path = format!("/{}", rel_path.with_extension("").display());
+        pages.insert(url_path, body);
+    }
+
+    // Pre-render category index
+    if !posts.is_empty() {
+        if let Ok(body) = shared::render_category_index(tera, posts, config, &collections) {
+            let body = body.replace(
+                &config.root_url.replace("://", ":&#x2F;&#x2F;"),
+                routes_url,
+            );
+            pages.insert(format!("/{}", config.categories_dir), body);
+        }
+
+        // Pre-render individual category pages
+        let categories = shared::collect_all_posts_categories(posts);
+        for category in &categories {
+            let category_posts: Vec<_> = posts
+                .iter()
+                .filter(|post| {
+                    post.get("categories")
+                        .and_then(|c| c.as_array())
+                        .map(|cats| cats.iter().any(|c| c.as_str() == Some(category.as_str())))
+                        .unwrap_or(false)
+                })
+                .collect();
+
+            let mut context = Context::new();
+            context.insert("config", config);
+            context.insert("category", category);
+            context.insert("posts", &category_posts);
+            context.insert(
+                "lith_version",
+                option_env!("LITH_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
+            );
+
+            if let Ok(body) = tera.render("category.html", &context) {
+                let body = body.replace(
+                    &config.root_url.replace("://", ":&#x2F;&#x2F;"),
+                    routes_url,
+                );
+                let url_path = format!("/{}/{}", config.categories_dir, category);
+                pages.insert(url_path, body);
+            }
+        }
+    }
+
+    // Pre-render XML feed templates
+    for template_name in tera.get_template_names() {
+        if !template_name.ends_with(".xml") {
+            continue;
+        }
+        let mut context = shared_context.clone();
+        context.insert("now", &Utc::now());
+        if let Ok(body) = tera.render(template_name, &context) {
+            let url_path = format!("/{}", template_name);
+            pages.insert(url_path, body);
+        }
+    }
+
+    debug!(count = pages.len(), "Pre-rendered pages into memory");
+    Ok(pages)
+}
+
 /// Sets up the server state with the necessary configurations.
 ///
 /// This function initializes the server state, including loading the site configuration,
@@ -1051,9 +1252,7 @@ async fn setup_server_state(
         paths.theme_templates = real;
     }
 
-    let tera = Arc::new(RwLock::new(
-        shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates)?,
-    ));
+    let tera = shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates)?;
 
     let (reload_tx, _) = broadcast::channel(16);
 
@@ -1062,6 +1261,18 @@ async fn setup_server_state(
 
     // Open build cache for incremental renders
     let cache = crate::cache::BuildCache::open(&root_dir)?;
+
+    // Pre-render all pages into memory for instant serving
+    let rendered_pages = render_all_pages(
+        &tera,
+        &paths,
+        &site_config,
+        &routes_url,
+        &posts,
+        &cache,
+    )?;
+
+    let tera = Arc::new(RwLock::new(tera));
 
     Ok(Arc::new(ServerState {
         reload_tx: Arc::new(reload_tx),
@@ -1072,6 +1283,7 @@ async fn setup_server_state(
         routes_url,
         posts: Arc::new(RwLock::new(posts)),
         cache: Arc::new(RwLock::new(cache)),
+        rendered_pages: Arc::new(RwLock::new(rendered_pages)),
     }))
 }
 

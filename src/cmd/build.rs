@@ -519,14 +519,18 @@ fn should_minify_asset(src: &Path) -> bool {
 ///
 /// # Returns
 /// * `Result<String>` - The minified HTML content if successful, otherwise an error.
-#[instrument]
-fn minify_html_content(rendered: String) -> Result<String> {
-    let minify_config = minify_html::Cfg {
+fn minify_html_cfg() -> &'static minify_html::Cfg {
+    static CFG: OnceLock<minify_html::Cfg> = OnceLock::new();
+    CFG.get_or_init(|| minify_html::Cfg {
         minify_js: true,
         minify_css: true,
         ..minify_html::Cfg::default()
-    };
-    String::from_utf8(minify_html::minify(rendered.as_bytes(), &minify_config))
+    })
+}
+
+#[instrument]
+fn minify_html_content(rendered: String) -> Result<String> {
+    String::from_utf8(minify_html::minify(rendered.as_bytes(), minify_html_cfg()))
         .map_err(|e| eyre!("{}: {}", "HTML minification failed".bold(), e))
 }
 
