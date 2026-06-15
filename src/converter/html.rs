@@ -77,24 +77,16 @@ fn paragraph_to_string(
             modifier_type,
             content,
         } => {
-            let mut tag = |name: &str| {
-                paragraph.push_str(&format!(
-                    "<{name}>{}</{name}>",
-                    &paragraph_to_string(content, _strong_carry, weak_carry, root_url)
-                ))
-            };
+            let inner = paragraph_to_string(content, _strong_carry, weak_carry, root_url);
             match modifier_type {
-                '*' => tag("strong"),
-                '/' => tag("em"),
-                '_' => tag("u"),
-                '-' => tag("s"),
-                '^' => tag("sup"),
-                ',' => tag("sub"),
-                '!' => paragraph.push_str(&format!(
-                    "<span class='spoiler'>{}</span>",
-                    &paragraph_to_string(content, _strong_carry, weak_carry, root_url)
-                )),
-                '$' => tag("code"), // TODO: Real Math Rendering?
+                '*' => { paragraph.push_str("<strong>"); paragraph.push_str(&inner); paragraph.push_str("</strong>"); }
+                '/' => { paragraph.push_str("<em>"); paragraph.push_str(&inner); paragraph.push_str("</em>"); }
+                '_' => { paragraph.push_str("<u>"); paragraph.push_str(&inner); paragraph.push_str("</u>"); }
+                '-' => { paragraph.push_str("<s>"); paragraph.push_str(&inner); paragraph.push_str("</s>"); }
+                '^' => { paragraph.push_str("<sup>"); paragraph.push_str(&inner); paragraph.push_str("</sup>"); }
+                ',' => { paragraph.push_str("<sub>"); paragraph.push_str(&inner); paragraph.push_str("</sub>"); }
+                '!' => { paragraph.push_str("<span class='spoiler'>"); paragraph.push_str(&inner); paragraph.push_str("</span>"); }
+                '$' => { paragraph.push_str("<code>"); paragraph.push_str(&inner); paragraph.push_str("</code>"); }
                 '%' => {}           // ignore comments
                 _ => {
                     info!(
@@ -106,10 +98,9 @@ fn paragraph_to_string(
             }
         }
         ParagraphSegment::InlineVerbatim(content) => {
-            paragraph.push_str(&format!(
-                "<code>{}</code>",
-                &paragraph_tokens_to_string(content)
-            ));
+            paragraph.push_str("<code>");
+            paragraph.push_str(&paragraph_tokens_to_string(content));
+            paragraph.push_str("</code>");
         }
         // ParagraphSegment::AttachedModifierOpener(_) => todo!(),
         // ParagraphSegment::AttachedModifierOpenerFail(_) => todo!(),
@@ -121,16 +112,18 @@ fn paragraph_to_string(
             targets,
             description,
         } => {
-            let mut a_tag = Vec::<String>::new();
             let mut link_name = String::new();
-            a_tag.push("<a ".to_string());
+            paragraph.push_str("<a ");
 
             // link to local paths (':/about:' -> '/about')
             if let Some(path) = filepath {
                 if description.is_none() {
                     link_name = path.to_string();
                 }
-                a_tag.push(format!("href=\"{}{}\"", root_url, path));
+                paragraph.push_str("href=\"");
+                paragraph.push_str(root_url);
+                paragraph.push_str(path);
+                paragraph.push('"');
             }
 
             // link to anything else
@@ -141,7 +134,9 @@ fn paragraph_to_string(
                         if description.is_none() {
                             link_name = path.to_string();
                         }
-                        a_tag.push(format!("href=\"{}\"", path));
+                        paragraph.push_str("href=\"");
+                        paragraph.push_str(path);
+                        paragraph.push('"');
                     }
                     LinkTarget::Heading { level: _, title } => {
                         let title_str = paragraph_to_string(title, _strong_carry, weak_carry, root_url);
@@ -149,10 +144,9 @@ fn paragraph_to_string(
                         if description.is_none() {
                             link_name = title_str.clone();
                         }
-                        a_tag.push(format!(
-                            "href=\"#{}\"",
-                            title_str.replace(" ", "-"),
-                        ));
+                        paragraph.push_str("href=\"#");
+                        paragraph.push_str(&title_str.replace(" ", "-"));
+                        paragraph.push('"');
                     }
                     // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
                     _ => {
@@ -162,34 +156,32 @@ fn paragraph_to_string(
                 }
             }
             if !weak_carry.is_empty() {
-                for weak_carryover in weak_carry.clone() {
-                    a_tag.push(weak_carryover_attribute(weak_carryover));
-                    // Remove the carryover tag after using it because its lifetime
-                    // ended after invocating it
-                    weak_carry.pop_front();
+                let tags: Vec<_> = weak_carry.drain(..).collect();
+                for weak_carryover in tags {
+                    paragraph.push(' ');
+                    paragraph.push_str(&weak_carryover_attribute(weak_carryover));
                 }
             }
             if let Some(desc) = description {
-                a_tag.push(format!(
-                    ">{}</a>",
-                    paragraph_to_string(
-                        desc,
-                        _strong_carry,
-                        weak_carry,
-                        root_url
-                    )
+                paragraph.push('>');
+                paragraph.push_str(&paragraph_to_string(
+                    desc,
+                    _strong_carry,
+                    weak_carry,
+                    root_url
                 ));
+                paragraph.push_str("</a>");
             } else if link_name.is_empty() {
-                a_tag.push(String::from("></a>"));
+                paragraph.push_str("></a>");
                 warn!("Generated link with no description, make sure all of your Norg links contain a description");
             } else {
-                a_tag.push(format!(">{}</a>", link_name));
+                paragraph.push('>');
+                paragraph.push_str(&link_name);
+                paragraph.push_str("</a>");
             }
-            paragraph.push_str(a_tag.join(" ").as_str());
         }
         ParagraphSegment::AnchorDefinition { content, target } => {
-            let mut a_tag = Vec::<String>::new();
-            a_tag.push("<a".to_string());
+            paragraph.push_str("<a");
             // XXX: here the ParagraphSegment::Link node only has targets and thus we cannot just recursively use paragraph_to_string
             if let ParagraphSegment::Link {
                 filepath: _,
@@ -205,19 +197,20 @@ fn paragraph_to_string(
                         } else {
                             path.clone()
                         };
-                        a_tag.push(format!("href=\"{}\"", href_path));
+                        paragraph.push_str(" href=\"");
+                        paragraph.push_str(&href_path);
+                        paragraph.push('"');
                     }
                     LinkTarget::Heading { level: _, title } => {
                         // Regex to remove possible links from heading title ids during href
                         let re = inline_re();
-                        a_tag.push(format!(
-                            "href=\"#{}\"",
-                            re.replace(
-                                &paragraph_to_string(title, _strong_carry, weak_carry, root_url)
-                                    .replace(" ", "-"),
-                                ""
-                            )
+                        paragraph.push_str(" href=\"#");
+                        paragraph.push_str(&re.replace(
+                            &paragraph_to_string(title, _strong_carry, weak_carry, root_url)
+                                .replace(" ", "-"),
+                            ""
                         ));
+                        paragraph.push('"');
                     }
                     // Missing: Footnote, Definition, Wiki, Generic, Timestamp, Extendable
                     _ => {
@@ -227,18 +220,15 @@ fn paragraph_to_string(
                 }
             }
             if !weak_carry.is_empty() {
-                for weak_carryover in weak_carry.clone() {
-                    a_tag.push(weak_carryover_attribute(weak_carryover));
-                    // Remove the carryover tag after using it because its lifetime
-                    // ended after invocating it
-                    weak_carry.pop_front();
+                let tags: Vec<_> = weak_carry.drain(..).collect();
+                for weak_carryover in tags {
+                    paragraph.push(' ');
+                    paragraph.push_str(&weak_carryover_attribute(weak_carryover));
                 }
             }
-            a_tag.push(format!(
-                ">{}</a>",
-                paragraph_to_string(&content.clone(), _strong_carry, weak_carry, root_url)
-            ));
-            paragraph.push_str(a_tag.join(" ").as_str());
+            paragraph.push('>');
+            paragraph.push_str(&paragraph_to_string(&content.clone(), _strong_carry, weak_carry, root_url));
+            paragraph.push_str("</a>");
         }
         // ParagraphSegment::Anchor { content, description } => todo!(),
         // ParagraphSegment::InlineLinkTarget(_) => todo!(),
@@ -291,14 +281,10 @@ fn weak_carryover_attribute(weak_carryover: CarryOverTag) -> String {
             let attr_name = weak_carryover.name[1].as_str();
             let values_sep = if attr_name == "style" { ";" } else { " " };
 
-            attr.push_str(
-                format!(
-                    "{}=\"{}\"",
-                    &weak_carryover.name[1],
-                    weak_carryover.parameters.join(values_sep)
-                )
-                .as_str(),
-            );
+            attr.push_str(attr_name);
+            attr.push_str("=\"");
+            attr.push_str(&weak_carryover.parameters.join(values_sep));
+            attr.push('"');
         }
     }
     attr
@@ -325,21 +311,18 @@ impl NorgToHtml for NorgAST {
     ) -> String {
         match self {
             NorgAST::Paragraph(s) => {
-                let mut paragraph = Vec::<String>::new();
-                paragraph.push("<p".to_string());
+                let mut paragraph = String::from("<p");
                 if !weak_carry.is_empty() {
-                    for weak_carryover in weak_carry.clone() {
-                        paragraph.push(weak_carryover_attribute(weak_carryover));
-                        // Remove the carryover tag after using it because its lifetime
-                        // ended after invocating it
-                        weak_carry.pop_front();
+                    let tags: Vec<_> = weak_carry.drain(..).collect();
+                    for weak_carryover in tags {
+                        paragraph.push(' ');
+                        paragraph.push_str(&weak_carryover_attribute(weak_carryover));
                     }
                 }
-                paragraph.push(format!(
-                    ">{}</p>",
-                    paragraph_to_string(s, strong_carry, &mut weak_carry, root_url)
-                ));
-                paragraph.join(" ")
+                paragraph.push('>');
+                paragraph.push_str(&paragraph_to_string(s, strong_carry, &mut weak_carry, root_url));
+                paragraph.push_str("</p>");
+                paragraph
             }
             NorgAST::Heading {
                 level,
@@ -347,7 +330,7 @@ impl NorgToHtml for NorgAST {
                 content,
                 ..
             } => {
-                let mut section = Vec::<String>::new();
+                let mut section = String::new();
                 // HACK: we are passing empty carryover vectors here because otherwise
                 // the HTML carryovers meant for the heading are used for its internal content instead
                 let strong: &[CarryOverTag] = &[];
@@ -358,33 +341,28 @@ impl NorgToHtml for NorgAST {
                 let re = inline_re();
                 let heading_id = re.replace(&heading_title.replace(" ", "-"), "").to_string();
 
-                match level {
-                    1..=6 => {
-                        section.push(format!("<h{} id=\"{}\"", level, heading_id,));
-                        if !weak_carry.is_empty() {
-                            for weak_carryover in weak_carry.clone() {
-                                section.push(weak_carryover_attribute(weak_carryover));
-                                // Remove the carryover tag after using it because its lifetime
-                                // ended after invocating it
-                                weak_carry.pop_front();
-                            }
-                        }
-                        section.push(format!(">{}</h{}>", heading_title, level));
-                    }
+                let tag = match level {
+                    1..=6 => format!("h{}", level),
                     // XXX: fallback to h6 if the header level is higher than 6
-                    _ => {
-                        section.push(format!("<h6 id=\"{}\"", heading_id,));
-                        if !weak_carry.is_empty() {
-                            for weak_carryover in weak_carry.clone() {
-                                section.push(weak_carryover_attribute(weak_carryover));
-                                // Remove the carryover tag after using it because its lifetime
-                                // ended after invocating it
-                                weak_carry.pop_front();
-                            }
-                        }
-                        section.push(format!(">{}</h6>", heading_title));
+                    _ => String::from("h6"),
+                };
+                section.push('<');
+                section.push_str(&tag);
+                section.push_str(" id=\"");
+                section.push_str(&heading_id);
+                section.push('"');
+                if !weak_carry.is_empty() {
+                    let tags: Vec<_> = weak_carry.drain(..).collect();
+                    for weak_carryover in tags {
+                        section.push(' ');
+                        section.push_str(&weak_carryover_attribute(weak_carryover));
                     }
                 }
+                section.push('>');
+                section.push_str(&heading_title);
+                section.push_str("</");
+                section.push_str(&tag);
+                section.push('>');
                 let entry = TocEntry {
                     level: *level,
                     title: heading_title.clone(),
@@ -392,9 +370,9 @@ impl NorgToHtml for NorgAST {
                 };
                 toc.push(entry);
 
-                section.push(to_html(content, strong_carry, &weak_carry, root_url, toc));
+                section.push_str(&to_html(content, strong_carry, &weak_carry, root_url, toc));
 
-                section.join(" ")
+                section
             }
             NorgAST::NestableDetachedModifier {
                 modifier_type,
@@ -417,40 +395,38 @@ impl NorgToHtml for NorgAST {
                 match modifier_type {
                     NestableDetachedModifier::UnorderedList
                     | NestableDetachedModifier::OrderedList => {
-                        let mut list = Vec::<String>::new();
-                        list.push("<li".to_string());
+                        let mut list = String::from("<li");
                         if !weak_carry.is_empty() {
-                            for weak_carryover in weak_carry.clone() {
-                                list.push(weak_carryover_attribute(weak_carryover));
-                                // Remove the carryover tag after using it because its lifetime
-                                // ended after invocating it
-                                weak_carry.pop_front();
+                            let tags: Vec<_> = weak_carry.drain(..).collect();
+                            for weak_carryover in tags {
+                                list.push(' ');
+                                list.push_str(&weak_carryover_attribute(weak_carryover));
                             }
                         }
-                        list.push(format!(">{}", mod_text));
-                        list.push("</li>".to_string());
+                        list.push('>');
+                        list.push_str(&mod_text);
+                        list.push_str("</li>");
                         if !content.is_empty() {
-                            list.push(to_html(content, strong_carry, &weak_carry, root_url, toc));
+                            list.push_str(&to_html(content, strong_carry, &weak_carry, root_url, toc));
                         }
-                        list.join(" ")
+                        list
                     }
                     NestableDetachedModifier::Quote => {
-                        let mut quote = Vec::<String>::new();
-                        quote.push("<blockquote".to_string());
+                        let mut quote = String::from("<blockquote");
                         if !weak_carry.is_empty() {
-                            for weak_carryover in weak_carry.clone() {
-                                quote.push(weak_carryover_attribute(weak_carryover));
-                                // Remove the carryover tag after using it because its lifetime
-                                // ended after invocating it
-                                weak_carry.pop_front();
+                            let tags: Vec<_> = weak_carry.drain(..).collect();
+                            for weak_carryover in tags {
+                                quote.push(' ');
+                                quote.push_str(&weak_carryover_attribute(weak_carryover));
                             }
                         }
-                        quote.push(format!(">{}", mod_text));
+                        quote.push('>');
+                        quote.push_str(&mod_text);
                         if !content.is_empty() {
-                            quote.push(to_html(content, strong_carry, &weak_carry, root_url, toc));
+                            quote.push_str(&to_html(content, strong_carry, &weak_carry, root_url, toc));
                         }
-                        quote.push("</blockquote>".to_string());
-                        quote.join(" ")
+                        quote.push_str("</blockquote>");
+                        quote
                     }
                 }
             }
@@ -463,54 +439,47 @@ impl NorgToHtml for NorgAST {
                 let mut verbatim_tag = String::new();
                 match name[0].as_str() {
                     "code" => {
-                        let mut code_tag = Vec::<String>::new();
-                        code_tag.push("<pre".to_string());
+                        let mut code_tag = String::from("<pre");
                         if !weak_carry.is_empty() {
-                            for weak_carryover in weak_carry.clone() {
-                                code_tag.push(weak_carryover_attribute(weak_carryover));
-                                // Remove the carryover tag after using it because its lifetime
-                                // ended after invocating it
-                                weak_carry.pop_front();
+                            let tags: Vec<_> = weak_carry.drain(..).collect();
+                            for weak_carryover in tags {
+                                code_tag.push(' ');
+                                code_tag.push_str(&weak_carryover_attribute(weak_carryover));
                             }
                         }
-                        let language = if !parameters.is_empty() {
-                            &parameters[0]
-                        } else {
-                            &String::from("")
-                        };
                         // NOTE: Tera completely skips HTML code block contents while rendering our HTML content
                         // because we are forced to use the `safe` filter. This workaround aims to fix those
                         // problems, and (hopefully) also including XML rendering.
                         let content = &tera::escape_html(content);
-
-                        // NOTE: the class `language-foo` is being added by default so the converter can
-                        // work out-of-the-box with code highlighting libraries like highlight.js or prismjs
-                        code_tag.push(format!(
-                            "><code{}>{}</code></pre>",
-                            if language.is_empty() {
-                                String::from("")
-                            } else {
-                                format!(" class=\"language-{language}\"")
-                            },
-                            content
-                        ));
-                        verbatim_tag = code_tag.join(" ")
+                        code_tag.push('>');
+                        code_tag.push_str("<code");
+                        if !parameters.is_empty() {
+                            // NOTE: the class `language-foo` is being added by default so the converter can
+                            // work out-of-the-box with code highlighting libraries like highlight.js or prismjs
+                            code_tag.push_str(" class=\"language-");
+                            code_tag.push_str(&parameters[0]);
+                            code_tag.push('"');
+                        }
+                        code_tag.push('>');
+                        code_tag.push_str(content);
+                        code_tag.push_str("</code></pre>");
+                        verbatim_tag = code_tag;
                     }
                     // NOTE: this only works for base64 encoded images, regular images
                     // use the .image infirm tag.
                     "image" => {
-                        let mut image_tag = Vec::<String>::new();
-                        image_tag.push(format!("<img src=\"{}\"", content));
+                        let mut image_tag = String::from("<img src=\"");
+                        image_tag.push_str(content);
+                        image_tag.push('"');
                         if !weak_carry.is_empty() {
-                            for weak_carryover in weak_carry.clone() {
-                                image_tag.push(weak_carryover_attribute(weak_carryover));
-                                // Remove the carryover tag after using it because its lifetime
-                                // ended after invocating it
-                                weak_carry.pop_front();
+                            let tags: Vec<_> = weak_carry.drain(..).collect();
+                            for weak_carryover in tags {
+                                image_tag.push(' ');
+                                image_tag.push_str(&weak_carryover_attribute(weak_carryover));
                             }
                         }
-                        image_tag.push("/>".to_string());
-                        verbatim_tag = image_tag.join(" ");
+                        image_tag.push_str("/>");
+                        verbatim_tag = image_tag;
                     }
                     "embed" => {
                         // XXX: only works for embedding HTML code for now
@@ -558,25 +527,23 @@ impl NorgToHtml for NorgAST {
             NorgAST::InfirmTag { name, parameters } => {
                 match name[0].as_str() {
                     "image" => {
-                        let mut image_tag = Vec::<String>::new();
-
                         let src_path = if parameters[0].starts_with('/') {
                             format!("{}{}", root_url, parameters[0])
                         } else {
                             parameters[0].clone()
                         };
-                        image_tag.push(format!("<img src=\"{}\"", src_path));
+                        let mut image_tag = String::from("<img src=\"");
+                        image_tag.push_str(&src_path);
+                        image_tag.push('"');
                         if !weak_carry.is_empty() {
-                            for weak_carryover in weak_carry.clone() {
-                                image_tag.push(weak_carryover_attribute(weak_carryover));
-                                // Remove the carryover tag after using it because its lifetime
-                                // ended after invocating it
-                                weak_carry.pop_front();
+                            let tags: Vec<_> = weak_carry.drain(..).collect();
+                            for weak_carryover in tags {
+                                image_tag.push(' ');
+                                image_tag.push_str(&weak_carryover_attribute(weak_carryover));
                             }
                         }
-
-                        image_tag.push("/>".to_string());
-                        image_tag.join(" ")
+                        image_tag.push_str("/>");
+                        image_tag
                     }
                     _ => {
                         // FIXME: add Infirm tags support, we are currently ignoring them
@@ -587,19 +554,16 @@ impl NorgToHtml for NorgAST {
             }
             NorgAST::DelimitingModifier(t) => {
                 if *t == DelimitingModifier::HorizontalRule {
-                    let mut hr_tag = Vec::<String>::new();
-                    hr_tag.push("<hr".to_string());
+                    let mut hr_tag = String::from("<hr");
                     if !weak_carry.is_empty() {
-                        for weak_carryover in weak_carry.clone() {
-                            hr_tag.push(weak_carryover_attribute(weak_carryover));
-                            // Remove the carryover tag after using it because its lifetime
-                            // ended after invocating it
-                            weak_carry.pop_front();
+                        let tags: Vec<_> = weak_carry.drain(..).collect();
+                        for weak_carryover in tags {
+                            hr_tag.push(' ');
+                            hr_tag.push_str(&weak_carryover_attribute(weak_carryover));
                         }
                     }
-
-                    hr_tag.push("/>".to_string());
-                    hr_tag.join(" ")
+                    hr_tag.push_str("/>");
+                    hr_tag
                 } else {
                     // XXX: support weak and strong delimiting modifiers?
                     error!("[converter] {:#?}", self);
