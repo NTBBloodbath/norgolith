@@ -59,7 +59,7 @@ fn sanitize_path(uri_path: &str) -> PathBuf {
 pub async fn preview(port: u16, open: bool, host: bool) -> Result<()> {
     info!("Starting preview server...");
 
-    let root = fs::find_config_file().await?;
+    let root = fs::find_config_file()?;
     let Some(root) = root else {
         bail!(
             "{}: not in a Norgolith site directory",

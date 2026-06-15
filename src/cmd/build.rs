@@ -1,16 +1,14 @@
 use std::{
     path::{Path, PathBuf},
-    sync::{Arc, OnceLock},
+    sync::{OnceLock},
     time::Instant,
 };
 
 use colored::{ColoredString, Colorize};
 use eyre::{bail, eyre, Result, WrapErr};
-use futures_util::{self, StreamExt};
 use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions, StyleSheet};
 use rss::Channel;
 use tera::{Context, Tera};
-use tokio::sync::Mutex;
 use tracing::{debug, error, instrument, warn};
 use walkdir::WalkDir;
 
@@ -64,20 +62,19 @@ impl SitePaths {
 /// # Arguments
 /// * `public_dir` - build target directory of the site
 #[instrument(skip(public_dir))]
-async fn prepare_build_directory(public_dir: &Path) -> Result<()> {
+fn prepare_build_directory(public_dir: &Path) -> Result<()> {
     debug!(path = %public_dir.display(), "Preparing build directory");
     if public_dir.exists() {
-        let mut entries = tokio::fs::read_dir(public_dir).await.wrap_err(format!(
+        for entry in std::fs::read_dir(public_dir).wrap_err(format!(
             "{}: {}",
             "Failed to read existing public directory".bold(),
             public_dir.display()
-        ))?;
-
-        while let Some(entry) = entries.next_entry().await.wrap_err(format!(
-            "{}: {}",
-            "Failed to iterate existing public directory".bold(),
-            public_dir.display()
         ))? {
+            let entry = entry.wrap_err(format!(
+                "{}: {}",
+                "Failed to iterate existing public directory".bold(),
+                public_dir.display()
+            ))?;
             let path = entry.path();
             let file_name = path.file_name().and_then(|name| name.to_str());
 
@@ -87,20 +84,20 @@ async fn prepare_build_directory(public_dir: &Path) -> Result<()> {
                 continue;
             }
 
-            let metadata = entry.metadata().await.wrap_err(format!(
+            let metadata = entry.metadata().wrap_err(format!(
                 "{}: {}",
                 "Failed to stat existing public entry".bold(),
                 path.display()
             ))?;
 
             if metadata.is_dir() {
-                tokio::fs::remove_dir_all(&path).await.wrap_err(format!(
+                std::fs::remove_dir_all(&path).wrap_err(format!(
                     "{}: {}",
                     "Failed to remove existing public directory entry".bold(),
                     path.display()
                 ))?;
             } else {
-                tokio::fs::remove_file(&path).await.wrap_err(format!(
+                std::fs::remove_file(&path).wrap_err(format!(
                     "{}: {}",
                     "Failed to remove existing public file entry".bold(),
                     path.display()
@@ -109,8 +106,7 @@ async fn prepare_build_directory(public_dir: &Path) -> Result<()> {
         }
     } else {
         debug!(path = %public_dir.display(), "Creating public directory");
-        tokio::fs::create_dir_all(&public_dir)
-            .await
+        std::fs::create_dir_all(public_dir)
             .wrap_err(format!(
                 "{}: {}",
                 "Failed to create public directory".bold(),
@@ -138,7 +134,7 @@ fn collect_xml_templates(tera: &Tera) -> Vec<String> {
 /// failures emit a warning rather than aborting, so non-RSS formats (Atom,
 /// sitemaps, etc.) are also supported.
 #[instrument(level = "debug", skip(tera, shared_context, public_dir))]
-async fn generate_xml_feeds(
+fn generate_xml_feeds(
     tera: &Tera,
     shared_context: &Context,
     public_dir: &Path,
@@ -170,13 +166,12 @@ async fn generate_xml_feeds(
 
         let output_path = public_dir.join(template_name);
         if let Some(parent) = output_path.parent() {
-            tokio::fs::create_dir_all(parent).await.wrap_err(format!(
+            std::fs::create_dir_all(parent).wrap_err(format!(
                 "Failed to create output directory for '{}'",
                 template_name
             ))?;
         }
-        tokio::fs::write(&output_path, &rendered)
-            .await
+        std::fs::write(&output_path, &rendered)
             .wrap_err(format!("Failed to write '{}'", output_path.display()))?;
     }
 
@@ -194,16 +189,18 @@ async fn generate_xml_feeds(
 /// * `site_config` - Site configuration
 /// * `minify` - Enable minification of output
 #[instrument(level = "debug", skip(tera, paths, site_config, shared_context, cache))]
-async fn build_contents(
+fn build_contents(
     tera: &Tera,
     paths: &SitePaths,
     posts: &[toml::Value],
     site_config: &config::SiteConfig,
     shared_context: &Context,
-    cache: &Arc<tokio::sync::RwLock<BuildCache>>,
+    cache: &BuildCache,
     minify: bool,
-) -> Result<(usize, Arc<Mutex<BuildTimings>>)> {
-    let entries = WalkDir::new(&paths.content)
+) -> Result<(usize, BuildTimings)> {
+    use rayon::prelude::*;
+
+    let entries: Vec<_> = WalkDir::new(&paths.content)
         .into_iter()
         .filter_map(|e| match e {
             Ok(e) => Some(e),
@@ -212,70 +209,51 @@ async fn build_contents(
                 None
             }
         })
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "norg"));
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "norg"))
+        .collect();
 
-    // Shared state for concurrent processing
-    let validation_errors = Arc::new(Mutex::new(Vec::new()));
-    let timings = Arc::new(Mutex::new(BuildTimings::new()));
-
-    // Parallel processing — buffer rendered content in memory
-    let entries: Vec<_> = entries.collect();
-    let buffered = Arc::new(Mutex::new(Vec::with_capacity(entries.len())));
-    futures_util::stream::iter(entries)
-        .for_each_concurrent(num_cpus::get(), |entry| {
-            let validation_errors = Arc::clone(&validation_errors);
-            let cache = Arc::clone(cache);
-            let timings = Arc::clone(&timings);
-            let buffered = Arc::clone(&buffered);
-
-            async move {
-                let path = entry.path();
-                match build_content_entry(
-                    path,
-                    tera,
-                    paths,
-                    site_config,
-                    minify,
-                    validation_errors,
-                    shared_context,
-                    &cache,
-                    &timings,
-                )
-                .await
-                {
-                    Ok(Some((public_path, content))) => {
-                        buffered.lock().await.push((public_path, content));
-                    }
-                    Ok(None) => {} // draft or missing
-                    Err(e) => error!("{:?}", e),
-                }
-            }
+    // Parallel processing with rayon, buffer rendered content in memory
+    let results: Vec<Result<Option<(PathBuf, String)>>> = entries
+        .par_iter()
+        .map(|entry| {
+            let path = entry.path();
+            build_content_entry(
+                path,
+                tera,
+                paths,
+                site_config,
+                minify,
+                shared_context,
+                cache,
+            )
         })
-        .await;
-    let buffered_writes = Arc::try_unwrap(buffered)
-        .expect("buffered Arc should have single owner")
-        .into_inner();
+        .collect();
 
-    // Sequential writes — single I/O path, no contention
+    // Collect results and handle errors
+    let mut buffered_writes = Vec::new();
+    for result in results {
+        match result {
+            Ok(Some((public_path, content))) => buffered_writes.push((public_path, content)),
+            Ok(None) => {} // draft or missing
+            Err(e) => error!("{:?}", e),
+        }
+    }
+
+    // Sequential writes, single I/O path, no contention
     let write_start = Instant::now();
     let mut built_count = 0usize;
-    for (public_path, content) in buffered_writes {
-        if write_public_file(&public_path, &content).await? {
+    for (public_path, content) in &buffered_writes {
+        if write_public_file(public_path, content)? {
             built_count += 1;
         }
     }
-    {
-        let mut t = timings.lock().await;
-        t.page_write_ms = write_start.elapsed().as_millis();
-    }
+    let write_ms = write_start.elapsed().as_millis();
 
-    let errors = validation_errors.lock().await;
-    if !errors.is_empty() {
-        bail!(errors.join("\n"));
-    }
+    let mut timings = BuildTimings::new();
+    timings.page_write_ms = write_ms;
+    timings.page_count = built_count;
 
-    let count = built_count;
-    Ok((count, timings))
+    Ok((built_count, timings))
 }
 
 /// Processes a single build entry (HTML file with metadata)
@@ -286,26 +264,23 @@ async fn build_contents(
 #[allow(clippy::too_many_arguments)]
 #[instrument(
     level = "debug",
-    skip(tera, paths, site_config, validation_errors, shared_context, cache)
+    skip(tera, paths, site_config, shared_context, cache)
 )]
-async fn build_content_entry(
+fn build_content_entry(
     path: &Path,
     tera: &Tera,
     paths: &SitePaths,
     site_config: &config::SiteConfig,
     minify: bool,
-    validation_errors: Arc<Mutex<Vec<String>>>,
     shared_context: &Context,
-    cache: &Arc<tokio::sync::RwLock<BuildCache>>,
-    timings: &Arc<Mutex<BuildTimings>>,
+    cache: &BuildCache,
 ) -> Result<Option<(PathBuf, String)>> {
     let rel_path = path
         .strip_prefix(&paths.content)
         .wrap_err("Failed to strip prefix")?;
 
     // Read file
-    let t = Instant::now();
-    let Ok(content) = tokio::fs::read_to_string(path).await else {
+    let Ok(content) = std::fs::read_to_string(path) else {
         error!(
             "{} {}",
             "Norg file not found for".bold(),
@@ -313,121 +288,73 @@ async fn build_content_entry(
         );
         return Ok(None);
     };
-    let file_ms = t.elapsed().as_millis();
 
     // Lightweight metadata extraction
-    let t = Instant::now();
     let metadata = shared::extract_metadata_from_content(&content, rel_path, &site_config.root_url);
-    let meta_ms = t.elapsed().as_millis();
 
     // Schema validation
-    let t = Instant::now();
     if let Some(schema) = &site_config.content_schema {
         if !rel_path.starts_with(&site_config.categories_dir) {
             let errors =
-                shared::validate_content_metadata(&paths.content, path, &metadata, schema, false)
-                    .await?;
+                shared::validate_content_metadata(&paths.content, path, &metadata, schema, false)?;
             if !errors.is_empty() {
-                validation_errors.lock().await.push(errors);
+                return Err(eyre!("{}", errors));
             }
         }
     }
-    let schema_ms = t.elapsed().as_millis();
 
     // Draft check
-    let t = Instant::now();
     if toml::Value::as_bool(metadata.get("draft").unwrap_or(&toml::Value::from(false)))
         .expect("draft metadata field should be a boolean")
     {
-        let draft_ms = t.elapsed().as_millis();
-        {
-            let mut t = timings.lock().await;
-            t.page_file_ms += file_ms;
-            t.page_meta_ms += meta_ms;
-            t.page_schema_ms += schema_ms;
-            t.page_draft_ms += draft_ms;
-        }
         return Ok(None);
     }
-    let draft_ms = t.elapsed().as_millis();
 
-    // Cache get
-    let t = Instant::now();
+    // Cache get (read-only, misses will be inserted later)
     let cache_key = rel_path.with_extension("");
-    let cached = {
-        let cache_guard = cache.read().await;
-        cache_guard.get(&cache_key, &content)
-    };
-    let cache_get_ms = t.elapsed().as_millis();
+    let cached = cache.get(&cache_key, &content);
 
     // Load (parse_tree + HTML on miss, deserialization on hit)
-    let t = Instant::now();
     let metadata = if let Some(cached) = cached {
         match serde_json::from_value(cached.clone()) {
             Ok(md) => md,
             Err(_) => shared::load_metadata_from_content(&content, rel_path, &site_config.root_url),
         }
     } else {
-        let md = shared::load_metadata_from_content(&content, rel_path, &site_config.root_url);
-        if let Ok(json_val) = serde_json::to_value(&md) {
-            let mut cache_guard = cache.write().await;
-            cache_guard.insert(&cache_key, &content, json_val);
-        }
-        md
+        shared::load_metadata_from_content(&content, rel_path, &site_config.root_url)
     };
-    let load_ms = t.elapsed().as_millis();
 
     // Determine output path
     let public_path = determine_public_path(&paths.public, rel_path)?;
 
     // Template render
-    let t = Instant::now();
-    let mut rendered = shared::render_norg_page(tera, &metadata, shared_context).await?;
-    let render_ms = t.elapsed().as_millis();
+    let mut rendered = shared::render_norg_page(tera, &metadata, shared_context)?;
 
     // Href rewrite
-    let t = Instant::now();
     let href_re = href_root_re();
     rendered = href_re
         .replace_all(&rendered, format!("href=\"{}/", site_config.root_url))
         .into_owned();
-    let href_ms = t.elapsed().as_millis();
 
     // Minify
-    let t = Instant::now();
     let rendered = if minify && !rendered.is_empty() {
         minify_html_content(rendered)?
     } else {
         rendered
     };
-    let minify_ms = t.elapsed().as_millis();
-
-    // Accumulate timings
-    {
-        let mut t = timings.lock().await;
-        t.page_file_ms += file_ms;
-        t.page_meta_ms += meta_ms;
-        t.page_schema_ms += schema_ms;
-        t.page_draft_ms += draft_ms;
-        t.page_cache_get_ms += cache_get_ms;
-        t.page_load_ms += load_ms;
-        t.page_render_ms += render_ms;
-        t.page_href_ms += href_ms;
-        t.page_minify_ms += minify_ms;
-    }
 
     Ok(Some((public_path, rendered)))
 }
 
 /// Generates category listing pages
-pub async fn build_category_pages(
+pub fn build_category_pages(
     tera: &Tera,
     public_dir: &Path,
     posts: &[toml::Value],
     config: &config::SiteConfig,
     collections: &shared::PrecomputedCollections,
 ) -> Result<usize> {
-    let categories = shared::collect_all_posts_categories(posts).await;
+    let categories = shared::collect_all_posts_categories(posts);
     let categories_dir = public_dir.join(&config.categories_dir);
 
     // Generate category pages only if the site has posts
@@ -435,10 +362,10 @@ pub async fn build_category_pages(
         return Ok(0);
     }
 
-    let content = shared::render_category_index(tera, posts, config, collections).await?;
+    let content = shared::render_category_index(tera, posts, config, collections)?;
 
-    tokio::fs::create_dir_all(&categories_dir).await?;
-    tokio::fs::write(categories_dir.join("index.html"), content).await?;
+    std::fs::create_dir_all(&categories_dir)?;
+    std::fs::write(categories_dir.join("index.html"), content)?;
     let mut page_count = 1usize;
 
     // Generate individual category pages
@@ -453,12 +380,12 @@ pub async fn build_category_pages(
             })
             .collect();
 
-        let content = shared::render_category_page(tera, &category, &cat_posts, config).await?;
+        let content = shared::render_category_page(tera, &category, &cat_posts, config)?;
 
         let cat_dir = categories_dir.join(&category);
-        tokio::fs::create_dir_all(&cat_dir).await?;
+        std::fs::create_dir_all(&cat_dir)?;
 
-        tokio::fs::write(cat_dir.join("index.html"), content).await?;
+        std::fs::write(cat_dir.join("index.html"), content)?;
         page_count += 1;
     }
 
@@ -531,15 +458,14 @@ fn precreate_output_dirs(paths: &SitePaths) -> Result<()> {
 /// # Returns
 /// * `Result<bool>` - `Ok(true)` if file was written, `Ok(false)` if skipped (unchanged).
 #[instrument(skip(rendered))]
-async fn write_public_file(public_path: &Path, rendered: &str) -> Result<bool> {
+fn write_public_file(public_path: &Path, rendered: &str) -> Result<bool> {
     // Skip write if file exists with identical content
-    if let Ok(existing) = tokio::fs::read(public_path).await {
+    if let Ok(existing) = std::fs::read(public_path) {
         if existing == rendered.as_bytes() {
             return Ok(false);
         }
     }
-    tokio::fs::write(public_path, rendered)
-        .await
+    std::fs::write(public_path, rendered)
         .wrap_err(format!(
             "{}: {}",
             "Failed to write to public path".bold(),
@@ -601,8 +527,8 @@ fn minify_html_content(rendered: String) -> Result<String> {
 /// # Returns
 /// * `Result<()>` - `Ok(())` if minification and writing succeed, otherwise an error.
 #[instrument(skip(src_path, dest_path))]
-async fn minify_js_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
-    let content = tokio::fs::read(src_path).await?;
+fn minify_js_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
+    let content = std::fs::read(src_path)?;
     let mut minified = Vec::new();
     let session = minify_js::Session::new();
     minify_js::minify(
@@ -618,27 +544,14 @@ async fn minify_js_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
             e
         )
     })?;
-    tokio::fs::write(dest_path, minified)
-        .await
+    std::fs::write(dest_path, minified)
         .wrap_err_with(|| format!("Failed to write minified JS to {}", dest_path.display()))?;
     Ok(())
 }
 
-/// Minifies a CSS asset using the `css-minify` crate.
-///
-/// This function reads a CSS file, applies level 2 optimizations, and writes the
-/// minified output to the destination path. It is used for production builds
-/// to reduce file size and improve performance.
-///
-/// # Arguments
-/// * `src_path` - The path to the source CSS file.
-/// * `dest_path` - The path where the minified CSS should be saved.
-///
-/// # Returns
-/// * `Result<()>` - `Ok(())` if minification and writing succeed, otherwise an error.
 #[instrument(skip(src_path, dest_path))]
-async fn minify_css_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
-    let content = tokio::fs::read_to_string(src_path).await?;
+fn minify_css_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
+    let content = std::fs::read_to_string(src_path)?;
 
     let mut stylesheet =
         StyleSheet::parse(&content, ParserOptions::default()).map_err(|e| eyre!("{}", e))?;
@@ -648,40 +561,32 @@ async fn minify_css_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
         ..Default::default()
     })?;
 
-    tokio::fs::write(dest_path, minified.code)
-        .await
+    std::fs::write(dest_path, minified.code)
         .wrap_err_with(|| {
             format!("Failed to write minified CSS to {}", dest_path.display()).bold()
         })?;
     Ok(())
 }
 
-/// Copies a binary asset without modification.
-///
-/// This function reads a binary file (e.g., images, fonts) and writes it to the
-/// destination path. It is used for assets that do not require minification.
-///
-/// # Arguments
-/// * `src_path` - The path to the source binary file.
-/// * `dest_path` - The path where the binary file should be saved.
-///
-/// # Returns
-/// * `Result<()>` - `Ok(())` if the file is copied successfully, otherwise an error.
 #[instrument(skip(src_path, dest_path))]
-async fn copy_binary_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
-    let content = tokio::fs::read(src_path).await?;
-    tokio::fs::write(dest_path, content)
-        .await
+fn copy_binary_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
+    let content = std::fs::read(src_path)?;
+    std::fs::write(dest_path, content)
         .wrap_err_with(|| {
             format!(
                 "Failed to copy asset from {} to {}",
                 src_path.display(),
                 dest_path.display()
             )
+            .bold()
         })?;
     Ok(())
 }
 
+/// Minifies a CSS asset using the `css-minify` crate.
+///
+/// This function reads a CSS file, applies level 2 optimizations, and writes the
+/// minified output to the destination path. It is used for production builds
 /// Copies an asset file with optional minification based on its type.
 ///
 /// This function handles the copying of assets, applying minification to JavaScript
@@ -695,18 +600,18 @@ async fn copy_binary_asset(src_path: &Path, dest_path: &Path) -> Result<()> {
 /// # Returns
 /// * `Result<()>` - `Ok(())` if the file is processed successfully, otherwise an error.
 #[instrument(skip(src_path, dest_path, minify))]
-async fn copy_asset_file(src_path: &Path, dest_path: &Path, minify: bool) -> Result<()> {
+fn copy_asset_file(src_path: &Path, dest_path: &Path, minify: bool) -> Result<()> {
     if minify && should_minify_asset(src_path) {
         let file_ext = src_path.extension().unwrap().to_str().unwrap();
 
         match file_ext {
-            "js" => minify_js_asset(src_path, dest_path).await?,
-            "css" => minify_css_asset(src_path, dest_path).await?,
-            _ => copy_binary_asset(src_path, dest_path).await?,
+            "js" => minify_js_asset(src_path, dest_path)?,
+            "css" => minify_css_asset(src_path, dest_path)?,
+            _ => copy_binary_asset(src_path, dest_path)?,
         }
     } else {
         // Copy file as binary, this lets us write images and some other formats as well instead of only text files
-        copy_binary_asset(src_path, dest_path).await?;
+        copy_binary_asset(src_path, dest_path)?;
     }
     Ok(())
 }
@@ -725,7 +630,7 @@ async fn copy_asset_file(src_path: &Path, dest_path: &Path, minify: bool) -> Res
 /// # Returns
 /// * `Result<()>` - `Ok(())` if all assets are copied successfully, otherwise an error.
 #[instrument(skip(assets_dir, target_dir, minify))]
-async fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Result<usize> {
+fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Result<usize> {
     let mut file_count = 0usize;
     for entry in WalkDir::new(assets_dir)
         .follow_links(true)
@@ -745,10 +650,10 @@ async fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Resu
         let target_path = target_dir.join(rel_path);
         if entry.path().is_dir() {
             if !target_path.exists() {
-                tokio::fs::create_dir_all(target_path).await?;
+                std::fs::create_dir_all(target_path)?;
             }
         } else {
-            copy_asset_file(entry.path(), &target_path, minify).await?;
+            copy_asset_file(entry.path(), &target_path, minify)?;
             file_count += 1;
         }
     }
@@ -889,8 +794,8 @@ fn avg(ms: u128, n: usize) -> f64 {
 /// # Arguments
 /// * `minify` - Enable minification of HTML/CSS/JS outputs
 #[instrument(skip(minify))]
-pub async fn build(minify: bool) -> Result<()> {
-    let Some(root) = fs::find_config_file().await? else {
+pub fn build(minify: bool) -> Result<()> {
+    let Some(root) = fs::find_config_file()? else {
         bail!(
             "{}: not in a Norgolith site directory",
             "Could not build the site".bold()
@@ -911,8 +816,7 @@ pub async fn build(minify: bool) -> Result<()> {
 
     // Load site configuration
     let t = Instant::now();
-    let config_content = tokio::fs::read_to_string(&root)
-        .await
+    let config_content = std::fs::read_to_string(&root)
         .wrap_err("Failed to read config file")?;
     let site_config: config::SiteConfig =
         toml::from_str(&config_content).wrap_err("Failed to parse site configuration")?;
@@ -932,12 +836,12 @@ pub async fn build(minify: bool) -> Result<()> {
     // Initialize Tera
     let t = Instant::now();
     debug!("Initializing template engine");
-    let tera = shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates).await?;
+    let tera = shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates)?;
     timings.tera_ms = t.elapsed().as_millis();
 
     // Prepare build directory
     let t = Instant::now();
-    prepare_build_directory(&paths.public).await?;
+    prepare_build_directory(&paths.public)?;
     timings.prepare_dir_ms = t.elapsed().as_millis();
 
     // Pre-create output directories for all content entries
@@ -951,8 +855,7 @@ pub async fn build(minify: bool) -> Result<()> {
         &paths.content,
         &site_config.root_url,
         &site_config.collections,
-    )
-    .await?
+    )?
     .into_iter()
     .filter(|post| {
         !post
@@ -979,30 +882,17 @@ pub async fn build(minify: bool) -> Result<()> {
     // Open cache
     let t = Instant::now();
     let cache = BuildCache::open(&root_dir)?;
-    let cache = Arc::new(tokio::sync::RwLock::new(cache));
     timings.cache_open_ms = t.elapsed().as_millis();
 
     println!();
 
     // Build content
     let t = Instant::now();
-    let (page_count, page_timings) = build_contents(&tera, &paths, &posts, &site_config, &shared_context, &cache, minify).await?;
+    let (page_count, content_timings) = build_contents(&tera, &paths, &posts, &site_config, &shared_context, &cache, minify)?;
     timings.content_ms = t.elapsed().as_millis();
     timings.page_count = page_count;
     // Copy per-page sub-timings from the concurrent build
-    {
-        let pt = page_timings.lock().await;
-        timings.page_file_ms = pt.page_file_ms;
-        timings.page_meta_ms = pt.page_meta_ms;
-        timings.page_schema_ms = pt.page_schema_ms;
-        timings.page_draft_ms = pt.page_draft_ms;
-        timings.page_cache_get_ms = pt.page_cache_get_ms;
-        timings.page_load_ms = pt.page_load_ms;
-        timings.page_render_ms = pt.page_render_ms;
-        timings.page_href_ms = pt.page_href_ms;
-        timings.page_minify_ms = pt.page_minify_ms;
-        timings.page_write_ms = pt.page_write_ms;
-    }
+    timings.page_write_ms = content_timings.page_write_ms;
     println!(
         "  {} {}  {:<12}  {}",
         "•".green(),
@@ -1013,7 +903,7 @@ pub async fn build(minify: bool) -> Result<()> {
 
     // Category pages
     let t = Instant::now();
-    let cat_count = build_category_pages(&tera, &paths.public, &posts, &site_config, &collections).await?;
+    let cat_count = build_category_pages(&tera, &paths.public, &posts, &site_config, &collections)?;
     timings.categories_ms = t.elapsed().as_millis();
     if cat_count > 0 {
         println!(
@@ -1027,7 +917,7 @@ pub async fn build(minify: bool) -> Result<()> {
 
     // XML feeds
     let t = Instant::now();
-    let feed_count = generate_xml_feeds(&tera, &shared_context, &paths.public).await?;
+    let feed_count = generate_xml_feeds(&tera, &shared_context, &paths.public)?;
     timings.feeds_ms = t.elapsed().as_millis();
     if feed_count > 0 {
         println!(
@@ -1044,9 +934,9 @@ pub async fn build(minify: bool) -> Result<()> {
     let public_assets_dir = paths.public.join("assets");
     let mut asset_count = 0usize;
     if paths.theme_assets.exists() {
-        asset_count += copy_assets(&paths.theme_assets, &public_assets_dir, minify).await?;
+        asset_count += copy_assets(&paths.theme_assets, &public_assets_dir, minify)?;
     }
-    asset_count += copy_assets(&paths.assets, &public_assets_dir, minify).await?;
+    asset_count += copy_assets(&paths.assets, &public_assets_dir, minify)?;
     timings.assets_ms = t.elapsed().as_millis();
     println!(
         "  {} {}  {:<12}  {}",
@@ -1066,11 +956,9 @@ pub async fn build(minify: bool) -> Result<()> {
 
     // Save cache
     let t = Instant::now();
-    let cache_guard = cache.read().await;
-    if let Err(e) = cache_guard.save() {
+    if let Err(e) = cache.save() {
         warn!("Failed to save build cache: {}", e);
     }
-    drop(cache_guard);
     timings.cache_save_ms = t.elapsed().as_millis();
 
     timings.print_summary(total_ms);

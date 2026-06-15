@@ -249,8 +249,8 @@ fn resolve_collection<'a>(
 pub async fn new(kind: &str, name: &str, open: bool, collection: Option<&String>) -> Result<()> {
     debug!(type = kind, name = name, "Creating new asset");
 
-    // Find site root early — needed for "post" collection resolution
-    let config_file = fs::find_config_file().await?.ok_or_else(|| {
+    // Find site root early, needed for "post" collection resolution
+    let config_file = fs::find_config_file()?.ok_or_else(|| {
         eyre!(
             "{}: not in a Norgolith site directory",
             "Unable to create site asset".bold()

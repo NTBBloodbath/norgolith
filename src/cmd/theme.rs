@@ -19,7 +19,7 @@ use crate::{
 async fn find_theme_dir() -> Result<PathBuf> {
     let mut current_dir = std::env::current_dir()?;
     let found_site_root =
-        fs::find_in_previous_dirs("file", "norgolith.toml", &mut current_dir).await?;
+        fs::find_in_previous_dirs("file", "norgolith.toml", &mut current_dir)?;
 
     match found_site_root {
         Some(mut root) => {
