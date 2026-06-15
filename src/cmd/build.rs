@@ -200,7 +200,7 @@ async fn build_contents(
     posts: &[toml::Value],
     site_config: &config::SiteConfig,
     shared_context: &Context,
-    cache: &Arc<tokio::sync::Mutex<BuildCache>>,
+    cache: &Arc<tokio::sync::RwLock<BuildCache>>,
     minify: bool,
 ) -> Result<(usize, Arc<Mutex<BuildTimings>>)> {
     let entries = WalkDir::new(&paths.content)
@@ -296,7 +296,7 @@ async fn build_content_entry(
     minify: bool,
     validation_errors: Arc<Mutex<Vec<String>>>,
     shared_context: &Context,
-    cache: &Arc<tokio::sync::Mutex<BuildCache>>,
+    cache: &Arc<tokio::sync::RwLock<BuildCache>>,
     timings: &Arc<Mutex<BuildTimings>>,
 ) -> Result<Option<(PathBuf, String)>> {
     let rel_path = path
@@ -355,7 +355,7 @@ async fn build_content_entry(
     let t = Instant::now();
     let cache_key = rel_path.with_extension("");
     let cached = {
-        let cache_guard = cache.lock().await;
+        let cache_guard = cache.read().await;
         cache_guard.get(&cache_key, &content)
     };
     let cache_get_ms = t.elapsed().as_millis();
@@ -370,7 +370,7 @@ async fn build_content_entry(
     } else {
         let md = shared::load_metadata_from_content(&content, rel_path, &site_config.root_url);
         if let Ok(json_val) = serde_json::to_value(&md) {
-            let mut cache_guard = cache.lock().await;
+            let mut cache_guard = cache.write().await;
             cache_guard.insert(&cache_key, &content, json_val);
         }
         md
@@ -979,7 +979,7 @@ pub async fn build(minify: bool) -> Result<()> {
     // Open cache
     let t = Instant::now();
     let cache = BuildCache::open(&root_dir)?;
-    let cache = Arc::new(tokio::sync::Mutex::new(cache));
+    let cache = Arc::new(tokio::sync::RwLock::new(cache));
     timings.cache_open_ms = t.elapsed().as_millis();
 
     println!();
@@ -1066,7 +1066,7 @@ pub async fn build(minify: bool) -> Result<()> {
 
     // Save cache
     let t = Instant::now();
-    let cache_guard = cache.lock().await;
+    let cache_guard = cache.read().await;
     if let Err(e) = cache_guard.save(&root_dir) {
         warn!("Failed to save build cache: {}", e);
     }
