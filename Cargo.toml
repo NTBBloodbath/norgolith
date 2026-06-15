@@ -24,7 +24,7 @@ hyper = { version = "=0.14.28", features = ["runtime", "server", "http1", "http2
 tera = { version = "1.20.0", features = ["preserve_order"] }
 tokio = { version = "1.43.1", features = ["fs", "io-std", "time", "rt-multi-thread", "macros", "process"] }
 toml = { version = "0.8.19", features = ["preserve_order"] }
-rust-norg = { git = "https://github.com/nvim-neorg/rust-norg", branch = "main" }
+rust-norg = { git = "https://github.com/nvim-neorg/rust-norg", branch = "push-vznuopvolwup" }
 whoami = "1.5.2"
 open = "5.3.2"
 indoc = "2.0.5"

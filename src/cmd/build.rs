@@ -1,6 +1,7 @@
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
+    time::Instant,
 };
 
 use colored::{ColoredString, Colorize};
@@ -201,7 +202,7 @@ async fn build_contents(
     shared_context: &Context,
     cache: &Arc<tokio::sync::Mutex<BuildCache>>,
     minify: bool,
-) -> Result<usize> {
+) -> Result<(usize, Arc<Mutex<BuildTimings>>)> {
     let entries = WalkDir::new(&paths.content)
         .into_iter()
         .filter_map(|e| match e {
@@ -216,6 +217,7 @@ async fn build_contents(
     // Shared error state for concurrent validation
     let validation_errors = Arc::new(Mutex::new(Vec::new()));
     let built_count = Arc::new(Mutex::new(0usize));
+    let timings = Arc::new(Mutex::new(BuildTimings::new()));
 
     // Parallel processing
     futures_util::stream::iter(entries)
@@ -223,6 +225,7 @@ async fn build_contents(
             let validation_errors = Arc::clone(&validation_errors);
             let built_count = Arc::clone(&built_count);
             let cache = Arc::clone(cache);
+            let timings = Arc::clone(&timings);
 
             async move {
                 let path = entry.path();
@@ -236,6 +239,7 @@ async fn build_contents(
                     built_count,
                     shared_context,
                     &cache,
+                    &timings,
                 )
                 .await
                 {
@@ -251,7 +255,7 @@ async fn build_contents(
     }
 
     let count = *built_count.lock().await;
-    Ok(count)
+    Ok((count, timings))
 }
 
 /// Processes a single build entry (HTML file with metadata)
@@ -273,13 +277,14 @@ async fn build_content_entry(
     built_count: Arc<Mutex<usize>>,
     shared_context: &Context,
     cache: &Arc<tokio::sync::Mutex<BuildCache>>,
+    timings: &Arc<Mutex<BuildTimings>>,
 ) -> Result<()> {
     let rel_path = path
         .strip_prefix(&paths.content)
         .wrap_err("Failed to strip prefix")?;
 
-    // Read file once — both draft check and full conversion use this content
-    let file_start = std::time::Instant::now();
+    // Read file
+    let t = Instant::now();
     let Ok(content) = tokio::fs::read_to_string(path).await else {
         error!(
             "{} {}",
@@ -288,16 +293,16 @@ async fn build_content_entry(
         );
         return Ok(());
     };
-    let file_time = file_start.elapsed();
+    let file_ms = t.elapsed().as_millis();
 
-    // Lightweight metadata extraction first (no parse_tree, no HTML conversion)
-    let meta_start = std::time::Instant::now();
+    // Lightweight metadata extraction
+    let t = Instant::now();
     let metadata = shared::extract_metadata_from_content(&content, rel_path, &site_config.root_url);
-    let meta_time = meta_start.elapsed();
+    let meta_ms = t.elapsed().as_millis();
 
-    // Metadata schema validation
+    // Schema validation
+    let t = Instant::now();
     if let Some(schema) = &site_config.content_schema {
-        // Do not try to validate generated categories
         if !rel_path.starts_with(&site_config.categories_dir) {
             let errors =
                 shared::validate_content_metadata(&paths.content, path, &metadata, schema, false)
@@ -307,34 +312,42 @@ async fn build_content_entry(
             }
         }
     }
+    let schema_ms = t.elapsed().as_millis();
 
-    // Do not try to build draft content for production builds
-    // Check early to skip the expensive parse_tree + HTML conversion
+    // Draft check
+    let t = Instant::now();
     if toml::Value::as_bool(metadata.get("draft").unwrap_or(&toml::Value::from(false)))
         .expect("draft metadata field should be a boolean")
     {
+        let draft_ms = t.elapsed().as_millis();
+        {
+            let mut t = timings.lock().await;
+            t.page_file_ms += file_ms;
+            t.page_meta_ms += meta_ms;
+            t.page_schema_ms += schema_ms;
+            t.page_draft_ms += draft_ms;
+        }
         return Ok(());
     }
+    let draft_ms = t.elapsed().as_millis();
 
-    // Full load with HTML conversion (only for non-draft pages, reuses pre-read content)
-    let load_start = std::time::Instant::now();
-    // Check cache for full metadata (avoids expensive parse_tree on cache hit)
+    // Cache get
+    let t = Instant::now();
     let cache_key = rel_path.with_extension("");
-    let metadata = {
+    let cached = {
         let cache_guard = cache.lock().await;
         cache_guard.get(&cache_key, &content)
     };
-    let metadata = if let Some(cached) = metadata {
-        // Cache hit — deserialize from serde_json::Value back to toml::Value
+    let cache_get_ms = t.elapsed().as_millis();
+
+    // Load (parse_tree + HTML on miss, deserialization on hit)
+    let t = Instant::now();
+    let metadata = if let Some(cached) = cached {
         match serde_json::from_value(cached.clone()) {
             Ok(md) => md,
-            Err(_) => {
-                // Fallback: re-parse if deserialization fails
-                shared::load_metadata_from_content(&content, rel_path, &site_config.root_url)
-            }
+            Err(_) => shared::load_metadata_from_content(&content, rel_path, &site_config.root_url),
         }
     } else {
-        // Cache miss — parse and store
         let md = shared::load_metadata_from_content(&content, rel_path, &site_config.root_url);
         if let Ok(json_val) = serde_json::to_value(&md) {
             let mut cache_guard = cache.lock().await;
@@ -342,43 +355,56 @@ async fn build_content_entry(
         }
         md
     };
-    let load_time = load_start.elapsed();
+    let load_ms = t.elapsed().as_millis();
 
     // Determine output path
     let public_path = determine_public_path(&paths.public, rel_path)?;
 
-    let render_start = std::time::Instant::now();
+    // Template render
+    let t = Instant::now();
     let mut rendered = shared::render_norg_page(tera, &metadata, shared_context).await?;
-    let render_time = render_start.elapsed();
+    let render_ms = t.elapsed().as_millis();
 
-    // Convert all '/' references to the site root URL in links and assets, e.g.,
-    // - `<a href="/docs" ...` -> `<a href="https://foobar.com/docs" ...`
-    // - `<link rel... href="/assets/..." ...` -> `<link rel... href="https://foobar.com/assets/..." ...`
+    // Href rewrite
+    let t = Instant::now();
     let href_re = href_root_re();
     rendered = href_re
         .replace_all(&rendered, format!("href=\"{}/", site_config.root_url))
         .into_owned();
+    let href_ms = t.elapsed().as_millis();
 
-    // If no errors occurred then rendered should not be empty and we should proceed
+    // Minify
+    let t = Instant::now();
+    let rendered = if minify && !rendered.is_empty() {
+        minify_html_content(rendered)?
+    } else {
+        rendered
+    };
+    let minify_ms = t.elapsed().as_millis();
+
+    // Write
+    let t = Instant::now();
     if !rendered.is_empty() {
-        let rendered = if minify {
-            minify_html_content(rendered)?
-        } else {
-            rendered
-        };
-
-        // Write rendered output to public path
         write_public_file(&public_path, &rendered).await?;
         *built_count.lock().await += 1;
     }
-    debug!(
-        path = %rel_path.display(),
-        file_ms = file_time.as_millis(),
-        meta_ms = meta_time.as_millis(),
-        load_ms = load_time.as_millis(),
-        render_ms = render_time.as_millis(),
-        "build_content_entry timing"
-    );
+    let write_ms = t.elapsed().as_millis();
+
+    // Accumulate timings
+    {
+        let mut t = timings.lock().await;
+        t.page_file_ms += file_ms;
+        t.page_meta_ms += meta_ms;
+        t.page_schema_ms += schema_ms;
+        t.page_draft_ms += draft_ms;
+        t.page_cache_get_ms += cache_get_ms;
+        t.page_load_ms += load_ms;
+        t.page_render_ms += render_ms;
+        t.page_href_ms += href_ms;
+        t.page_minify_ms += minify_ms;
+        t.page_write_ms += write_ms;
+    }
+
     Ok(())
 }
 
@@ -698,6 +724,127 @@ async fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Resu
     Ok(file_count)
 }
 
+#[derive(Debug)]
+struct BuildTimings {
+    config_ms: u128,
+    tera_ms: u128,
+    prepare_dir_ms: u128,
+    collect_posts_ms: u128,
+    collections_ms: u128,
+    shared_ctx_ms: u128,
+    cache_open_ms: u128,
+    content_ms: u128,
+    categories_ms: u128,
+    feeds_ms: u128,
+    assets_ms: u128,
+    cache_save_ms: u128,
+    // Per-page sub-timing (sums across all pages)
+    page_file_ms: u128,
+    page_meta_ms: u128,
+    page_schema_ms: u128,
+    page_draft_ms: u128,
+    page_cache_get_ms: u128,
+    page_load_ms: u128,
+    page_render_ms: u128,
+    page_href_ms: u128,
+    page_minify_ms: u128,
+    page_write_ms: u128,
+    page_count: usize,
+}
+
+impl BuildTimings {
+    fn new() -> Self {
+        Self {
+            config_ms: 0,
+            tera_ms: 0,
+            prepare_dir_ms: 0,
+            collect_posts_ms: 0,
+            collections_ms: 0,
+            shared_ctx_ms: 0,
+            cache_open_ms: 0,
+            content_ms: 0,
+            categories_ms: 0,
+            feeds_ms: 0,
+            assets_ms: 0,
+            cache_save_ms: 0,
+            page_file_ms: 0,
+            page_meta_ms: 0,
+            page_schema_ms: 0,
+            page_draft_ms: 0,
+            page_cache_get_ms: 0,
+            page_load_ms: 0,
+            page_render_ms: 0,
+            page_href_ms: 0,
+            page_minify_ms: 0,
+            page_write_ms: 0,
+            page_count: 0,
+        }
+    }
+
+    fn print_summary(&self, total_ms: u128) {
+        let overhead = total_ms
+            .saturating_sub(self.config_ms)
+            .saturating_sub(self.tera_ms)
+            .saturating_sub(self.prepare_dir_ms)
+            .saturating_sub(self.collect_posts_ms)
+            .saturating_sub(self.collections_ms)
+            .saturating_sub(self.shared_ctx_ms)
+            .saturating_sub(self.cache_open_ms)
+            .saturating_sub(self.content_ms)
+            .saturating_sub(self.categories_ms)
+            .saturating_sub(self.feeds_ms)
+            .saturating_sub(self.assets_ms)
+            .saturating_sub(self.cache_save_ms);
+
+        println!();
+        println!("{}", "=== Build Timing Breakdown ===".bold());
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Config load+validate", self.config_ms, pct(self.config_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Tera init", self.tera_ms, pct(self.tera_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Prepare build dir", self.prepare_dir_ms, pct(self.prepare_dir_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Collect post metadata", self.collect_posts_ms, pct(self.collect_posts_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Collection subsets", self.collections_ms, pct(self.collections_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Shared context", self.shared_ctx_ms, pct(self.shared_ctx_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Cache open", self.cache_open_ms, pct(self.cache_open_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Content build (all pages)", self.content_ms, pct(self.content_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Category pages", self.categories_ms, pct(self.categories_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "XML feeds", self.feeds_ms, pct(self.feeds_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Asset copy", self.assets_ms, pct(self.assets_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Cache save", self.cache_save_ms, pct(self.cache_save_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Overhead/other", overhead, pct(overhead, total_ms));
+        println!("  {}", "─".repeat(50));
+        println!("  {:<30} {:>6}ms", "TOTAL", total_ms);
+
+        if self.page_count > 0 {
+            println!();
+            println!("{}", "=== Per-Page Sub-Timing (sums across all pages) ===".bold());
+            println!("  {:<30} {:>6}ms  (avg {:>4.1}ms)", "File read (I/O)", self.page_file_ms, avg(self.page_file_ms, self.page_count));
+            println!("  {:<30} {:>6}ms  (avg {:>4.1}ms)", "Metadata extract", self.page_meta_ms, avg(self.page_meta_ms, self.page_count));
+            println!("  {:<30} {:>6}ms  (avg {:>4.1}ms)", "Schema validation", self.page_schema_ms, avg(self.page_schema_ms, self.page_count));
+            println!("  {:<30} {:>6}ms  (avg {:>4.1}ms)", "Draft check", self.page_draft_ms, avg(self.page_draft_ms, self.page_count));
+            println!("  {:<30} {:>6}ms  (avg {:>4.1}ms)", "Cache lock get", self.page_cache_get_ms, avg(self.page_cache_get_ms, self.page_count));
+            println!("  {:<30} {:>6}ms  (avg {:>4.1}ms)", "Parse+HTML convert", self.page_load_ms, avg(self.page_load_ms, self.page_count));
+            println!("  {:<30} {:>6}ms  (avg {:>4.1}ms)", "Template render", self.page_render_ms, avg(self.page_render_ms, self.page_count));
+            println!("  {:<30} {:>6}ms  (avg {:>4.1}ms)", "Href rewrite", self.page_href_ms, avg(self.page_href_ms, self.page_count));
+            println!("  {:<30} {:>6}ms  (avg {:>4.1}ms)", "HTML minify", self.page_minify_ms, avg(self.page_minify_ms, self.page_count));
+            println!("  {:<30} {:>6}ms  (avg {:>4.1}ms)", "File write", self.page_write_ms, avg(self.page_write_ms, self.page_count));
+            let page_sum = self.page_file_ms + self.page_meta_ms + self.page_schema_ms
+                + self.page_draft_ms + self.page_cache_get_ms + self.page_load_ms
+                + self.page_render_ms + self.page_href_ms + self.page_minify_ms + self.page_write_ms;
+            println!("  {}", "─".repeat(50));
+            println!("  {:<30} {:>6}ms  (sum of above)", "Page sub-timing sum", page_sum);
+            println!("  {:<30} {:>6}ms  (content_ms - page sub-sum)", "Lock/scheduling gap",
+                self.content_ms.saturating_sub(page_sum));
+        }
+    }
+}
+
+fn pct(ms: u128, total: u128) -> f64 {
+    if total == 0 { 0.0 } else { ms as f64 / total as f64 * 100.0 }
+}
+fn avg(ms: u128, n: usize) -> f64 {
+    if n == 0 { 0.0 } else { ms as f64 / n as f64 }
+}
+
 /// Main build entry point
 ///
 /// Orchestrates the complete build process:
@@ -727,15 +874,16 @@ pub async fn build(minify: bool) -> Result<()> {
             ColoredString::from("")
         }
     );
-    let build_start = std::time::Instant::now();
+    let build_start = Instant::now();
+    let mut timings = BuildTimings::new();
 
-    // Load site configuration, root already contains the norgolith.toml path
+    // Load site configuration
+    let t = Instant::now();
     let config_content = tokio::fs::read_to_string(&root)
         .await
         .wrap_err("Failed to read config file")?;
     let site_config: config::SiteConfig =
         toml::from_str(&config_content).wrap_err("Failed to parse site configuration")?;
-
     let validation_errors = site_config.validate();
     if !validation_errors.is_empty() {
         for error in &validation_errors {
@@ -743,21 +891,25 @@ pub async fn build(minify: bool) -> Result<()> {
         }
         bail!("Site configuration has validation errors");
     }
-
     debug!(?site_config, "Loaded site configuration");
+    timings.config_ms = t.elapsed().as_millis();
 
     let root_dir = root.parent().unwrap().to_path_buf();
-
-    // Tera wants a `dir: &str` parameter for some reason instead of asking for a `&Path` or `&PathBuf`...
     let paths = SitePaths::new(root_dir.clone());
 
-    // Initialize Tera once
+    // Initialize Tera
+    let t = Instant::now();
     debug!("Initializing template engine");
     let tera = shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates).await?;
+    timings.tera_ms = t.elapsed().as_millis();
 
-    // Prepare the public build directory
+    // Prepare build directory
+    let t = Instant::now();
     prepare_build_directory(&paths.public).await?;
+    timings.prepare_dir_ms = t.elapsed().as_millis();
 
+    // Collect post metadata
+    let t = Instant::now();
     let posts: Vec<_> = shared::collect_all_posts_metadata(
         &paths.content,
         &site_config.root_url,
@@ -775,83 +927,116 @@ pub async fn build(minify: bool) -> Result<()> {
             .unwrap_or(false)
     })
     .collect();
+    timings.collect_posts_ms = t.elapsed().as_millis();
 
-    // Pre-compute collection subsets once (was O(posts × collections) per page)
+    // Pre-compute collection subsets
+    let t = Instant::now();
     let collections = shared::precompute_collection_subsets(&posts, &site_config);
-    // Build shared Tera context once (config, posts, lith_version, collections)
-    let shared_context = shared::build_shared_context(&posts, &site_config, &collections);
+    timings.collections_ms = t.elapsed().as_millis();
 
-    // Open build cache for incremental builds
+    // Build shared context
+    let t = Instant::now();
+    let shared_context = shared::build_shared_context(&posts, &site_config, &collections);
+    timings.shared_ctx_ms = t.elapsed().as_millis();
+
+    // Open cache
+    let t = Instant::now();
     let cache = BuildCache::open(&root_dir)?;
     let cache = Arc::new(tokio::sync::Mutex::new(cache));
+    timings.cache_open_ms = t.elapsed().as_millis();
 
     println!();
 
-    // Build all norg content (& run validation)
-    let step_start = std::time::Instant::now();
-    let page_count = build_contents(&tera, &paths, &posts, &site_config, &shared_context, &cache, minify).await?;
+    // Build content
+    let t = Instant::now();
+    let (page_count, page_timings) = build_contents(&tera, &paths, &posts, &site_config, &shared_context, &cache, minify).await?;
+    timings.content_ms = t.elapsed().as_millis();
+    timings.page_count = page_count;
+    // Copy per-page sub-timings from the concurrent build
+    {
+        let pt = page_timings.lock().await;
+        timings.page_file_ms = pt.page_file_ms;
+        timings.page_meta_ms = pt.page_meta_ms;
+        timings.page_schema_ms = pt.page_schema_ms;
+        timings.page_draft_ms = pt.page_draft_ms;
+        timings.page_cache_get_ms = pt.page_cache_get_ms;
+        timings.page_load_ms = pt.page_load_ms;
+        timings.page_render_ms = pt.page_render_ms;
+        timings.page_href_ms = pt.page_href_ms;
+        timings.page_minify_ms = pt.page_minify_ms;
+        timings.page_write_ms = pt.page_write_ms;
+    }
     println!(
         "  {} {}  {:<12}  {}",
         "•".green(),
         format!("{:<12}", "Content").bold(),
         format!("{} pages", page_count),
-        shared::get_elapsed_time(step_start).dimmed()
+        shared::get_elapsed_time(t).dimmed()
     );
 
-    // Build all category pages
-    let step_start = std::time::Instant::now();
+    // Category pages
+    let t = Instant::now();
     let cat_count = build_category_pages(&tera, &paths.public, &posts, &site_config, &collections).await?;
+    timings.categories_ms = t.elapsed().as_millis();
     if cat_count > 0 {
         println!(
             "  {} {}  {:<12}  {}",
             "•".green(),
             format!("{:<12}", "Categories").bold(),
             format!("{} pages", cat_count),
-            shared::get_elapsed_time(step_start).dimmed()
+            shared::get_elapsed_time(t).dimmed()
         );
     }
 
-    // Generate XML feeds (RSS, Atom, sitemaps, etc.) from all XML templates
-    let step_start = std::time::Instant::now();
+    // XML feeds
+    let t = Instant::now();
     let feed_count = generate_xml_feeds(&tera, &shared_context, &paths.public).await?;
+    timings.feeds_ms = t.elapsed().as_millis();
     if feed_count > 0 {
         println!(
             "  {} {}  {:<12}  {}",
             "•".green(),
             format!("{:<12}", "Feeds").bold(),
             format!("{} files", feed_count),
-            shared::get_elapsed_time(step_start).dimmed()
+            shared::get_elapsed_time(t).dimmed()
         );
     }
 
-    // Copy site assets
-    let step_start = std::time::Instant::now();
+    // Assets
+    let t = Instant::now();
     let public_assets_dir = paths.public.join("assets");
     let mut asset_count = 0usize;
     if paths.theme_assets.exists() {
         asset_count += copy_assets(&paths.theme_assets, &public_assets_dir, minify).await?;
     }
     asset_count += copy_assets(&paths.assets, &public_assets_dir, minify).await?;
+    timings.assets_ms = t.elapsed().as_millis();
     println!(
         "  {} {}  {:<12}  {}",
         "•".green(),
         format!("{:<12}", "Assets").bold(),
         format!("{} files", asset_count),
-        shared::get_elapsed_time(step_start).dimmed()
+        shared::get_elapsed_time(t).dimmed()
     );
 
     println!();
+    let total_ms = build_start.elapsed().as_millis();
     println!(
         "{} Built in {}",
         "✓".green().bold(),
         shared::get_elapsed_time(build_start)
     );
 
-    // Save cache for next incremental build
+    // Save cache
+    let t = Instant::now();
     let cache_guard = cache.lock().await;
     if let Err(e) = cache_guard.save(&root_dir) {
         warn!("Failed to save build cache: {}", e);
     }
+    drop(cache_guard);
+    timings.cache_save_ms = t.elapsed().as_millis();
+
+    timings.print_summary(total_ms);
 
     Ok(())
 }
