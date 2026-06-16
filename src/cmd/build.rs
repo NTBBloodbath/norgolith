@@ -18,6 +18,7 @@ fn href_root_re() -> &'static regex::Regex {
 }
 
 use crate::{cache::BuildCache, config, fs, shared};
+use super::seo;
 
 /// Represents the directory structure of a Norgolith site.
 ///
@@ -197,7 +198,7 @@ fn build_contents(
     shared_context: &Context,
     cache: &mut BuildCache,
     minify: bool,
-) -> Result<(usize, BuildTimings)> {
+) -> Result<(usize, Vec<String>, BuildTimings)> {
     use rayon::prelude::*;
 
     let entries: Vec<_> = WalkDir::new(&paths.content)
@@ -231,10 +232,12 @@ fn build_contents(
 
     // Collect results and handle errors
     let mut buffered_writes = Vec::new();
+    let mut permalinks = Vec::new();
     for result in results {
         match result {
-            Ok(Some((public_path, content, cache_entry))) => {
+            Ok(Some((public_path, content, permalink, cache_entry))) => {
                 buffered_writes.push((public_path, content));
+                permalinks.push(permalink);
                 if let Some((key, content_str, metadata)) = cache_entry {
                     cache.insert(&key, &content_str, metadata);
                 }
@@ -258,13 +261,13 @@ fn build_contents(
     timings.page_write_ms = write_ms;
     timings.page_count = built_count;
 
-    Ok((built_count, timings))
+    Ok((built_count, permalinks, timings))
 }
 
 /// (cache_key, content, metadata) for cache insertion
 type CacheInsert = (PathBuf, String, serde_json::Value);
 /// Result of building a single content entry
-type BuildResult = Result<Option<(PathBuf, String, Option<CacheInsert>)>>;
+type BuildResult = Result<Option<(PathBuf, String, String, Option<CacheInsert>)>>;
 
 /// Processes a single build entry (HTML file with metadata)
 ///
@@ -359,7 +362,14 @@ fn build_content_entry(
         rendered
     };
 
-    Ok(Some((public_path, rendered, cache_insert)))
+    // Extract permalink for SEO generation
+    let permalink = metadata
+        .get("permalink")
+        .and_then(|v| v.as_str())
+        .unwrap_or("/")
+        .to_string();
+
+    Ok(Some((public_path, rendered, permalink, cache_insert)))
 }
 
 /// Generates category listing pages
@@ -693,6 +703,7 @@ struct BuildTimings {
     content_ms: u128,
     categories_ms: u128,
     feeds_ms: u128,
+    seo_ms: u128,
     assets_ms: u128,
     cache_save_ms: u128,
     // Per-page sub-timing (sums across all pages)
@@ -722,6 +733,7 @@ impl BuildTimings {
             content_ms: 0,
             categories_ms: 0,
             feeds_ms: 0,
+            seo_ms: 0,
             assets_ms: 0,
             cache_save_ms: 0,
             page_file_ms: 0,
@@ -750,6 +762,7 @@ impl BuildTimings {
             .saturating_sub(self.content_ms)
             .saturating_sub(self.categories_ms)
             .saturating_sub(self.feeds_ms)
+            .saturating_sub(self.seo_ms)
             .saturating_sub(self.assets_ms)
             .saturating_sub(self.cache_save_ms);
 
@@ -765,6 +778,7 @@ impl BuildTimings {
         println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Content build (all pages)", self.content_ms, pct(self.content_ms, total_ms));
         println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Category pages", self.categories_ms, pct(self.categories_ms, total_ms));
         println!("  {:<30} {:>6}ms  ({:>4.1}%)", "XML feeds", self.feeds_ms, pct(self.feeds_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "SEO (sitemap+robots)", self.seo_ms, pct(self.seo_ms, total_ms));
         println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Asset copy", self.assets_ms, pct(self.assets_ms, total_ms));
         println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Cache save", self.cache_save_ms, pct(self.cache_save_ms, total_ms));
         println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Overhead/other", overhead, pct(overhead, total_ms));
@@ -908,7 +922,7 @@ pub fn build(minify: bool) -> Result<()> {
 
     // Build content
     let t = Instant::now();
-    let (page_count, content_timings) = build_contents(&tera, &paths, &posts, &site_config, &shared_context, &mut cache, minify)?;
+    let (page_count, permalinks, content_timings) = build_contents(&tera, &paths, &posts, &site_config, &shared_context, &mut cache, minify)?;
     timings.content_ms = t.elapsed().as_millis();
     timings.page_count = page_count;
     // Copy per-page sub-timings from the concurrent build
@@ -945,6 +959,57 @@ pub fn build(minify: bool) -> Result<()> {
             "•".green(),
             format!("{:<12}", "Feeds").bold(),
             format!("{} files", feed_count),
+            shared::get_elapsed_time(t).dimmed()
+        );
+    }
+
+    // SEO generation
+    let t = Instant::now();
+    let mut seo_count = 0usize;
+    let seo_enabled = site_config.seo.is_some() || site_config.robots.is_some();
+    if seo_enabled {
+        // Sitemap
+        let sitemap_enabled = site_config
+            .seo
+            .as_ref()
+            .is_none_or(|s| s.sitemap);
+        if sitemap_enabled {
+            let urls: Vec<seo::SitemapUrl> = permalinks
+                .iter()
+                .map(|p| seo::SitemapUrl {
+                    loc: p.clone(),
+                    lastmod: None,
+                })
+                .collect();
+            let xml = seo::generate_sitemap_xml(&urls, &site_config.root_url);
+            let output_path = paths.public.join("sitemap.xml");
+            std::fs::write(&output_path, &xml)
+                .wrap_err("Failed to write sitemap.xml")?;
+            seo_count += 1;
+        }
+
+        // Robots.txt
+        if let Some(ref robots_config) = site_config.robots {
+            if robots_config.enable {
+                let content = seo::generate_robots_txt(
+                    &site_config,
+                    robots_config,
+                    sitemap_enabled,
+                );
+                let output_path = paths.public.join("robots.txt");
+                std::fs::write(&output_path, &content)
+                    .wrap_err("Failed to write robots.txt")?;
+                seo_count += 1;
+            }
+        }
+    }
+    timings.seo_ms = t.elapsed().as_millis();
+    if seo_count > 0 {
+        println!(
+            "  {} {}  {:<12}  {}",
+            "•".green(),
+            format!("{:<12}", "SEO").bold(),
+            format!("{} files", seo_count),
             shared::get_elapsed_time(t).dimmed()
         );
     }

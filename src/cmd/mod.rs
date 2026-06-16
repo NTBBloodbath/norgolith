@@ -3,6 +3,7 @@ mod dev;
 mod init;
 mod new;
 mod preview;
+pub mod seo;
 mod theme;
 
 pub use build::build;
