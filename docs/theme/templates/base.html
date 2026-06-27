@@ -142,6 +142,9 @@
   {% if metadata.image %}
   <meta property="og:image" content="{{ config.rootUrl }}{{ metadata.image }}" />
   <meta name="twitter:image" content="{{ config.rootUrl }}{{ metadata.image }}" />
+  {% elif config.seo is defined and config.seo.default_image %}
+  <meta property="og:image" content="{{ config.rootUrl }}{{ config.seo.default_image }}" />
+  <meta name="twitter:image" content="{{ config.rootUrl }}{{ config.seo.default_image }}" />
   {% endif %}
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="{{ metadata.title | default(value=config.title) }}" />

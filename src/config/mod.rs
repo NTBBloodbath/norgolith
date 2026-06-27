@@ -31,6 +31,8 @@ pub struct SiteConfigSeo {
     pub sitemap: bool,
     #[serde(default = "default_true")]
     pub open_graph: bool,
+    #[serde(default, rename = "default_image")]
+    pub default_image: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
