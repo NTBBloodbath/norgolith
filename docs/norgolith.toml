@@ -15,6 +15,17 @@ description = "Latest posts"
 ttl = 60
 image = "/assets/norgolith.svg"
 
+# SEO: sitemap.xml, OpenGraph meta tags
+[seo]
+sitemap = true
+open_graph = true
+default_image = "/assets/norgolith.svg"
+
+# Robots.txt: controls crawler access
+[robots]
+enable = true
+preset = "allow_all"  # options: "allow_all", "no_llms", "block_all"
+
 [extra]
 license = "GPLv2"
 footer_author_link = "https://github.com/NTBBloodbath"
