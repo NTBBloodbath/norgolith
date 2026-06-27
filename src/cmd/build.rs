@@ -139,16 +139,17 @@ fn generate_xml_feeds(
     tera: &Tera,
     shared_context: &Context,
     public_dir: &Path,
-) -> Result<usize> {
+) -> Result<(usize, Vec<String>)> {
     let xml_templates = collect_xml_templates(tera);
     let count = xml_templates.len();
     if count == 0 {
-        return Ok(0);
+        return Ok((0, Vec::new()));
     }
 
     let mut context = shared_context.clone();
     context.insert("now", &chrono::Utc::now());
 
+    let mut feed_names = Vec::with_capacity(count);
     for template_name in &xml_templates {
         let rendered = tera
             .render(template_name, &context)
@@ -174,9 +175,10 @@ fn generate_xml_feeds(
         }
         std::fs::write(&output_path, &rendered)
             .wrap_err(format!("Failed to write '{}'", output_path.display()))?;
+        feed_names.push(template_name.clone());
     }
 
-    Ok(count)
+    Ok((count, feed_names))
 }
 
 /// Generates the final public build from intermediate build artifacts
@@ -951,7 +953,7 @@ pub fn build(minify: bool) -> Result<()> {
 
     // XML feeds
     let t = Instant::now();
-    let feed_count = generate_xml_feeds(&tera, &shared_context, &paths.public)?;
+    let (feed_count, feed_names) = generate_xml_feeds(&tera, &shared_context, &paths.public)?;
     timings.feeds_ms = t.elapsed().as_millis();
     if feed_count > 0 {
         println!(
@@ -974,13 +976,59 @@ pub fn build(minify: bool) -> Result<()> {
             .as_ref()
             .is_none_or(|s| s.sitemap);
         if sitemap_enabled {
-            let urls: Vec<seo::SitemapUrl> = permalinks
-                .iter()
-                .map(|p| seo::SitemapUrl {
-                    loc: p.clone(),
-                    lastmod: None,
+            // Build date map from posts: permalink → updated/created
+            use std::collections::HashMap;
+            let date_map: HashMap<&str, &str> = posts.iter()
+                .filter_map(|p| {
+                    let permalink = p.get("permalink")?.as_str()?;
+                    let date = p.get("updated")
+                        .or_else(|| p.get("created"))?
+                        .as_str()?;
+                    Some((permalink, date))
                 })
                 .collect();
+
+            let mut urls = Vec::with_capacity(permalinks.len() + 16);
+
+            // Homepage
+            urls.push(seo::SitemapUrl {
+                loc: "/".into(),
+                lastmod: None,
+            });
+
+            // Content pages (with dates from posts where available)
+            for p in &permalinks {
+                let lastmod = date_map.get(p.as_str()).map(|s| s.to_string());
+                urls.push(seo::SitemapUrl {
+                    loc: p.clone(),
+                    lastmod,
+                });
+            }
+
+            // Category pages
+            if !posts.is_empty() {
+                let categories = shared::collect_all_posts_categories(&posts);
+                let categories_dir = &site_config.categories_dir;
+                urls.push(seo::SitemapUrl {
+                    loc: format!("/{}/", categories_dir),
+                    lastmod: None,
+                });
+                for cat in &categories {
+                    urls.push(seo::SitemapUrl {
+                        loc: format!("/{}/{}/", categories_dir, cat),
+                        lastmod: None,
+                    });
+                }
+            }
+
+            // Feed URLs
+            for feed_name in &feed_names {
+                urls.push(seo::SitemapUrl {
+                    loc: format!("/{}", feed_name),
+                    lastmod: None,
+                });
+            }
+
             let xml = seo::generate_sitemap_xml(&urls, &site_config.root_url);
             let output_path = paths.public.join("sitemap.xml");
             std::fs::write(&output_path, &xml)
