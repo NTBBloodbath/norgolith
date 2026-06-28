@@ -13,6 +13,7 @@ fn main() {
     // is small enough not to care about it. I cannot be bothered to add '--features test-plugins'
     // to the 'cargo nextest run' command arguments every time and complaining when I forget it
     compile_test_plugins();
+    compile_rust_test_plugins();
 }
 
 fn get_version() -> String {
@@ -90,6 +91,46 @@ fn compile_test_plugins() {
             println!(
                 "cargo:warning=failed to compile test plugin {}: {:?}",
                 stem, status
+            );
+        }
+    }
+}
+
+fn compile_rust_test_plugins() {
+    let plugins_dir = PathBuf::from("tests/plugins");
+    if !plugins_dir.is_dir() {
+        return;
+    }
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let target_dir = out_dir.parent().unwrap().parent().unwrap();
+
+    let entries = match std::fs::read_dir(&plugins_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if !path.is_dir() || !path.join("Cargo.toml").exists() {
+            continue;
+        }
+
+        let name = path.file_name().and_then(|s| s.to_str()).unwrap();
+
+        let mut cmd = Command::new("cargo");
+        cmd.arg("build")
+            .arg("--release")
+            .arg("--manifest-path")
+            .arg(path.join("Cargo.toml"))
+            .arg("--target-dir")
+            .arg(target_dir);
+
+        let status = cmd.status();
+        if status.as_ref().map(|s| !s.success()).unwrap_or(true) {
+            println!(
+                "cargo:warning=failed to compile Rust test plugin {}: {:?}",
+                name, status
             );
         }
     }

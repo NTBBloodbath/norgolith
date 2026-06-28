@@ -1,0 +1,13 @@
+[package]
+name = "test_sdk_plugin"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+norgolith-plugin-sdk = { path = "../../../../sdk" }
+serde_json = "1.0"

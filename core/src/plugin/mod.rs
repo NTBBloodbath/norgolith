@@ -445,4 +445,58 @@ timeout_ms = 5000
         let result = p.call_hook(p.hooks.post_render.unwrap(), input);
         assert_eq!(result, None);
     }
+
+    #[test]
+    fn test_sdk_plugin_load() {
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_dir = tmp.path().join("plugins").join("test-sdk-plugin");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+
+        // Write manifest for the SDK plugin
+        let manifest = r#"[plugin]
+name = "test-sdk-plugin"
+version = "0.1.0"
+norgolith = ">=0.4.0"
+abi = 1
+
+[hooks]
+pre_build = false
+post_convert = false
+post_render = true
+post_build = false
+
+[capabilities]
+filesystem = "none"
+network = false
+
+timeout_ms = 5000
+"#;
+        std::fs::write(plugin_dir.join("plugin.toml"), manifest).unwrap();
+
+        // Find the compiled SDK plugin library
+        let out_dir = PathBuf::from(env!("OUT_DIR"));
+        let target_dir = out_dir.parent().unwrap().parent().unwrap();
+        let release_dir = target_dir.parent().unwrap().join("release");
+
+        let lib_name = library_filename("test-sdk-plugin");
+        let src = release_dir.join(&lib_name);
+        if !src.is_file() {
+            eprintln!("SDK test plugin not compiled, skipping");
+            return;
+        }
+        std::fs::copy(&src, plugin_dir.join(&lib_name)).unwrap();
+
+        let mgr = PluginManager::load(tmp.path());
+        assert_eq!(mgr.len(), 1, "should load exactly one plugin");
+
+        let p = mgr.plugins().next().unwrap();
+        assert_eq!(p.name, "test-sdk-plugin");
+        assert_eq!(p.version, "0.1.0");
+        assert!(p.hooks.post_render.is_some(), "post_render hook should be set");
+
+        let input = r#"{"html":"<p>hello</p>","metadata":{},"rel_path":"test.norg"}"#;
+        let result = p.call_hook(p.hooks.post_render.unwrap(), input);
+        assert!(result.is_some(), "plugin should return modified HTML");
+        assert!(result.unwrap().contains("<!-- plugin-ok -->"), "should contain plugin marker");
+    }
 }
