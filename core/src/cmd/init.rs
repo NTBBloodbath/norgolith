@@ -148,7 +148,7 @@ async fn create_assets(root: &str) -> Result<()> {
         .await
         .map_err(|e| eyre!("Failed to write style.css: {}", e))?;
 
-    let norgolith_logo = include_str!("../../res/norgolith.svg");
+    let norgolith_logo = include_str!("../../../res/norgolith.svg");
     let logo_path = assets_dir.join("norgolith.svg");
     debug!(logo_path = %logo_path.display(), "Writing norgolith.svg");
     fs::write(&logo_path, norgolith_logo)

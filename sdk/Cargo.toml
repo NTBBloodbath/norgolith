@@ -1,0 +1,13 @@
+[package]
+name = "norgolith-plugin-sdk"
+version = "0.1.0"
+edition = "2021"
+authors = ["NTBBloodbath <bloodbathalchemist@protonmail.com"]
+license = "GPL-2.0"
+description = "SDK for building Norgolith plugins"
+repository = "https://github.com/NTBBloodbath/norgolith"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+libc = "0.2"
