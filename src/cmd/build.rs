@@ -17,7 +17,7 @@ fn href_root_re() -> &'static regex::Regex {
     RE.get_or_init(|| regex::Regex::new(r#"href="(/|&#x2F;)"#).expect("valid regex"))
 }
 
-use crate::{cache::BuildCache, config, fs, shared};
+use crate::{cache::BuildCache, config, fs, plugin, shared};
 
 /// Represents the directory structure of a Norgolith site.
 ///
@@ -188,7 +188,8 @@ fn generate_xml_feeds(
 /// * `paths` - Site directory paths
 /// * `site_config` - Site configuration
 /// * `minify` - Enable minification of output
-#[instrument(level = "debug", skip(tera, paths, site_config, shared_context, cache))]
+#[allow(clippy::too_many_arguments)]
+#[instrument(level = "debug", skip(tera, paths, site_config, shared_context, cache, plugin_mgr))]
 fn build_contents(
     tera: &Tera,
     paths: &SitePaths,
@@ -197,6 +198,7 @@ fn build_contents(
     shared_context: &Context,
     cache: &mut BuildCache,
     minify: bool,
+    plugin_mgr: &plugin::PluginManager,
 ) -> Result<(usize, BuildTimings)> {
     use rayon::prelude::*;
 
@@ -225,6 +227,7 @@ fn build_contents(
                 minify,
                 shared_context,
                 cache,
+                plugin_mgr,
             )
         })
         .collect();
@@ -274,7 +277,7 @@ type BuildResult = Result<Option<(PathBuf, String, Option<CacheInsert>)>>;
 #[allow(clippy::too_many_arguments)]
 #[instrument(
     level = "debug",
-    skip(tera, paths, site_config, shared_context, cache)
+    skip(tera, paths, site_config, shared_context, cache, plugin_mgr)
 )]
 fn build_content_entry(
     path: &Path,
@@ -284,6 +287,7 @@ fn build_content_entry(
     minify: bool,
     shared_context: &Context,
     cache: &BuildCache,
+    plugin_mgr: &plugin::PluginManager,
 ) -> BuildResult {
     let rel_path = path
         .strip_prefix(&paths.content)
@@ -325,7 +329,7 @@ fn build_content_entry(
     let cached = cache.get(&cache_key, &content);
 
     // Load (parse_tree + HTML on miss, deserialization on hit)
-    let (metadata, cache_insert) = if let Some(cached) = cached {
+    let (mut metadata, cache_insert) = if let Some(cached) = cached {
         match serde_json::from_value::<toml::Value>(cached.clone()) {
             Ok(md) => (md, None),
             Err(_) => {
@@ -340,11 +344,57 @@ fn build_content_entry(
         (md, Some((cache_key, content.clone(), cache_val)))
     };
 
+    // post_convert hook: modify HTML after Norg conversion, before Tera
+    if plugin_mgr.has_hook(plugin::HOOK_POST_CONVERT) {
+        if let Some(html) = metadata.get("raw").and_then(|v| v.as_str()) {
+            let input = serde_json::json!({
+                "html": html,
+                "metadata": metadata,
+                "rel_path": rel_path.to_string_lossy(),
+            })
+            .to_string();
+            for p in plugin_mgr.plugins() {
+                if let Some(f) = p.hooks.post_convert {
+                    if let Some(new_html) = p.call_hook(f, &input) {
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&new_html) {
+                            if let Some(s) = val.get("html").and_then(|v| v.as_str()) {
+                                if let toml::Value::Table(ref mut table) = metadata {
+                                    table.insert("raw".to_string(), toml::Value::String(s.to_string()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Determine output path
     let public_path = determine_public_path(&paths.public, rel_path)?;
 
     // Template render
     let mut rendered = shared::render_norg_page(tera, &metadata, shared_context)?;
+
+    // post_render hook: modify final HTML after Tera, before write
+    if plugin_mgr.has_hook(plugin::HOOK_POST_RENDER) {
+        let input = serde_json::json!({
+            "html": rendered,
+            "metadata": metadata,
+            "rel_path": rel_path.to_string_lossy(),
+        })
+        .to_string();
+        for p in plugin_mgr.plugins() {
+            if let Some(f) = p.hooks.post_render {
+                if let Some(new_html) = p.call_hook(f, &input) {
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&new_html) {
+                        if let Some(s) = val.get("html").and_then(|v| v.as_str()) {
+                            rendered = s.to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Href rewrite
     let href_re = href_root_re();
@@ -685,6 +735,7 @@ fn copy_assets(assets_dir: &Path, target_dir: &Path, minify: bool) -> Result<usi
 struct BuildTimings {
     config_ms: u128,
     tera_ms: u128,
+    plugins_ms: u128,
     prepare_dir_ms: u128,
     collect_posts_ms: u128,
     collections_ms: u128,
@@ -714,6 +765,7 @@ impl BuildTimings {
         Self {
             config_ms: 0,
             tera_ms: 0,
+            plugins_ms: 0,
             prepare_dir_ms: 0,
             collect_posts_ms: 0,
             collections_ms: 0,
@@ -859,6 +911,32 @@ pub fn build(minify: bool) -> Result<()> {
     let tera = shared::init_tera(paths.templates.to_str().unwrap(), &paths.theme_templates)?;
     timings.tera_ms = t.elapsed().as_millis();
 
+    // Load plugins and apply sandbox
+    let t = Instant::now();
+    let plugin_mgr = plugin::PluginManager::load(&root_dir);
+    let _ = plugin::sandbox::apply_landlock(&root_dir);
+    timings.plugins_ms = t.elapsed().as_millis();
+
+    if !plugin_mgr.is_empty() {
+        println!(
+            "  {} {}  {} plugins",
+            "•".green(),
+            format!("{:<12}", "Plugins").bold(),
+            plugin_mgr.len()
+        );
+    }
+
+    // pre_build hook
+    if plugin_mgr.has_hook(plugin::HOOK_PRE_BUILD) {
+        let config_json = serde_json::to_string(&site_config)
+            .unwrap_or_default();
+        for p in plugin_mgr.plugins() {
+            if let Some(f) = p.hooks.pre_build {
+                p.call_hook(f, &config_json);
+            }
+        }
+    }
+
     // Prepare build directory
     let t = Instant::now();
     prepare_build_directory(&paths.public)?;
@@ -908,7 +986,7 @@ pub fn build(minify: bool) -> Result<()> {
 
     // Build content
     let t = Instant::now();
-    let (page_count, content_timings) = build_contents(&tera, &paths, &posts, &site_config, &shared_context, &mut cache, minify)?;
+    let (page_count, content_timings) = build_contents(&tera, &paths, &posts, &site_config, &shared_context, &mut cache, minify, &plugin_mgr)?;
     timings.content_ms = t.elapsed().as_millis();
     timings.page_count = page_count;
     // Copy per-page sub-timings from the concurrent build
@@ -965,6 +1043,17 @@ pub fn build(minify: bool) -> Result<()> {
         format!("{} files", asset_count),
         shared::get_elapsed_time(t).dimmed()
     );
+
+    // post_build hook
+    if plugin_mgr.has_hook(plugin::HOOK_POST_BUILD) {
+        let config_json = serde_json::to_string(&site_config)
+            .unwrap_or_default();
+        for p in plugin_mgr.plugins() {
+            if let Some(f) = p.hooks.post_build {
+                p.call_hook(f, &config_json);
+            }
+        }
+    }
 
     println!();
     let total_ms = build_start.elapsed().as_millis();
