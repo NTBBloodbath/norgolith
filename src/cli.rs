@@ -132,6 +132,11 @@ enum Commands {
         #[arg(long = "no-minify")]
         _no_minify: bool,
     },
+    /// Plugin management
+    Plugin {
+        #[command(subcommand)]
+        subcommand: cmd::PluginCommands,
+    },
     /// Preview from build result
     Preview {
         #[arg(short = 'p', long, default_value_t = 3030, help = "Port to be used")]
@@ -185,6 +190,7 @@ pub async fn start() -> Result<()> {
             minify: _,
             _no_minify,
         } => build_site(!_no_minify).await?,
+        Commands::Plugin { subcommand } => plugin_handle(&subcommand)?,
         Commands::New {
             kind,
             name,
@@ -246,6 +252,10 @@ async fn run_dev_server(port: u16, drafts: bool, open: bool, host: bool) -> Resu
 
 async fn theme_handle(subcommand: &cmd::ThemeCommands) -> Result<()> {
     cmd::theme(subcommand).await
+}
+
+fn plugin_handle(subcommand: &cmd::PluginCommands) -> Result<()> {
+    cmd::plugin(subcommand)
 }
 
 /// Creates a new asset with the given kind and name.
