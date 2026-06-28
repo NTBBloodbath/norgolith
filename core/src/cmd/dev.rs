@@ -1140,12 +1140,8 @@ fn render_all_pages(
                 for p in plugin_mgr.plugins() {
                     if let Some(f) = p.hooks.post_convert {
                         if let Some(new_html) = p.call_hook(f, &input) {
-                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&new_html) {
-                                if let Some(s) = val.get("html").and_then(|v| v.as_str()) {
-                                    if let toml::Value::Table(ref mut table) = metadata {
-                                        table.insert("raw".to_string(), toml::Value::String(s.to_string()));
-                                    }
-                                }
+                            if let toml::Value::Table(ref mut table) = metadata {
+                                table.insert("raw".to_string(), toml::Value::String(new_html));
                             }
                         }
                     }
@@ -1166,11 +1162,7 @@ fn render_all_pages(
             for p in plugin_mgr.plugins() {
                 if let Some(f) = p.hooks.post_render {
                     if let Some(new_html) = p.call_hook(f, &input) {
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&new_html) {
-                            if let Some(s) = val.get("html").and_then(|v| v.as_str()) {
-                                body = s.to_string();
-                            }
-                        }
+                        body = new_html;
                     }
                 }
             }

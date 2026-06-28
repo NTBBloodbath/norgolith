@@ -356,12 +356,8 @@ fn build_content_entry(
             for p in plugin_mgr.plugins() {
                 if let Some(f) = p.hooks.post_convert {
                     if let Some(new_html) = p.call_hook(f, &input) {
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&new_html) {
-                            if let Some(s) = val.get("html").and_then(|v| v.as_str()) {
-                                if let toml::Value::Table(ref mut table) = metadata {
-                                    table.insert("raw".to_string(), toml::Value::String(s.to_string()));
-                                }
-                            }
+                        if let toml::Value::Table(ref mut table) = metadata {
+                            table.insert("raw".to_string(), toml::Value::String(new_html));
                         }
                     }
                 }
@@ -386,11 +382,7 @@ fn build_content_entry(
         for p in plugin_mgr.plugins() {
             if let Some(f) = p.hooks.post_render {
                 if let Some(new_html) = p.call_hook(f, &input) {
-                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&new_html) {
-                        if let Some(s) = val.get("html").and_then(|v| v.as_str()) {
-                            rendered = s.to_string();
-                        }
-                    }
+                    rendered = new_html;
                 }
             }
         }
@@ -917,6 +909,7 @@ pub fn build(minify: bool) -> Result<()> {
     let _ = plugin::sandbox::apply_landlock(&root_dir);
     timings.plugins_ms = t.elapsed().as_millis();
 
+    println!();
     if !plugin_mgr.is_empty() {
         println!(
             "  {} {}  {} plugins",
@@ -981,8 +974,6 @@ pub fn build(minify: bool) -> Result<()> {
     let t = Instant::now();
     let mut cache = BuildCache::open(&root_dir)?;
     timings.cache_open_ms = t.elapsed().as_millis();
-
-    println!();
 
     // Build content
     let t = Instant::now();
