@@ -144,7 +144,7 @@ impl Default for PluginManager {
     }
 }
 
-fn library_extension() -> &'static str {
+pub fn library_extension() -> &'static str {
     #[cfg(target_os = "linux")]
     { "so" }
     #[cfg(target_os = "macos")]
@@ -155,7 +155,7 @@ fn library_extension() -> &'static str {
     { "so" }
 }
 
-fn library_filename(name: &str) -> String {
+pub fn library_filename(name: &str) -> String {
     // Linux/macOS convention: lib<name>.<ext>
     // Windows convention: <name>.dll
     #[cfg(target_os = "windows")]
