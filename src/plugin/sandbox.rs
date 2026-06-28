@@ -35,7 +35,7 @@ pub fn apply_landlock(site_dir: &Path) -> Result<()> {
         let public_dir = site_dir.join("public");
         let plugins_dir = site_dir.join("plugins");
         let cache_dir = dirs::cache_dir()
-            .unwrap_or_else(|| std::env::temp_dir())
+            .unwrap_or_else(std::env::temp_dir)
             .join("norgolith");
 
         // Ensure dirs exist for path_beneath_rules (PathFd::new requires the path)

@@ -27,7 +27,7 @@ use tokio_tungstenite::accept_async;
 use tracing::{debug, error, info, instrument, warn};
 use walkdir::WalkDir;
 
-use crate::{config, fs, shared};
+use crate::{config, fs, plugin, shared};
 
 /// Represents the directory structure of a Norgolith site.
 ///
@@ -88,6 +88,7 @@ struct ServerState {
     posts: Arc<RwLock<Vec<toml::Value>>>,
     cache: Arc<RwLock<crate::cache::BuildCache>>,
     rendered_pages: Arc<RwLock<HashMap<String, String>>>,
+    plugin_mgr: Arc<plugin::PluginManager>,
 }
 
 impl ServerState {
@@ -160,7 +161,7 @@ impl ServerState {
         let posts = self.posts.read().await.clone();
         let cache = self.cache.read().await;
 
-        match render_all_pages(&tera, &self.paths, &config, &self.routes_url, &posts, &cache) {
+        match render_all_pages(&tera, &self.paths, &config, &self.routes_url, &posts, &cache, &self.plugin_mgr) {
             Ok(new_pages) => {
                 let mut pages = self.rendered_pages.write().await;
                 *pages = new_pages;
@@ -1076,6 +1077,7 @@ async fn handle_server_request(
 /// Walks the content directory, renders each .norg file through the Tera template
 /// pipeline, and stores the HTML indexed by URL path. Also pre-renders category
 /// pages and XML feed templates.
+#[allow(clippy::too_many_arguments)]
 fn render_all_pages(
     tera: &Tera,
     paths: &SitePaths,
@@ -1083,6 +1085,7 @@ fn render_all_pages(
     routes_url: &str,
     posts: &[toml::Value],
     cache: &crate::cache::BuildCache,
+    plugin_mgr: &plugin::PluginManager,
 ) -> Result<HashMap<String, String>> {
     let mut pages = HashMap::new();
 
@@ -1117,7 +1120,7 @@ fn render_all_pages(
 
         // Full load with HTML conversion (reuse build_cache if available)
         let cache_key = rel_path.with_extension("");
-        let metadata = if let Some(cached) = cache.get(&cache_key, &content) {
+        let mut metadata = if let Some(cached) = cache.get(&cache_key, &content) {
             serde_json::from_value(cached).unwrap_or_else(|_| {
                 shared::load_metadata_from_content(&content, rel_path, routes_url)
             })
@@ -1125,7 +1128,53 @@ fn render_all_pages(
             shared::load_metadata_from_content(&content, rel_path, routes_url)
         };
 
+        // post_convert hook: modify HTML after Norg conversion, before Tera
+        if plugin_mgr.has_hook(plugin::HOOK_POST_CONVERT) {
+            if let Some(html) = metadata.get("raw").and_then(|v| v.as_str()) {
+                let input = serde_json::json!({
+                    "html": html,
+                    "metadata": metadata,
+                    "rel_path": rel_path.to_string_lossy(),
+                })
+                .to_string();
+                for p in plugin_mgr.plugins() {
+                    if let Some(f) = p.hooks.post_convert {
+                        if let Some(new_html) = p.call_hook(f, &input) {
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&new_html) {
+                                if let Some(s) = val.get("html").and_then(|v| v.as_str()) {
+                                    if let toml::Value::Table(ref mut table) = metadata {
+                                        table.insert("raw".to_string(), toml::Value::String(s.to_string()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let mut body = shared::render_norg_page(tera, &metadata, &shared_context)?;
+
+        // post_render hook: modify final HTML after Tera, before URL rewrite
+        if plugin_mgr.has_hook(plugin::HOOK_POST_RENDER) {
+            let input = serde_json::json!({
+                "html": body,
+                "metadata": metadata,
+                "rel_path": rel_path.to_string_lossy(),
+            })
+            .to_string();
+            for p in plugin_mgr.plugins() {
+                if let Some(f) = p.hooks.post_render {
+                    if let Some(new_html) = p.call_hook(f, &input) {
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&new_html) {
+                            if let Some(s) = val.get("html").and_then(|v| v.as_str()) {
+                                body = s.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Always use the proper URL to the development server for template links that refers
         // to the local URL, this is useful when running the server exposed to LAN network
@@ -1262,6 +1311,23 @@ async fn setup_server_state(
     // Open build cache for incremental renders
     let cache = crate::cache::BuildCache::open(&root_dir)?;
 
+    // Load plugins, apply sandbox, run pre_build hook
+    let plugin_mgr = plugin::PluginManager::load(&root_dir);
+    let _ = plugin::sandbox::apply_landlock(&root_dir);
+    if plugin_mgr.has_hook(plugin::HOOK_PRE_BUILD) {
+        let input = serde_json::json!({
+            "site_config": site_config,
+            "pages_dir": paths.content,
+            "output_dir": root_dir.join("public"),
+        })
+        .to_string();
+        for p in plugin_mgr.plugins() {
+            if let Some(f) = p.hooks.pre_build {
+                p.call_hook(f, &input);
+            }
+        }
+    }
+
     // Pre-render all pages into memory for instant serving
     let rendered_pages = render_all_pages(
         &tera,
@@ -1270,6 +1336,7 @@ async fn setup_server_state(
         &routes_url,
         &posts,
         &cache,
+        &plugin_mgr,
     )?;
 
     let tera = Arc::new(RwLock::new(tera));
@@ -1284,6 +1351,7 @@ async fn setup_server_state(
         posts: Arc::new(RwLock::new(posts)),
         cache: Arc::new(RwLock::new(cache)),
         rendered_pages: Arc::new(RwLock::new(rendered_pages)),
+        plugin_mgr: Arc::new(plugin_mgr),
     }))
 }
 
