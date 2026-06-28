@@ -5,6 +5,7 @@ mod config;
 mod converter;
 mod fs;
 mod net;
+mod plugin;
 mod schema;
 mod shared;
 mod tera_functions;
