@@ -2,6 +2,7 @@
 
 pub mod ffi;
 pub mod manifest;
+pub mod sandbox;
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
