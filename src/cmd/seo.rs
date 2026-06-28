@@ -256,3 +256,154 @@ pub fn generate_sitemap_xml(urls: &[SitemapUrl], root_url: &str) -> String {
     buf.push_str("</urlset>\n");
     buf
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- generate_sitemap_xml ---
+
+    #[test]
+    fn sitemap_empty() {
+        let xml = generate_sitemap_xml(&[], "https://example.com");
+        assert!(xml.contains("<urlset"));
+        assert!(xml.contains("</urlset>"));
+        assert!(!xml.contains("<url>"));
+    }
+
+    #[test]
+    fn sitemap_single_url() {
+        let urls = vec![SitemapUrl {
+            loc: "/about/".into(),
+            lastmod: None,
+        }];
+        let xml = generate_sitemap_xml(&urls, "https://example.com");
+        assert!(xml.contains("<loc>https://example.com/about/</loc>"));
+        assert!(xml.contains("<changefreq>weekly</changefreq>"));
+        assert!(xml.contains("<priority>0.5</priority>"));
+        assert!(!xml.contains("<lastmod>"));
+    }
+
+    #[test]
+    fn sitemap_with_lastmod() {
+        let urls = vec![SitemapUrl {
+            loc: "/posts/hello/".into(),
+            lastmod: Some("2026-01-15T12:00:00Z".into()),
+        }];
+        let xml = generate_sitemap_xml(&urls, "https://example.com");
+        assert!(xml.contains("<lastmod>2026-01-15T12:00:00Z</lastmod>"));
+    }
+
+    #[test]
+    fn sitemap_multiple_urls() {
+        let urls = vec![
+            SitemapUrl { loc: "/".into(), lastmod: None },
+            SitemapUrl { loc: "/about/".into(), lastmod: None },
+            SitemapUrl { loc: "/posts/".into(), lastmod: None },
+        ];
+        let xml = generate_sitemap_xml(&urls, "https://example.com");
+        assert!(xml.contains("<loc>https://example.com/</loc>"));
+        assert!(xml.contains("<loc>https://example.com/about/</loc>"));
+        assert!(xml.contains("<loc>https://example.com/posts/</loc>"));
+    }
+
+    // --- generate_robots_txt ---
+
+    fn test_config(root_url: &str) -> SiteConfig {
+        SiteConfig {
+            root_url: root_url.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn robots_allow_all() {
+        let config = test_config("https://example.com");
+        let robots = SiteConfigRobots {
+            enable: true,
+            preset: Some(RobotsPreset::AllowAll),
+            custom: None,
+        };
+        let txt = generate_robots_txt(&config, &robots, false);
+        assert!(txt.contains("User-agent: *"));
+        assert!(txt.contains("Allow: /"));
+    }
+
+    #[test]
+    fn robots_block_all() {
+        let config = test_config("https://example.com");
+        let robots = SiteConfigRobots {
+            enable: true,
+            preset: Some(RobotsPreset::BlockAll),
+            custom: None,
+        };
+        let txt = generate_robots_txt(&config, &robots, false);
+        assert!(txt.contains("User-agent: *"));
+        assert!(txt.contains("Disallow: /"));
+    }
+
+    #[test]
+    fn robots_no_llms() {
+        let config = test_config("https://example.com");
+        let robots = SiteConfigRobots {
+            enable: true,
+            preset: Some(RobotsPreset::NoLlms),
+            custom: None,
+        };
+        let txt = generate_robots_txt(&config, &robots, false);
+        assert!(txt.contains("User-agent: GPTBot"));
+        assert!(txt.contains("User-agent: ClaudeBot"));
+        assert!(txt.contains("Disallow: /"));
+    }
+
+    #[test]
+    fn robots_sitemap_line_when_enabled() {
+        let config = test_config("https://example.com");
+        let robots = SiteConfigRobots {
+            enable: true,
+            preset: Some(RobotsPreset::AllowAll),
+            custom: None,
+        };
+        let txt = generate_robots_txt(&config, &robots, true);
+        assert!(txt.contains("Sitemap: https://example.com/sitemap.xml"));
+    }
+
+    #[test]
+    fn robots_no_sitemap_line_when_disabled() {
+        let config = test_config("https://example.com");
+        let robots = SiteConfigRobots {
+            enable: true,
+            preset: Some(RobotsPreset::AllowAll),
+            custom: None,
+        };
+        let txt = generate_robots_txt(&config, &robots, false);
+        assert!(!txt.contains("Sitemap:"));
+    }
+
+    #[test]
+    fn robots_custom_file_fallback() {
+        let config = test_config("https://example.com");
+        let robots = SiteConfigRobots {
+            enable: true,
+            preset: None,
+            custom: Some("/nonexistent/robots.txt".into()),
+        };
+        // Should warn and fall back to allow_all
+        let txt = generate_robots_txt(&config, &robots, false);
+        assert!(txt.contains("User-agent: *"));
+        assert!(txt.contains("Allow: /"));
+    }
+
+    #[test]
+    fn robots_no_preset_no_custom_defaults_to_allow() {
+        let config = test_config("https://example.com");
+        let robots = SiteConfigRobots {
+            enable: true,
+            preset: None,
+            custom: None,
+        };
+        let txt = generate_robots_txt(&config, &robots, false);
+        assert!(txt.contains("User-agent: *"));
+        assert!(txt.contains("Allow: /"));
+    }
+}
