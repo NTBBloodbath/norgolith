@@ -4,6 +4,7 @@ pub mod ffi;
 pub mod manifest;
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 pub use ffi::{FreeStringFn, PluginFn, PluginInfo};
 pub use manifest::{
@@ -29,6 +30,30 @@ pub struct PluginInstance {
     _lib: libloading::Library,
     pub hooks: PluginHooks,
     pub manifest: PluginManifest,
+    /// Function to free strings allocated by this plugin (defaults to libc::free)
+    pub free_string: FreeStringFn,
+}
+
+impl PluginInstance {
+    /// Call a hook on this plugin with safety wrappers (catch_unwind + timeout)
+    pub fn call_hook(&self, f: PluginFn, input: &str) -> Option<String> {
+        let timeout = Duration::from_millis(self.manifest.timeout_ms);
+        match ffi::call_hook_safe(f, input, timeout) {
+            Ok(Some(json)) => match ffi::parse_hook_response(&json) {
+                Ok(Some(html)) => Some(html),
+                Ok(None) => None,
+                Err(e) => {
+                    warn!("Plugin '{}' returned invalid response: {}", self.name, e);
+                    None
+                }
+            },
+            Ok(None) => None,
+            Err(e) => {
+                warn!("Plugin '{}' hook failed: {}", self.name, e);
+                None
+            }
+        }
+    }
 }
 
 /// Manages loaded plugins and dispatches hook calls
@@ -159,6 +184,11 @@ fn find_library(dir: &Path, name: &str) -> Option<PathBuf> {
         .map(|e| e.path())
 }
 
+/// Default free function matching libc::free signature
+extern "C" fn default_free(ptr: *mut std::os::raw::c_char) {
+    unsafe { libc::free(ptr as *mut libc::c_void) }
+}
+
 /// Load a single plugin from a directory containing `plugin.toml` + shared library
 fn load_plugin(dir: &Path) -> eyre::Result<PluginInstance> {
     let manifest_path = dir.join("plugin.toml");
@@ -242,12 +272,42 @@ fn load_plugin(dir: &Path) -> eyre::Result<PluginInstance> {
         _lib: lib,
         hooks: plugin_hooks,
         manifest,
+        free_string: default_free,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn target_debug() -> PathBuf {
+        let out_dir = PathBuf::from(env!("OUT_DIR"));
+        out_dir.parent().unwrap().parent().unwrap().to_path_buf()
+    }
+
+    fn write_test_manifest(dir: &Path, name: &str) {
+        let manifest = format!(
+            r#"[plugin]
+name = "{name}"
+version = "0.1.0"
+norgolith = ">=0.4.0"
+abi = 1
+
+[hooks]
+pre_build = false
+post_convert = false
+post_render = true
+post_build = false
+
+[capabilities]
+filesystem = "none"
+network = false
+
+timeout_ms = 5000
+"#
+        );
+        std::fs::write(dir.join("plugin.toml"), manifest).unwrap();
+    }
 
     #[test]
     fn test_empty_plugins_dir() {
@@ -268,8 +328,120 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let plugin_dir = tmp.path().join("plugins").join("broken");
         std::fs::create_dir_all(&plugin_dir).unwrap();
-        // No plugin.toml -> should skip gracefully
         let mgr = PluginManager::load(tmp.path());
         assert!(mgr.is_empty());
+    }
+
+    #[test]
+    fn test_load_ok_plugin() {
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_dir = tmp.path().join("plugins").join("test-ok");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        write_test_manifest(&plugin_dir, "test-ok");
+
+        let lib_name = library_filename("test-ok");
+        let src = target_debug().join(&lib_name);
+        if !src.is_file() {
+            eprintln!("test plugin not compiled, skipping");
+            return;
+        }
+        std::fs::copy(&src, plugin_dir.join(&lib_name)).unwrap();
+
+        let mgr = PluginManager::load(tmp.path());
+        assert_eq!(mgr.len(), 1);
+        let p = mgr.plugins().next().unwrap();
+        assert_eq!(p.name, "test-ok");
+        assert!(p.hooks.post_render.is_some());
+    }
+
+    #[test]
+    fn test_hook_ok_transform() {
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_dir = tmp.path().join("plugins").join("test-ok");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        write_test_manifest(&plugin_dir, "test-ok");
+
+        let lib_name = library_filename("test-ok");
+        let src = target_debug().join(&lib_name);
+        if !src.is_file() {
+            eprintln!("test plugin not compiled, skipping");
+            return;
+        }
+        std::fs::copy(&src, plugin_dir.join(&lib_name)).unwrap();
+
+        let mgr = PluginManager::load(tmp.path());
+        let p = mgr.plugins().next().unwrap();
+        let input = r#"{"html":"<p>hello</p>","metadata":{},"rel_path":"test.norg"}"#;
+        let result = p.call_hook(p.hooks.post_render.unwrap(), input);
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("[transformed]"));
+    }
+
+    #[test]
+    fn test_hook_null_returns_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_dir = tmp.path().join("plugins").join("test-null");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        write_test_manifest(&plugin_dir, "test-null");
+
+        let lib_name = library_filename("test-null");
+        let src = target_debug().join(&lib_name);
+        if !src.is_file() {
+            eprintln!("test plugin not compiled, skipping");
+            return;
+        }
+        std::fs::copy(&src, plugin_dir.join(&lib_name)).unwrap();
+
+        let mgr = PluginManager::load(tmp.path());
+        let p = mgr.plugins().next().unwrap();
+        let input = r#"{"html":"<p>hello</p>","metadata":{},"rel_path":"test.norg"}"#;
+        let result = p.call_hook(p.hooks.post_render.unwrap(), input);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_hook_timeout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_dir = tmp.path().join("plugins").join("test-timeout");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        write_test_manifest(&plugin_dir, "test-timeout");
+
+        let lib_name = library_filename("test-timeout");
+        let src = target_debug().join(&lib_name);
+        if !src.is_file() {
+            eprintln!("test plugin not compiled, skipping");
+            return;
+        }
+        std::fs::copy(&src, plugin_dir.join(&lib_name)).unwrap();
+
+        let mgr = PluginManager::load(tmp.path());
+        let p = mgr.plugins().next().unwrap();
+        let input = r#"{"html":"<p>hello</p>","metadata":{},"rel_path":"test.norg"}"#;
+        // Should return None (timeout is logged as warning, hook returns None)
+        let result = p.call_hook(p.hooks.post_render.unwrap(), input);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_hook_error_response() {
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_dir = tmp.path().join("plugins").join("test-error");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        write_test_manifest(&plugin_dir, "test-error");
+
+        let lib_name = library_filename("test-error");
+        let src = target_debug().join(&lib_name);
+        if !src.is_file() {
+            eprintln!("test plugin not compiled, skipping");
+            return;
+        }
+        std::fs::copy(&src, plugin_dir.join(&lib_name)).unwrap();
+
+        let mgr = PluginManager::load(tmp.path());
+        let p = mgr.plugins().next().unwrap();
+        let input = r#"{"html":"<p>hello</p>","metadata":{},"rel_path":"test.norg"}"#;
+        // Error response -> call_hook returns None (warning logged)
+        let result = p.call_hook(p.hooks.post_render.unwrap(), input);
+        assert_eq!(result, None);
     }
 }
