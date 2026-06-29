@@ -50,46 +50,54 @@ fn list_plugins() -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "{:<20} {:<10} {:<8} {:<30} {}",
-        "NAME".bold(),
-        "VERSION".bold(),
-        "PRI".bold(),
-        "HOOKS".bold(),
-        "STATUS".bold()
-    );
-    println!("{}", "-".repeat(85));
-
     for p in mgr.plugins() {
-        let hooks = {
-            let mut h = Vec::new();
-            if p.manifest.hooks.pre_build {
-                h.push("pre_build");
-            }
-            if p.manifest.hooks.post_convert {
-                h.push("post_convert");
-            }
-            if p.manifest.hooks.post_render {
-                h.push("post_render");
-            }
-            if p.manifest.hooks.post_build {
-                h.push("post_build");
-            }
-            if h.is_empty() {
-                "none".dimmed().to_string()
-            } else {
-                h.join(", ")
-            }
+        let hooks = p.manifest.hooks.declared_hooks();
+        let hooks_str = if hooks.is_empty() {
+            "none".dimmed().to_string()
+        } else {
+            hooks.join(", ")
         };
 
-        let status = "ok".green();
+        let status = if hooks.is_empty() {
+            "no hooks".yellow().to_string()
+        } else {
+            "ok".green().to_string()
+        };
+
+        let fs = match p.manifest.capabilities.filesystem {
+            plugin::FilesystemAccess::None => "none".dimmed().to_string(),
+            plugin::FilesystemAccess::Read => "read".to_string(),
+            plugin::FilesystemAccess::Write => "write".to_string(),
+            plugin::FilesystemAccess::ReadWrite => "read-write".to_string(),
+        };
+        let net = if p.manifest.capabilities.network {
+            "yes".to_string()
+        } else {
+            "no".dimmed().to_string()
+        };
+
+        println!("{}", p.name.bold());
         println!(
-            "{:<20} {:<10} {:<8} {:<30} {}",
-            p.name, p.version, p.manifest.priority, hooks, status
+            "   version:  {:<10}  hooks:      {}",
+            p.version, hooks_str
+        );
+        println!(
+            "   status:   {:<19}  priority:   {}",
+            status, p.manifest.priority
+        );
+        println!(
+            "   abi:      {:<10}  norgolith:  {}",
+            p.manifest.plugin.abi, p.manifest.plugin.norgolith
+        );
+        println!(
+            "   timeout:  {:<10}  fs:         {}     net: {}",
+            format!("{}s", p.manifest.timeout_ms / 1000),
+            fs,
+            net
         );
     }
 
-    println!("\n{} plugin(s) loaded", mgr.len());
+    println!("\n{}", format!("{} plugin(s) loaded", mgr.len()).bold());
     Ok(())
 }
 
