@@ -4,8 +4,12 @@ pub mod ffi;
 pub mod manifest;
 pub mod sandbox;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use eyre::Result;
 
 pub use ffi::{FreeStringFn, PluginFn, PluginInfo};
 pub use manifest::{
@@ -37,21 +41,25 @@ pub struct PluginInstance {
 
 impl PluginInstance {
     /// Call a hook on this plugin with safety wrappers (catch_unwind + timeout)
-    pub fn call_hook(&self, f: PluginFn, input: &str) -> Option<String> {
+    ///
+    /// Returns `Ok(None)` if plugin returned NULL (no change)
+    /// Returns `Ok(Some(html))` if plugin returned modified content
+    /// Returns `Err` on panic, timeout, invalid response, or plugin error
+    pub fn call_hook(&self, f: PluginFn, input: &str) -> Result<Option<String>> {
         let timeout = Duration::from_millis(self.manifest.timeout_ms);
         match ffi::call_hook_safe(f, input, timeout) {
             Ok(Some(json)) => match ffi::parse_hook_response(&json) {
-                Ok(Some(html)) => Some(html),
-                Ok(None) => None,
+                Ok(Some(html)) => Ok(Some(html)),
+                Ok(None) => Ok(None),
                 Err(e) => {
                     warn!("Plugin '{}' returned invalid response: {}", self.name, e);
-                    None
+                    Err(e)
                 }
             },
-            Ok(None) => None,
+            Ok(None) => Ok(None),
             Err(e) => {
                 warn!("Plugin '{}' hook failed: {}", self.name, e);
-                None
+                Err(e)
             }
         }
     }
@@ -60,6 +68,8 @@ impl PluginInstance {
 /// Manages loaded plugins and dispatches hook calls
 pub struct PluginManager {
     plugins: Vec<PluginInstance>,
+    /// Per-plugin hook call timing: plugin_name -> total Duration
+    hook_timings: Arc<Mutex<HashMap<String, Duration>>>,
 }
 
 impl PluginManager {
@@ -67,6 +77,7 @@ impl PluginManager {
     pub fn new() -> Self {
         Self {
             plugins: Vec::new(),
+            hook_timings: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -112,6 +123,8 @@ impl PluginManager {
             }
         }
 
+        manager.plugins.sort_by_key(|p| p.manifest.priority);
+
         manager
     }
 
@@ -135,6 +148,29 @@ impl PluginManager {
         self.plugins
             .iter()
             .any(|p| p.manifest.hooks.to_mask() & hook_bit != 0)
+    }
+
+    /// Call a hook on a plugin with timing recorded
+    pub fn call_hook(&self, plugin: &PluginInstance, f: PluginFn, input: &str) -> Result<Option<String>> {
+        let start = Instant::now();
+        let result = plugin.call_hook(f, input);
+        self.record_hook_time(&plugin.name, start.elapsed());
+        result
+    }
+
+    /// Record hook call duration for a plugin (thread-safe)
+    pub fn record_hook_time(&self, plugin_name: &str, duration: Duration) {
+        if let Ok(mut timings) = self.hook_timings.lock() {
+            *timings.entry(plugin_name.to_string()).or_default() += duration;
+        }
+    }
+
+    /// Get per-plugin hook timings (name -> total duration)
+    pub fn hook_timings(&self) -> HashMap<String, Duration> {
+        self.hook_timings
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -373,7 +409,7 @@ timeout_ms = 5000
         let mgr = PluginManager::load(tmp.path());
         let p = mgr.plugins().next().unwrap();
         let input = r#"{"html":"<p>hello</p>","metadata":{},"rel_path":"test.norg"}"#;
-        let result = p.call_hook(p.hooks.post_render.unwrap(), input);
+        let result = p.call_hook(p.hooks.post_render.unwrap(), input).unwrap();
         assert!(result.is_some());
         assert!(result.unwrap().contains("[transformed]"));
     }
@@ -396,7 +432,7 @@ timeout_ms = 5000
         let mgr = PluginManager::load(tmp.path());
         let p = mgr.plugins().next().unwrap();
         let input = r#"{"html":"<p>hello</p>","metadata":{},"rel_path":"test.norg"}"#;
-        let result = p.call_hook(p.hooks.post_render.unwrap(), input);
+        let result = p.call_hook(p.hooks.post_render.unwrap(), input).unwrap();
         assert_eq!(result, None);
     }
 
@@ -418,9 +454,9 @@ timeout_ms = 5000
         let mgr = PluginManager::load(tmp.path());
         let p = mgr.plugins().next().unwrap();
         let input = r#"{"html":"<p>hello</p>","metadata":{},"rel_path":"test.norg"}"#;
-        // Should return None (timeout is logged as warning, hook returns None)
+        // Should return Err (timeout)
         let result = p.call_hook(p.hooks.post_render.unwrap(), input);
-        assert_eq!(result, None);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -441,9 +477,9 @@ timeout_ms = 5000
         let mgr = PluginManager::load(tmp.path());
         let p = mgr.plugins().next().unwrap();
         let input = r#"{"html":"<p>hello</p>","metadata":{},"rel_path":"test.norg"}"#;
-        // Error response -> call_hook returns None (warning logged)
+        // Error response -> call_hook returns Err
         let result = p.call_hook(p.hooks.post_render.unwrap(), input);
-        assert_eq!(result, None);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -495,7 +531,7 @@ timeout_ms = 5000
         assert!(p.hooks.post_render.is_some(), "post_render hook should be set");
 
         let input = r#"{"html":"<p>hello</p>","metadata":{},"rel_path":"test.norg"}"#;
-        let result = p.call_hook(p.hooks.post_render.unwrap(), input);
+        let result = p.call_hook(p.hooks.post_render.unwrap(), input).unwrap();
         assert!(result.is_some(), "plugin should return modified HTML");
         assert!(result.unwrap().contains("<!-- plugin-ok -->"), "should contain plugin marker");
     }

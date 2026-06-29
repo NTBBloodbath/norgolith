@@ -18,6 +18,13 @@ pub struct PluginManifest {
     pub capabilities: Capabilities,
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
+    /// Execution priority (lower runs first, default 100)
+    #[serde(default = "default_priority")]
+    pub priority: u32,
+}
+
+fn default_priority() -> u32 {
+    100
 }
 
 #[derive(Debug, Clone, Deserialize)]
