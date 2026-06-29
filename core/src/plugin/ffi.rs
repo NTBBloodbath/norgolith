@@ -34,6 +34,12 @@ pub type FreeStringFn = extern "C" fn(*mut c_char);
 /// Returns `Ok(None)` if the plugin returned NULL (no change)
 /// Returns `Ok(Some(json))` if the plugin returned modified content
 /// Returns `Err(msg)` on panic, timeout, or invalid output
+///
+/// # Safety Note
+/// The returned pointer is freed with `libc::free`. This assumes the plugin's global allocator is
+/// compatible with libc malloc (true for the default system allocator). Plugins compiled with
+/// jemalloc or mimalloc will cause UB. This is an acceptable trade-off for MVP; a future version
+/// can add a `plugin_free` callback to let each plugin provide its own deallocator
 pub fn call_hook_safe(
     f: PluginFn,
     input: &str,

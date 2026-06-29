@@ -51,13 +51,14 @@ fn list_plugins() -> Result<()> {
     }
 
     println!(
-        "{:<20} {:<10} {:<30} {}",
+        "{:<20} {:<10} {:<8} {:<30} {}",
         "NAME".bold(),
         "VERSION".bold(),
+        "PRI".bold(),
         "HOOKS".bold(),
         "STATUS".bold()
     );
-    println!("{}", "-".repeat(75));
+    println!("{}", "-".repeat(85));
 
     for p in mgr.plugins() {
         let hooks = {
@@ -83,8 +84,8 @@ fn list_plugins() -> Result<()> {
 
         let status = "ok".green();
         println!(
-            "{:<20} {:<10} {:<30} {}",
-            p.name, p.version, hooks, status
+            "{:<20} {:<10} {:<8} {:<30} {}",
+            p.name, p.version, p.manifest.priority, hooks, status
         );
     }
 
@@ -93,6 +94,8 @@ fn list_plugins() -> Result<()> {
 }
 
 fn new_plugin(name: &str) -> Result<()> {
+    validate_plugin_name(name)?;
+
     let cwd = std::env::current_dir()?;
     let plugins_dir = cwd.join("plugins").join(name);
 
@@ -126,6 +129,7 @@ filesystem = "none"
 network = false
 
 timeout_ms = 10000
+priority = 100
 "#
     );
     std::fs::write(plugins_dir.join("plugin.toml"), manifest)?;
@@ -187,6 +191,7 @@ fn install_plugin(source_dir: &Path) -> Result<()> {
     }
 
     let manifest = PluginManifest::load(&manifest_path)?;
+    validate_plugin_name(&manifest.plugin.name)?;
     manifest.validate_abi()?;
     manifest.validate_semver()?;
 
@@ -256,7 +261,19 @@ fn install_plugin(source_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+fn validate_plugin_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        bail!("Plugin name cannot be empty");
+    }
+    if name.contains('/') || name.contains('\\') || name.contains("..") || name.contains(':') {
+        bail!("Invalid plugin name: '{}' (no path separators or '..' allowed)", name);
+    }
+    Ok(())
+}
+
 fn uninstall_plugin(name: &str) -> Result<()> {
+    validate_plugin_name(name)?;
+
     let cwd = std::env::current_dir()?;
     let plugin_dir = cwd.join("plugins").join(name);
 

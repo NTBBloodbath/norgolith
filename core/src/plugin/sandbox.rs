@@ -13,6 +13,13 @@ use tracing::warn;
 ///
 /// Once applied, restrictions are irreversible for the process lifetime.
 /// On non-Linux platforms or without `sandbox-linux` feature, this is a no-op.
+///
+/// # Known Limitation
+/// Landlock is applied AFTER plugin loading (`dlopen`). Plugin `.so` constructors
+/// (`init_array`) execute during loading, before restrictions are in place.
+/// This means plugin init code runs with full filesystem access.
+/// Mitigation: plugin init functions should be minimal (set hook pointers only).
+/// A future version can fork before loading to isolate constructors.
 pub fn apply_landlock(site_dir: &Path) -> Result<()> {
     #[cfg(not(all(target_os = "linux", feature = "sandbox-linux")))]
     {

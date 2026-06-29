@@ -1139,9 +1139,21 @@ fn render_all_pages(
                 .to_string();
                 for p in plugin_mgr.plugins() {
                     if let Some(f) = p.hooks.post_convert {
-                        if let Some(new_html) = p.call_hook(f, &input) {
-                            if let toml::Value::Table(ref mut table) = metadata {
-                                table.insert("raw".to_string(), toml::Value::String(new_html));
+                        match plugin_mgr.call_hook(p, f, &input) {
+                            Ok(Some(new_html)) => {
+                                if let toml::Value::Table(ref mut table) = metadata {
+                                    table.insert("raw".to_string(), toml::Value::String(new_html));
+                                }
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                error!(
+                                    "{} plugin '{}' on {}: {}",
+                                    "Plugin error:".red().bold(),
+                                    p.name.bold(),
+                                    rel_path.display(),
+                                    e
+                                );
                             }
                         }
                     }
@@ -1161,8 +1173,20 @@ fn render_all_pages(
             .to_string();
             for p in plugin_mgr.plugins() {
                 if let Some(f) = p.hooks.post_render {
-                    if let Some(new_html) = p.call_hook(f, &input) {
-                        body = new_html;
+                    match plugin_mgr.call_hook(p, f, &input) {
+                        Ok(Some(new_html)) => {
+                            body = new_html;
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            error!(
+                                "{} plugin '{}' on {}: {}",
+                                "Plugin error:".red().bold(),
+                                p.name.bold(),
+                                rel_path.display(),
+                                e
+                            );
+                        }
                     }
                 }
             }
@@ -1315,7 +1339,14 @@ async fn setup_server_state(
         .to_string();
         for p in plugin_mgr.plugins() {
             if let Some(f) = p.hooks.pre_build {
-                p.call_hook(f, &input);
+                if let Err(e) = plugin_mgr.call_hook(p, f, &input) {
+                    error!(
+                        "{} plugin '{}': {}",
+                        "Plugin error:".red().bold(),
+                        p.name.bold(),
+                        e
+                    );
+                }
             }
         }
     }

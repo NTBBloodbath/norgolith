@@ -355,9 +355,21 @@ fn build_content_entry(
             .to_string();
             for p in plugin_mgr.plugins() {
                 if let Some(f) = p.hooks.post_convert {
-                    if let Some(new_html) = p.call_hook(f, &input) {
-                        if let toml::Value::Table(ref mut table) = metadata {
-                            table.insert("raw".to_string(), toml::Value::String(new_html));
+                    match plugin_mgr.call_hook(p, f, &input) {
+                        Ok(Some(new_html)) => {
+                            if let toml::Value::Table(ref mut table) = metadata {
+                                table.insert("raw".to_string(), toml::Value::String(new_html));
+                            }
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            error!(
+                                "{} plugin '{}' on {}: {}",
+                                "Plugin error:".red().bold(),
+                                p.name.bold(),
+                                rel_path.display(),
+                                e
+                            );
                         }
                     }
                 }
@@ -381,8 +393,20 @@ fn build_content_entry(
         .to_string();
         for p in plugin_mgr.plugins() {
             if let Some(f) = p.hooks.post_render {
-                if let Some(new_html) = p.call_hook(f, &input) {
-                    rendered = new_html;
+                match plugin_mgr.call_hook(p, f, &input) {
+                    Ok(Some(new_html)) => {
+                        rendered = new_html;
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        error!(
+                            "{} plugin '{}' on {}: {}",
+                            "Plugin error:".red().bold(),
+                            p.name.bold(),
+                            rel_path.display(),
+                            e
+                        );
+                    }
                 }
             }
         }
@@ -925,7 +949,14 @@ pub fn build(minify: bool) -> Result<()> {
             .unwrap_or_default();
         for p in plugin_mgr.plugins() {
             if let Some(f) = p.hooks.pre_build {
-                p.call_hook(f, &config_json);
+                if let Err(e) = plugin_mgr.call_hook(p, f, &config_json) {
+                    error!(
+                        "{} plugin '{}': {}",
+                        "Plugin error:".red().bold(),
+                        p.name.bold(),
+                        e
+                    );
+                }
             }
         }
     }
@@ -1041,7 +1072,14 @@ pub fn build(minify: bool) -> Result<()> {
             .unwrap_or_default();
         for p in plugin_mgr.plugins() {
             if let Some(f) = p.hooks.post_build {
-                p.call_hook(f, &config_json);
+                if let Err(e) = plugin_mgr.call_hook(p, f, &config_json) {
+                    error!(
+                        "{} plugin '{}': {}",
+                        "Plugin error:".red().bold(),
+                        p.name.bold(),
+                        e
+                    );
+                }
             }
         }
     }
@@ -1053,6 +1091,22 @@ pub fn build(minify: bool) -> Result<()> {
         "✓".green().bold(),
         shared::get_elapsed_time(build_start)
     );
+
+    // Print per-plugin timing if any hooks were called
+    let plugin_timings = plugin_mgr.hook_timings();
+    if !plugin_timings.is_empty() {
+        println!();
+        println!("{}", "  Plugin hook timings:".dimmed());
+        let mut sorted: Vec<_> = plugin_timings.iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(a.1));
+        for (name, duration) in sorted {
+            println!(
+                "    {:<20} {:>6}ms",
+                name.dimmed(),
+                duration.as_millis()
+            );
+        }
+    }
 
     // Save cache
     let t = Instant::now();
