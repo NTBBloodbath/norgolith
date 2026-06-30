@@ -4,6 +4,7 @@ mod init;
 mod new;
 mod plugin;
 mod preview;
+mod seo;
 mod theme;
 
 pub use build::build;

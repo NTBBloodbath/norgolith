@@ -19,6 +19,35 @@ pub struct SiteConfigRss {
     pub image: String,
 }
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct SiteConfigSeo {
+    #[serde(default = "default_true")]
+    pub sitemap: bool,
+    #[serde(default = "default_true")]
+    pub open_graph: bool,
+    #[serde(default, rename = "default_image")]
+    pub default_image: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SiteConfigRobots {
+    #[serde(default = "default_true")]
+    pub enable: bool,
+    pub preset: Option<RobotsPreset>,
+    #[serde(default, rename = "custom_file")]
+    pub custom: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub enum RobotsPreset {
+    #[serde(rename = "allow_all")]
+    AllowAll,
+    #[serde(rename = "no_llms")]
+    NoLlms,
+    #[serde(rename = "block_all")]
+    BlockAll,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CollectionConfig {
     pub name: String,
@@ -34,6 +63,10 @@ fn default_collections() -> Vec<CollectionConfig> {
 
 fn default_categories_dir() -> String {
     "categories".into()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -52,6 +85,9 @@ pub struct SiteConfig {
     pub collections: Vec<CollectionConfig>,
     #[serde(default = "default_categories_dir", rename = "categoriesDir")]
     pub categories_dir: String,
+    #[serde(default)]
+    pub seo: Option<SiteConfigSeo>,
+    pub robots: Option<SiteConfigRobots>,
 }
 
 impl Default for SiteConfig {
@@ -67,6 +103,8 @@ impl Default for SiteConfig {
             extra: None,
             collections: default_collections(),
             categories_dir: default_categories_dir(),
+            seo: None,
+            robots: None,
         }
     }
 }

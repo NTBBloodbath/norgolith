@@ -48,6 +48,37 @@
     <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
     <link rel="stylesheet" href="/assets/style.css" />
     <link rel="icon" href="/assets/norgolith.svg" />
+
+    {# Canonical URL #}
+    {% if metadata.permalink %}
+    <link rel="canonical" href="{{ metadata.permalink }}" />
+    {% endif %}
+
+    {# OpenGraph + Twitter Cards #}
+    {% if config.seo is defined and config.seo.open_graph %}
+    <meta property="og:title" content="{{ metadata.title | default(value=config.title) }}" />
+    {% if metadata.description and not metadata.description == "nil" %}
+    <meta property="og:description" content="{{ metadata.description }}" />
+    {% endif %}
+    {% if metadata.permalink %}
+    <meta property="og:url" content="{{ metadata.permalink }}" />
+    {% endif %}
+    <meta property="og:site_name" content="{{ config.title }}" />
+    <meta property="og:locale" content="{{ config.language | replace(from="-", to="_") }}" />
+    {% if metadata.image %}
+    <meta property="og:image" content="{{ config.rootUrl }}{{ metadata.image }}" />
+    <meta name="twitter:image" content="{{ config.rootUrl }}{{ metadata.image }}" />
+    {% elif config.seo is defined and config.seo.default_image %}
+    <meta property="og:image" content="{{ config.rootUrl }}{{ config.seo.default_image }}" />
+    <meta name="twitter:image" content="{{ config.rootUrl }}{{ config.seo.default_image }}" />
+    {% endif %}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="{{ metadata.title | default(value=config.title) }}" />
+    {% if metadata.description and not metadata.description == "nil" %}
+    <meta name="twitter:description" content="{{ metadata.description }}" />
+    {% endif %}
+    {% endif %}
+
     <title>{% block title %}{% endblock title %} - {{ config.title | title }}</title>
     {% endblock head %}
 </head>
