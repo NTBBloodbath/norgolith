@@ -6,6 +6,8 @@ changelog_path = "./CHANGELOG.md"
 name = "norgolith"
 publish = false
 semver_check = false
+git_tag_name = "v{{ version }}"
+git_release_name = "v{{ version }}"
 
 [[package]]
 name = "norgolith-plugin-sdk"
