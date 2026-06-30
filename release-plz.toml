@@ -1,0 +1,10 @@
+[workspace]
+git_release_enable = false
+
+[[package]]
+name = "norgolith"
+publish = false
+
+[[package]]
+name = "norgolith-plugin-sdk"
+publish = true
