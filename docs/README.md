@@ -1,6 +1,6 @@
 # Norgolith Documentation
 
-This directory contains the source code for the [Norgolith documentation site](https://norgolith.amartin.beer).
+This directory contains the source code for the [Norgolith documentation site](https://norgolith.dev).
 
 ## Development
 

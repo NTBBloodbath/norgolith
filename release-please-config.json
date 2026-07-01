@@ -19,7 +19,6 @@
     "cargo-workspace"
   ],
   "bootstrap-sha": "bcadf7ae0888edb0466aae7390fa2a9eebda1c1d",
-  "last-release-sha": "bcadf7ae0888edb0466aae7390fa2a9eebda1c1d",
   "changelog-sections": [
     { "type": "feat", "section": "Features" },
     { "type": "fix", "section": "Bug Fixes" },

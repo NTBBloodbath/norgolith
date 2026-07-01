@@ -3,7 +3,7 @@ Norgolith <3 TailwindCSS.
 
 ## Demo
 
-If you want to see this theme in action, you can either go to [my blog](https://amartin.beer) or even the [official Norgolith documentation](https://norgolith.amartin.beer).
+If you want to see this theme in action, you can either go to [my blog](https://amartin.beer) or even the [official Norgolith documentation](https://norgolith.dev).
 
 ## Installation
 ```bash

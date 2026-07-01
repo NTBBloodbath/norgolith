@@ -2,7 +2,7 @@
 
 SDK for building Norgolith plugins. Write a hook function, register it with a macro, and the plugin runs during the build process.
 
-For the full plugin guide, see [Plugins documentation](https://norgolith.amartin.beer/docs/plugins).
+For the full plugin guide, see [Plugins documentation](https://norgolith.dev/docs/plugins).
 
 ## Adding the SDK
 
@@ -240,5 +240,5 @@ fn wrap_headings(json: serde_json::Value) -> Result<Option<String>, String> {
 
 ## See Also
 
-- [Plugin system guide](https://norgolith.amartin.beer/docs/plugins): full documentation for users and plugin authors
+- [Plugin system guide](https://norgolith.dev/docs/plugins): full documentation for users and plugin authors
 - [Norgolith repository](https://github.com/NTBBloodbath/norgolith): source code and issue tracker
