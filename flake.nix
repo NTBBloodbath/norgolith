@@ -69,6 +69,22 @@
           buildNoDefaultFeatures = true;
           cargoBuildFlags = ["-p" "norgolith-plugin-sdk"];
 
+          installPhase = ''
+            mkdir -p $out/lib
+            cp target/x86_64-unknown-linux-gnu/release/libnorgolith_plugin_sdk.so $out/lib/
+          '';
+
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+          ];
+          buildInputs = with pkgs; [
+            openssl
+          ];
+
+          env = {
+            OPENSSL_NO_VENDOR = true;
+          };
+
           meta = {
             description = sdkPackage.description;
             homepage = sdkPackage.repository;
