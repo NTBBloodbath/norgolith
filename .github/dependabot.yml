@@ -1,0 +1,8 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directories:
+      - "/core"
+      - "/sdk"
+    schedule:
+      interval: "weekly"
