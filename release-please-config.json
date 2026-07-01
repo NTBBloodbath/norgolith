@@ -1,0 +1,33 @@
+{
+  "packages": {
+    "core": {
+      "release-type": "rust",
+      "package-name": "norgolith",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": false,
+      "bump-patch-for-minor-pre-major": false
+    },
+    "sdk": {
+      "release-type": "rust",
+      "package-name": "norgolith-plugin-sdk",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": false,
+      "bump-patch-for-minor-pre-major": false
+    }
+  },
+  "plugins": [
+    "cargo-workspace"
+  ],
+  "bootstrap-sha": "bcadf7ae0888edb0466aae7390fa2a9eebda1c1d",
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "refactor", "section": "Refactoring" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "ci", "section": "CI" },
+    { "type": "chore", "section": "Miscellaneous" },
+    { "type": "test", "section": "Tests" }
+  ],
+  "exclude-paths": ["docs/", "my-site/"]
+}

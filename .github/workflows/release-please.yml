@@ -1,0 +1,31 @@
+name: release-please
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'norgolith' }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ secrets.PAT }}
+          command: manifest
+
+      - name: Checkout repository
+        if: ${{ steps.release.outputs.releases_created }}
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        if: ${{ steps.release.outputs.releases_created }}
+        uses: dtolnay/rust-toolchain@stable
