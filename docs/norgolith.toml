@@ -1,4 +1,4 @@
-rootUrl = 'https://norgolith.amartin.beer'
+rootUrl = 'https://norgolith.dev'
 language = 'en-us'
 title = 'Norgolith'
 author = 'NTBBloodbath'
@@ -22,7 +22,7 @@ footer_author_link = "https://github.com/NTBBloodbath"
 [extra.nav]
 docs = "/docs"
 blog = "/posts"
-source = "https://github.com/NTBBloodbath/norgolith"
+source = "https://github.com/norgolith/core"
 
 [extra.footer]
-GitHub = "https://github.com/NTBBloodbath/norgolith"
+GitHub = "https://github.com/norgolith/core"
