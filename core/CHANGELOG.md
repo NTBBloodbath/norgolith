@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.5.0](https://github.com/norgolith/core/compare/norgolith-v0.4.0...norgolith-v0.5.0) (2026-07-01)
+
+
+### Features
+
+* add SEO (sitemap.xml, robots.txt) and OpenGraph meta tags ([d24c924](https://github.com/norgolith/core/commit/d24c924d94e28c1118f690e1f88ec094fefbff82))
+* **sdk:** implement bridge functions and working register_plugin! macro ([48f3f9b](https://github.com/norgolith/core/commit/48f3f9b1eeec076be6b87c36773944395c4ee8e5))
+
+
+### Bug Fixes
+
+* **plugin:** harden plugin system ([4253d30](https://github.com/norgolith/core/commit/4253d304cc98788a10389252621b7efb6606131c))
+* **plugin:** remove double JSON extraction in hook handlers ([cb39e6c](https://github.com/norgolith/core/commit/cb39e6c1db29e05ccb8ce02fd19a6a3bc93dcf06))
+* rewrite plugin list output with vertical per-plugin layout ([3df145b](https://github.com/norgolith/core/commit/3df145b9087c4d30b47c8eb179686a136a7fcdbb))
+
+
+### Refactoring
+
+* **workspace:** migrate to monorepo with core/ and sdk/ crates ([3e27e27](https://github.com/norgolith/core/commit/3e27e273181d2f01af4d2c5b9057b32432f15d1a))
+
+
+### CI
+
+* fix release-please manifest and add SDK publishing ([14523a0](https://github.com/norgolith/core/commit/14523a067264e5673aaa41774096e2d7571a6805))
+
+
+### Miscellaneous
+
+* bump core to 0.5 ([ab3fa46](https://github.com/norgolith/core/commit/ab3fa46fd549e9a26772b3e9a1b3a113760907b5))
+
 ## [0.4.0](https://github.com/NTBBloodbath/norgolith/compare/v0.3.2...v0.4.0) (2026-05-15)
 
 
