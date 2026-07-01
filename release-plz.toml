@@ -1,5 +1,4 @@
 [workspace]
-git_release_enable = false
 changelog_path = "./CHANGELOG.md"
 
 [[package]]
