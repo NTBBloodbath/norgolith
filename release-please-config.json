@@ -24,6 +24,7 @@
     { "type": "fix", "section": "Bug Fixes" },
     { "type": "perf", "section": "Performance" },
     { "type": "refactor", "section": "Refactoring" },
+    { "type": "ref", "section": "Refactoring" },
     { "type": "docs", "section": "Documentation" },
     { "type": "ci", "section": "CI" },
     { "type": "chore", "section": "Miscellaneous" },
