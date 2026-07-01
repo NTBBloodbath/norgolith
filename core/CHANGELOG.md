@@ -1,5 +1,87 @@
 # Changelog
 
+## [0.5.0](https://github.com/norgolith/core/compare/norgolith-v0.4.0...norgolith-v0.5.0) (2026-07-01)
+
+
+### Features
+
+* add configurable content collections and categoriesDir ([e6d1a5c](https://github.com/norgolith/core/commit/e6d1a5cc75b7fc3c13e3945f0115d51631f68668))
+* **build:** expose lith version with git commit hash for dev builds ([111ee70](https://github.com/norgolith/core/commit/111ee70318e090c72f41d197fba20e4d4b09d0b8))
+* **config:** add SiteConfig field validation ([af6a40f](https://github.com/norgolith/core/commit/af6a40f230cb01a177c84b2572c1c69354156ac6))
+* **dev:** config hot-reloading ([1728505](https://github.com/norgolith/core/commit/1728505404b5c27661d9913910fcdeb7a5b179f9))
+* **dev:** pre-render all pages into memory for instant responses ([485bbb0](https://github.com/norgolith/core/commit/485bbb0f9e44ac09248be94c1deda303b0129c67))
+* incremental builds via content-hash caching ([466cd8d](https://github.com/norgolith/core/commit/466cd8d1d639a2cf4dd243be3376b3eae27e234c))
+* **plugin:** add C ABI types and PluginManager data structures ([47f1876](https://github.com/norgolith/core/commit/47f1876))
+* **plugin:** add plugin loading and validation ([e0959e0](https://github.com/norgolith/core/commit/e0959e0))
+* **plugin:** add safety wrappers with catch_unwind, timeout, and memory management ([9389e6d](https://github.com/norgolith/core/commit/9389e6d))
+* **plugin:** add Landlock sandbox for filesystem confinement ([3886a41](https://github.com/norgolith/core/commit/3886a41))
+* **plugin:** wire hook points into build pipeline ([728d41e](https://github.com/norgolith/core/commit/728d41e))
+* **plugin:** add CLI commands for plugin management ([9dfd509](https://github.com/norgolith/core/commit/9dfd509))
+* **sdk:** implement bridge functions and working register_plugin! macro ([48f3f9b](https://github.com/norgolith/core/commit/48f3f9b1eeec076be6b87c36773944395c4ee8e5))
+* add SEO (sitemap.xml, robots.txt) and OpenGraph meta tags ([d24c924](https://github.com/norgolith/core/commit/d24c924))
+* use rust-norg performance increase branch (experimental) ([34f11c4](https://github.com/norgolith/core/commit/34f11c4a6d023331c1a4deee528cb6532912d275))
+* use XDG_CACHE_HOME for incremental build cache ([c2c6370](https://github.com/norgolith/core/commit/c2c63707fc867c7dae98163572ec34d08eb0c623))
+
+
+### Bug Fixes
+
+* **build:** join validation errors with newline for readability ([3106055](https://github.com/norgolith/core/commit/3106055c892de6c2e12e195345c3794b45eb0c59))
+* **build:** log WalkDir errors instead of silently discarding ([412f0e1](https://github.com/norgolith/core/commit/412f0e1fcfe791ff07ee0a7fdd27372ae4722633))
+* **build:** only validate RSS templates as RSS ([7c73022](https://github.com/norgolith/core/commit/7c7302216cdce40ee9ed8b278631bf1c967602fa))
+* **build:** replace bare unwraps with proper error handling ([607e46d](https://github.com/norgolith/core/commit/607e46d44032d9e55a08b645a327fd02755a0d64))
+* **cache:** populate build cache for incremental builds ([4e6d4fe](https://github.com/norgolith/core/commit/4e6d4fe3ca9bbfb05f3bad1b3818d18593eac98d))
+* **config:** do not allow negative numbers in RSS ttl values ([9e3a7ee](https://github.com/norgolith/core/commit/9e3a7eec6d745a88ba66f389cce15dea9eb2452c))
+* **dev:** acquire posts lock once in category index handler ([f784044](https://github.com/norgolith/core/commit/f784044bc0af9b676f602f8c354ffbd41f4dcd5a))
+* **dev:** don't crash dev server when browser can't open ([2b6a2de](https://github.com/norgolith/core/commit/2b6a2de30dd6ceb63f9f60390003f3aa9a1d53f7))
+* **dev:** posts list empty in templates due to collection key collision ([992c804](https://github.com/norgolith/core/commit/992c804bd77de47e70cdf86c038154c3f7fcb85d))
+* **dev:** uppercase Ok in send_reload ([fd81af1](https://github.com/norgolith/core/commit/fd81af14a2cfa487432356abdb0ff81fbb071bf3))
+* **dev:** use strip_prefix result directly instead of contains string check ([ddd2f90](https://github.com/norgolith/core/commit/ddd2f9042631df6e220126f996f7c1af23f35ad9))
+* **docs:** improve site layout and center the content ([f8e8ced](https://github.com/norgolith/core/commit/f8e8ced214962208f5b04a0013396ca8453f5866))
+* **fs:** remove redundant empty-dir check in find_in_previous_dirs ([2b6a2de](https://github.com/norgolith/core/commit/2b6a2de30dd6ceb63f9f60390003f3aa9a1d53f7))
+* **init:** typo in Norgolith ([d7009c6](https://github.com/norgolith/core/commit/d7009c6cfa9eea5110048c9af877f05a13009dd0))
+* **net:** eliminate TOCTOU port race in dev server ([f901bb3](https://github.com/norgolith/core/commit/f901bb36b916d410244e717d71e0dd1d7a3eb1e7))
+* **plugin:** harden plugin system ([4253d30](https://github.com/norgolith/core/commit/4253d304cc98788a10389252621b7efb6606131c))
+* **plugin:** remove double JSON extraction in hook handlers ([cb39e6c](https://github.com/norgolith/core/commit/cb39e6c1db29e05ccb8ce02fd19a6a3bc93dcf06))
+* **plugin:** rewrite plugin list output with vertical per-plugin layout ([3df145b](https://github.com/norgolith/core/commit/3df145b))
+* **preview:** add percent-decoding to sanitize_path ([f1f3cc7](https://github.com/norgolith/core/commit/f1f3cc791c0cd7b0f2649f47bf45aca6797bef64))
+* **schema:** return `ConstraintViolation` schema error instead of panicking on invalid regex patterns ([071c23b](https://github.com/norgolith/core/commit/071c23b0ad9fd01bf0d445d5b15e89754995eafa))
+* **schema:** send warning message when a condition is absent from post metadata ([a446158](https://github.com/norgolith/core/commit/a4461584419501367f27a12d4e4c8828a191b06f))
+* **schema:** validate array item types against items definition ([f43ad49](https://github.com/norgolith/core/commit/f43ad495966ef4cf2c86092f6ebbb6665781cd0b))
+* **shared:** use starts_with for collection permalink matching ([03a56c5](https://github.com/norgolith/core/commit/03a56c569603c9e63353993db0cbdc3ee5420dfc))
+* **shared:** warn on invalid post date instead of silently sorting to epoch ([420e4cf](https://github.com/norgolith/core/commit/420e4cf080c1ef7dbdb7d12e8c610ac0728a7ecb))
+* **shared:** warn on metadata conversion errors instead of silently dropping ([70c87ea](https://github.com/norgolith/core/commit/70c87ea388d37e668a2d8d7239cd183a3a7764b9))
+* **tera:** escape HTML in TOC output to prevent XSS ([bbd6607](https://github.com/norgolith/core/commit/bbd66074a4f29957e632323b272560ae763c0412))
+* **tera:** replace panic-inducing unwraps with proper error propagation ([1d04c86](https://github.com/norgolith/core/commit/1d04c860a87f01bf4771c3038987ff173addd6db))
+* **theme:** handle root path in backup dir resolution ([988ecf2](https://github.com/norgolith/core/commit/988ecf200916206e450fac9fdf6d5bc728b5ef2c))
+* **theme:** move blocking I/O off tokio runtime ([6e9cc5f](https://github.com/norgolith/core/commit/6e9cc5f959a37a4121af6ca184049283a535117d))
+* **theme:** use to_string_lossy for non-UTF-8 filenames ([ae291a0](https://github.com/norgolith/core/commit/ae291a03a22a957714a250c92c9ef489333dc371))
+
+
+### Performance Improvements
+
+* **build:** buffer rendered pages and write sequentially ([efbac38](https://github.com/norgolith/core/commit/efbac382f2292c8773c7ad6d5ed7bb04c1978758))
+* **build:** cache href regex with OnceLock ([1d86e9b](https://github.com/norgolith/core/commit/1d86e9b7c39de3645fca0c47b879eda656d94ae4))
+* **build:** migrate build.rs to sync rayon parallelism ([6c3e083](https://github.com/norgolith/core/commit/6c3e0834a880709b35156137313039fd803f4664))
+* **build:** use RwLock for build cache ([0f8d545](https://github.com/norgolith/core/commit/0f8d545a8e4a6da2a1a80f4f6736ec1cf1f04e17))
+* **cache:** avoid recomputing global hash on save ([b41e6f6](https://github.com/norgolith/core/commit/b41e6f6d2417c74dde5b55bc8743ad2962a74ea7))
+* eliminate double parsing for collection posts ([8ee9910](https://github.com/norgolith/core/commit/8ee991023cf91167fb7eba9a890f4976ac66f2cc))
+* optimize build pipeline with shared context, VecDeque, and parallel metadata ([0500ec7](https://github.com/norgolith/core/commit/0500ec7078b8f530dd3930671707c4b0938d6a81))
+* pass carryover tags by reference in HTML converter ([a7d8e25](https://github.com/norgolith/core/commit/a7d8e257b75f03448ae8d19265fa033afe45fd74))
+* skip HTML conversion for draft posts ([ec57c38](https://github.com/norgolith/core/commit/ec57c3801069ba31d31cda760dce221dbb136314))
+* skip HTML conversion for draft posts in dev server too ([c628321](https://github.com/norgolith/core/commit/c62832127abeb3b8ab5181387d7c832a74289eee))
+
+
+### Refactoring
+
+* **converter:** eliminate format! allocations and drain-after-clone ([d303740](https://github.com/norgolith/core/commit/d303740))
+* **theme:** extract find_theme_dir() helper ([adc67de](https://github.com/norgolith/core/commit/adc67de))
+* **workspace:** migrate to monorepo with core/ and sdk/ crates ([3e27e27](https://github.com/norgolith/core/commit/3e27e273181d2f01af4d2c5b9057b32432f15d1a))
+
+
+### Documentation
+
+* document plugins ([0d584d8](https://github.com/norgolith/core/commit/0d584d85ed4a5e97699dd580b52e2512ce476c3a))
+
 ## [0.4.0](https://github.com/NTBBloodbath/norgolith/compare/v0.3.2...v0.4.0) (2026-05-15)
 
 
