@@ -4,11 +4,13 @@ on:
   push:
     tags:
       - "norgolith-v*"
+      - "norgolith-plugin-sdk-v*"
   workflow_dispatch:
 
 jobs:
   release:
     name: Release - ${{ matrix.platform.os_name }}
+    if: ${{ startsWith(github.ref_name, 'norgolith-v') && !startsWith(github.ref_name, 'norgolith-plugin-sdk-v') }}
     runs-on: ${{ matrix.platform.os }}
     strategy:
       # Do not cancel the build process if any of them fails
@@ -28,7 +30,7 @@ jobs:
             os: macos-latest
             target: aarch64-apple-darwin
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build
         uses: houseabsolute/actions-rust-cross@v0
         with:
@@ -44,3 +46,16 @@ jobs:
             README.md
             LICENSE
           target: ${{ matrix.platform.target }}
+
+  publish-sdk:
+    name: Publish SDK to crates.io
+    if: ${{ startsWith(github.ref_name, 'norgolith-plugin-sdk-v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish -p norgolith-plugin-sdk

@@ -18,7 +18,6 @@ jobs:
         id: release
         with:
           token: ${{ secrets.PAT }}
-          command: manifest
 
       - name: Checkout repository
         if: ${{ steps.release.outputs.releases_created }}
