@@ -6,10 +6,10 @@ authors = ["NTBBloodbath <bloodbathalchemist@protonmail.com"]
 license = "GPL-2.0"
 readme = "../README.md"
 description = "The monolithic Norg static site generator"
-repository = "https://github.com/NTBBloodbath/norgolith"
+repository = "https://github.com/norgolith/core"
 keywords = ["static", "site", "generator", "blog", "norg"]
 
-include = ["src/**/*", "LICENSE", "../README.md"]
+include = ["src/**/*", "../LICENSE", "../README.md"]
 
 [[bin]]
 name = "lith"
