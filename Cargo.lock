@@ -1879,7 +1879,7 @@ dependencies = [
 
 [[package]]
 name = "norgolith"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "blake3",
  "chrono",
@@ -1932,7 +1932,7 @@ dependencies = [
 
 [[package]]
 name = "norgolith-plugin-sdk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "serde",

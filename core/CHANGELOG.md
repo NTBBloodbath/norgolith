@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/norgolith/core/compare/norgolith-v0.5.0...norgolith-v0.6.0) (2026-07-02)
+
+
+### Features
+
+* add templated 404 and 500 error pages ([6604bb7](https://github.com/norgolith/core/commit/6604bb786d915c5ddbe5e18971a9872bd54cae2b)), closes [#94](https://github.com/norgolith/core/issues/94)
+* **flake:** add norgolith-plugin-sdk build ([a3ad5d1](https://github.com/norgolith/core/commit/a3ad5d1b63fbfb57ff1ff620e42a1bc5844b702c))
+
 ## [0.5.0](https://github.com/norgolith/core/compare/norgolith-v0.4.0...norgolith-v0.5.0) (2026-07-01)
 
 
