@@ -161,7 +161,15 @@ impl ServerState {
         let posts = self.posts.read().await.clone();
         let cache = self.cache.read().await;
 
-        match render_all_pages(&tera, &self.paths, &config, &self.routes_url, &posts, &cache, &self.plugin_mgr) {
+        match render_all_pages(
+            &tera,
+            &self.paths,
+            &config,
+            &self.routes_url,
+            &posts,
+            &cache,
+            &self.plugin_mgr,
+        ) {
             Ok(new_pages) => {
                 let mut pages = self.rendered_pages.write().await;
                 *pages = new_pages;
@@ -269,8 +277,7 @@ async fn is_template_change(event: &notify::Event) -> bool {
 
     is_relevant_event(event)
         && is_template
-        && fs::find_in_previous_dirs("dir", "templates", &mut parent_dir.to_path_buf())
-            .is_ok()
+        && fs::find_in_previous_dirs("dir", "templates", &mut parent_dir.to_path_buf()).is_ok()
 }
 
 /// Checks if a file system event corresponds to a content change.
@@ -298,8 +305,7 @@ async fn is_content_change(event: &notify::Event) -> bool {
     };
 
     is_relevant_event(event)
-        && fs::find_in_previous_dirs("dir", "content", &mut parent_dir.to_path_buf())
-            .is_ok()
+        && fs::find_in_previous_dirs("dir", "content", &mut parent_dir.to_path_buf()).is_ok()
 }
 
 /// Checks if a file system event corresponds to an asset change.
@@ -327,8 +333,7 @@ async fn is_asset_change(event: &notify::Event) -> bool {
 
     // FIXME: find from given path instad of traversing file system
     is_relevant_event(event)
-        && fs::find_in_previous_dirs("dir", "assets", &mut parent_dir.to_path_buf())
-            .is_ok()
+        && fs::find_in_previous_dirs("dir", "assets", &mut parent_dir.to_path_buf()).is_ok()
 }
 
 /// Processes debounced file system events and triggers appropriate actions.
@@ -408,8 +413,7 @@ async fn execute_actions(actions: FileActions, state: Arc<ServerState>) {
             &state.paths.content,
             &state.routes_url,
             &collections,
-        )
-        {
+        ) {
             Ok(new_posts) => {
                 let mut posts_lock = state.posts.write().await;
                 *posts_lock = new_posts;
@@ -581,8 +585,12 @@ async fn handle_single_event(
 /// # Returns
 /// * `Result<Response<Body>>` - A `Response` containing the asset content or a 404 error
 ///   if the asset is not found.
-#[instrument(skip(request_path, paths))]
-async fn handle_asset(request_path: &str, paths: &SitePaths) -> Result<Response<Body>> {
+#[instrument(skip(request_path, paths, state))]
+async fn handle_asset(
+    request_path: &str,
+    paths: &SitePaths,
+    state: &Arc<ServerState>,
+) -> Result<Response<Body>> {
     let asset_path = request_path.trim_start_matches("/assets/");
     debug!(path = %asset_path, "Handling asset request");
 
@@ -605,7 +613,7 @@ async fn handle_asset(request_path: &str, paths: &SitePaths) -> Result<Response<
                 }
                 Err(_) => {
                     error!(asset_path = %request_path, "Asset not found in site or theme directories");
-                    return Ok(handle_not_found());
+                    return Ok(handle_not_found(state));
                 }
             }
         }
@@ -622,8 +630,29 @@ async fn handle_asset(request_path: &str, paths: &SitePaths) -> Result<Response<
         .body(Body::from(content))?)
 }
 
-fn handle_not_found() -> Response<Body> {
-    // TODO: try load from templates
+fn handle_not_found(state: &ServerState) -> Response<Body> {
+    let tera = state.tera.try_read().ok();
+    let config = state.config.try_read().ok();
+    if let (Some(tera), Some(config)) = (tera, config) {
+        if tera.get_template_names().any(|n| n == "404.html") {
+            let posts = state.posts.try_read().ok();
+            let collections = posts
+                .as_ref()
+                .map(|p| shared::precompute_collection_subsets(p, &config))
+                .unwrap_or_default();
+            let shared_context = posts
+                .as_ref()
+                .map(|p| shared::build_shared_context(p, &config, &collections))
+                .unwrap_or_else(|| shared::build_shared_context(&[], &config, &collections));
+            if let Ok(rendered) = tera.render("404.html", &shared_context) {
+                return Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .header(CONTENT_TYPE, "text/html; charset=utf-8")
+                    .body(Body::from(rendered))
+                    .expect("Could not build Not Found response");
+            }
+        }
+    }
     Response::builder()
         .status(StatusCode::NOT_FOUND)
         .body(Body::from("not found"))
@@ -673,7 +702,7 @@ async fn handle_xml_feed(request_path: &str, state: &Arc<ServerState>) -> Result
     // Slow path: render on demand
     let tera = state.tera.read().await;
     if !tera.get_template_names().any(|n| n == template_name) {
-        return Ok(handle_not_found());
+        return Ok(handle_not_found(state));
     }
 
     let config = state.config.read().await.clone();
@@ -704,7 +733,7 @@ async fn handle_content(request_path: &str, state: Arc<ServerState>) -> Result<R
     match resolve_url_norg_path(&state.paths.content, &req_path).await {
         Ok(path) => handle_norg_content(path, state).await,
         Err(io_err) => match io_err.kind() {
-            std::io::ErrorKind::NotFound => Ok(handle_not_found()),
+            std::io::ErrorKind::NotFound => Ok(handle_not_found(&state)),
             std::io::ErrorKind::PermissionDenied => Ok(Response::builder()
                 .status(StatusCode::FORBIDDEN)
                 .body(Body::empty())
@@ -749,7 +778,7 @@ async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<R
     let tera = state.tera.read().await;
 
     let Ok(content) = tokio::fs::read_to_string(&path).await else {
-        return Ok(handle_not_found());
+        return Ok(handle_not_found(&state));
     };
 
     let metadata = shared::extract_metadata_from_content(&content, &rel_path, &state.routes_url);
@@ -758,7 +787,7 @@ async fn handle_norg_content(path: PathBuf, state: Arc<ServerState>) -> Result<R
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     if is_draft && !state.build_drafts {
-        return Ok(handle_not_found());
+        return Ok(handle_not_found(&state));
     }
 
     let cache_key = rel_path.with_extension("");
@@ -993,7 +1022,7 @@ async fn handle_request(req: Request<Body>, state: Arc<ServerState>) -> Result<R
         path if path.starts_with(&format!("/{}/", categories_dir)) => {
             handle_category(path, &state).await
         }
-        path if path.starts_with("/assets/") => handle_asset(path, &state.paths).await,
+        path if path.starts_with("/assets/") => handle_asset(path, &state.paths, &state).await,
         path if path.ends_with(".xml") => handle_xml_feed(path, &state).await,
         _ => handle_content(request_path, state).await,
     }
@@ -1024,19 +1053,65 @@ async fn handle_server_request(
 
     debug!(method = %method, path = %path, "Incoming request");
 
-    let response = match handle_request(req, state).await {
+    let response = match handle_request(req, state.clone()).await {
         Ok(res) => res,
         Err(e) => {
             error!("{}", e);
             // Remove ANSI codes from error string as the colored crate clear method is stupid enough not to do anything
             let e_str = e.to_string().replace("\x1b[1m", "").replace("\x1b[0m", "");
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from(format!(
-                    "500 Internal Server Error\n\n{}",
-                    e_str
-                )))
-                .unwrap()
+            let response = {
+                let tera = state.tera.try_read();
+                let config = state.config.try_read();
+                if let (Ok(tera), Ok(config)) = (tera, config) {
+                    if tera.get_template_names().any(|n| n == "500.html") {
+                        let posts = state.posts.try_read().ok();
+                        let collections = posts
+                            .as_ref()
+                            .map(|p| shared::precompute_collection_subsets(p, &config))
+                            .unwrap_or_default();
+                        let shared_context = posts
+                            .as_ref()
+                            .map(|p| shared::build_shared_context(p, &config, &collections))
+                            .unwrap_or_else(|| {
+                                shared::build_shared_context(&[], &config, &collections)
+                            });
+                        let mut context = shared_context;
+                        context.insert("error_message", &e_str);
+                        if let Ok(rendered) = tera.render("500.html", &context) {
+                            Response::builder()
+                                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                .header(CONTENT_TYPE, "text/html; charset=utf-8")
+                                .body(Body::from(rendered))
+                                .unwrap()
+                        } else {
+                            Response::builder()
+                                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                .body(Body::from(format!(
+                                    "500 Internal Server Error\n\n{}",
+                                    e_str
+                                )))
+                                .unwrap()
+                        }
+                    } else {
+                        Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .body(Body::from(format!(
+                                "500 Internal Server Error\n\n{}",
+                                e_str
+                            )))
+                            .unwrap()
+                    }
+                } else {
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Body::from(format!(
+                            "500 Internal Server Error\n\n{}",
+                            e_str
+                        )))
+                        .unwrap()
+                }
+            };
+            response
         }
     };
 
@@ -1194,10 +1269,7 @@ fn render_all_pages(
 
         // Always use the proper URL to the development server for template links that refers
         // to the local URL, this is useful when running the server exposed to LAN network
-        body = body.replace(
-            &config.root_url.replace("://", ":&#x2F;&#x2F;"),
-            routes_url,
-        );
+        body = body.replace(&config.root_url.replace("://", ":&#x2F;&#x2F;"), routes_url);
 
         // URL path: /{rel_path_without_extension}
         let url_path = format!("/{}", rel_path.with_extension("").display());
@@ -1207,10 +1279,7 @@ fn render_all_pages(
     // Pre-render category index
     if !posts.is_empty() {
         if let Ok(body) = shared::render_category_index(tera, posts, config, &collections) {
-            let body = body.replace(
-                &config.root_url.replace("://", ":&#x2F;&#x2F;"),
-                routes_url,
-            );
+            let body = body.replace(&config.root_url.replace("://", ":&#x2F;&#x2F;"), routes_url);
             pages.insert(format!("/{}", config.categories_dir), body);
         }
 
@@ -1237,10 +1306,8 @@ fn render_all_pages(
             );
 
             if let Ok(body) = tera.render("category.html", &context) {
-                let body = body.replace(
-                    &config.root_url.replace("://", ":&#x2F;&#x2F;"),
-                    routes_url,
-                );
+                let body =
+                    body.replace(&config.root_url.replace("://", ":&#x2F;&#x2F;"), routes_url);
                 let url_path = format!("/{}/{}", config.categories_dir, category);
                 pages.insert(url_path, body);
             }
@@ -1448,7 +1515,13 @@ async fn setup_file_watcher(
 /// # Returns
 /// * `Result<()>` - `Ok(())` if the server runs successfully, otherwise an error.
 #[instrument(skip(port, drafts, open, host))]
-pub async fn dev(listener: StdTcpListener, port: u16, drafts: bool, open: bool, host: bool) -> Result<()> {
+pub async fn dev(
+    listener: StdTcpListener,
+    port: u16,
+    drafts: bool,
+    open: bool,
+    host: bool,
+) -> Result<()> {
     println!("{} Starting development server...", "→".cyan().bold());
 
     let root = fs::find_config_file()?;

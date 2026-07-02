@@ -484,6 +484,27 @@ pub fn build_category_pages(
     Ok(page_count)
 }
 
+/// Renders 404.html and 500.html error pages into the public directory.
+///
+/// Uses Tera to render templates with site context. Skips silently if a template
+/// is not registered (e.g., after user removes it and re-inits Tera).
+#[instrument(level = "debug", skip(tera, shared_context, public_dir))]
+fn build_error_pages(tera: &Tera, shared_context: &Context, public_dir: &Path) -> Result<usize> {
+    let mut count = 0usize;
+    for name in &["404.html", "500.html"] {
+        if !tera.get_template_names().any(|n| n == *name) {
+            continue;
+        }
+        let rendered = tera
+            .render(name, shared_context)
+            .map_err(|e| eyre!("Failed to render {}: {}", name, e))?;
+        std::fs::write(public_dir.join(name), &rendered)
+            .wrap_err(format!("Failed to write {}", name))?;
+        count += 1;
+    }
+    Ok(count)
+}
+
 /// Determines the final public path for an HTML file based on its name and location.
 ///
 /// This function creates SEO-friendly URLs by nesting non-index files in directories.
@@ -772,6 +793,7 @@ struct BuildTimings {
     feeds_ms: u128,
     seo_ms: u128,
     assets_ms: u128,
+    error_pages_ms: u128,
     cache_save_ms: u128,
     // Per-page sub-timing (sums across all pages)
     page_file_ms: u128,
@@ -803,6 +825,7 @@ impl BuildTimings {
             feeds_ms: 0,
             seo_ms: 0,
             assets_ms: 0,
+            error_pages_ms: 0,
             cache_save_ms: 0,
             page_file_ms: 0,
             page_meta_ms: 0,
@@ -832,6 +855,7 @@ impl BuildTimings {
             .saturating_sub(self.feeds_ms)
             .saturating_sub(self.seo_ms)
             .saturating_sub(self.assets_ms)
+            .saturating_sub(self.error_pages_ms)
             .saturating_sub(self.cache_save_ms);
 
         println!();
@@ -848,6 +872,7 @@ impl BuildTimings {
         println!("  {:<30} {:>6}ms  ({:>4.1}%)", "XML feeds", self.feeds_ms, pct(self.feeds_ms, total_ms));
         println!("  {:<30} {:>6}ms  ({:>4.1}%)", "SEO (sitemap+robots)", self.seo_ms, pct(self.seo_ms, total_ms));
         println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Asset copy", self.assets_ms, pct(self.assets_ms, total_ms));
+        println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Error pages", self.error_pages_ms, pct(self.error_pages_ms, total_ms));
         println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Cache save", self.cache_save_ms, pct(self.cache_save_ms, total_ms));
         println!("  {:<30} {:>6}ms  ({:>4.1}%)", "Overhead/other", overhead, pct(overhead, total_ms));
         println!("  {}", "─".repeat(50));
@@ -1176,6 +1201,20 @@ pub fn build(minify: bool) -> Result<()> {
         format!("{} files", asset_count),
         shared::get_elapsed_time(t).dimmed()
     );
+
+    // Error pages (404.html, 500.html)
+    let t = Instant::now();
+    let error_page_count = build_error_pages(&tera, &shared_context, &paths.public)?;
+    timings.error_pages_ms = t.elapsed().as_millis();
+    if error_page_count > 0 {
+        println!(
+            "  {} {}  {:<12}  {}",
+            "•".green(),
+            format!("{:<12}", "Error pages").bold(),
+            format!("{} files", error_page_count),
+            shared::get_elapsed_time(t).dimmed()
+        );
+    }
 
     // post_build hook
     if plugin_mgr.has_hook(plugin::HOOK_POST_BUILD) {

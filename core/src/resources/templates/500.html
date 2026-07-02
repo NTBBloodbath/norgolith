@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}500 Internal Server Error{% endblock title %}
+{% block content %}
+<div class="container mx-auto min-h-screen mt-12 text-center">
+  <h1 class="text-6xl font-bold text-red-400">500</h1>
+  <p class="text-xl mt-4">Internal server error</p>
+  {% if error_message %}
+  <pre class="mt-8 text-left max-w-2xl mx-auto bg-gray-800 p-4 rounded overflow-auto text-sm text-red-300">{{ error_message }}</pre>
+  {% endif %}
+  <a href="/" class="text-blue-400 hover:underline mt-8 inline-block">Go home</a>
+</div>
+{% endblock content %}

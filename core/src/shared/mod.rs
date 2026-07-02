@@ -161,6 +161,12 @@ pub fn get_elapsed_time(instant: Instant) -> String {
 pub fn init_tera(templates_dir: &str, theme_templates_dir: &Path) -> Result<Tera> {
     let mut tera = Tera::default();
 
+    // Register built-in error templates as defaults; theme/user templates override via extend().
+    tera.add_raw_template("404.html", include_str!("../resources/templates/404.html"))
+        .map_err(|e| eyre!("Failed to register default 404 template: {}", e))?;
+    tera.add_raw_template("500.html", include_str!("../resources/templates/500.html"))
+        .map_err(|e| eyre!("Failed to register default 500 template: {}", e))?;
+
     // Loading theme templates first allows the user to extend the theme templates using their own user-defined
     // templates aka inheriting from the theme templates.
     if theme_templates_dir.exists() {

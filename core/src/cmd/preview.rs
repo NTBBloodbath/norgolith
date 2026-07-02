@@ -35,7 +35,13 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Infallible
 }
 
 fn handle_not_found() -> Response<Body> {
-    // TODO: try load 404.html
+    if let Ok(content) = std::fs::read_to_string("./public/404.html") {
+        return Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header(CONTENT_TYPE, "text/html; charset=utf-8")
+            .body(Body::from(content))
+            .expect("Could not build Not Found response");
+    }
     Response::builder()
         .status(StatusCode::NOT_FOUND)
         .body(Body::from("not found"))
